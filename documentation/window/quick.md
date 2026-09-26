@@ -1,6 +1,6 @@
 # EPIX ENGINE WINDOW MODULE
 
-Manages OS windows as ECS entities — create, configure, and react to window events through a backend-agnostic interface backed by either GLFW or SFML.
+Manages OS windows as ECS entities — create, configure, and react to window events through a backend-agnostic interface backed by SDL3.
 
 ## Core Parts
 
@@ -10,9 +10,8 @@ Manages OS windows as ECS entities — create, configure, and react to window ev
 - **[`WindowPlugin`](./window.md#windowplugin)**: Plugin that registers all window events and creates the primary window entity.
 - **[`ExitCondition`](./window.md#windowplugin)**: Enum controlling when the app auto-exits (all closed / primary closed / never).
 - **[Window Events](./events.md)**: Structs broadcast when windows are created, resized, moved, focused, closed, or destroyed; also covers cursor and file-drop events.
-- **[`GLFWPlugin` / `GLFWRunner`](./glfw-backend.md)**: GLFW windowing backend. Drives the event loop and native window lifecycle.
-- **[`SFMLPlugin` / `SFMLRunner`](./sfml-backend.md)**: SFML windowing backend. Equivalent to GLFWPlugin for SFML-based projects.
-- **[`Clipboard`](./glfw-backend.md#clipboard)**: Resource exposing the system clipboard for read and write (available in both backends).
+- **[`SDL3Plugin` / `SDL3Runner`](./sdl3-backend.md)**: SDL3 windowing backend. Drives the event loop and native window lifecycle.
+- **[`Clipboard`](./sdl3-backend.md#clipboard)**: Resource exposing the system clipboard for read and write.
 - **[`log_events`](./events.md#log_events)**: Debug system that logs all window events to the logger.
 
 ## Quick Guide
@@ -21,13 +20,13 @@ Manages OS windows as ECS entities — create, configure, and react to window ev
 import epix.ecs;
 import epix.app;
 import epix.window;
-import epix.glfw.core; // or epix.sfml.core
+import epix.sdl3.core;
 
 int main() {
     using namespace epix::ecs;
     using namespace epix::app;
     using namespace epix::window;
-    using namespace epix::glfw;
+    using namespace epix::sdl3;
 
     App app = App::create();
 
@@ -41,8 +40,8 @@ int main() {
             };
             p.exit_condition = ExitCondition::OnPrimaryClosed;
         })
-        // Add the windowing backend (GLFW or SFML).
-        .add_plugins(GLFWPlugin{})
+        // Add the windowing backend.
+        .add_plugins(SDL3Plugin{})
         // React to window events in a system.
         .add_systems(Update, into([](EventReader<WindowResized> ev) {
             for (auto&& [window, w, h] : ev.read()) {

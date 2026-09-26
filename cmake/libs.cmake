@@ -3,8 +3,7 @@
 # in the root CMakeLists.txt. Functions from cmake/utils.cmake are already
 # available because root includes utils.cmake before this file.
 
-include(${CMAKE_CURRENT_LIST_DIR}/libs/glfw.cmake)
-include(${CMAKE_CURRENT_LIST_DIR}/libs/sfml.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/libs/sdl3.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/libs/spdlog.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/libs/freetype.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/libs/imgui.cmake)

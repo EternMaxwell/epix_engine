@@ -174,7 +174,7 @@ EPIX_EXPORT namespace epix::window {
      *
      * Controls position, size, cursor, decorations, fullscreen mode, and
      * other OS-level window properties. Attach to an entity to create a
-     * native window through a windowing backend (GLFW or SFML).
+     * native window through a windowing backend (SDL3).
      */
     struct Window {
         /** @brief How the position is interpreted. Changing this recalculates

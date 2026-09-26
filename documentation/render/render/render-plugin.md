@@ -11,14 +11,14 @@ import epix.task;
 import epix.window;
 import epix.transform;
 import epix.render;
-import epix.glfw.core;
-import epix.glfw.render;
+import epix.sdl3.core;
+import epix.sdl3.render;
 
 App app = App::create();
 app.add_plugins(TaskPoolPlugin{})
    .add_plugins(window::WindowPlugin{})
-   .add_plugins(glfw::GLFWPlugin{})
-   .add_plugins(glfw::GLFWRenderPlugin{})
+   .add_plugins(sdl3::SDL3Plugin{})
+   .add_plugins(sdl3::SDL3RenderPlugin{})
    .add_plugins(transform::TransformPlugin{})
    .add_plugins(render::RenderPlugin{}.set_validation(2));
 ```
@@ -50,7 +50,7 @@ An `AnonymousSurface` resource is optional. A backend may provide its
 `create_surface(instance)` callback to constrain initial adapter selection;
 otherwise adapter creation proceeds with a null temporary surface. It is
 removed after adapter selection. Actual window swapchains use the per-window
-`render::window::SurfaceCreation` component supplied by GLFW/SFML render
+`render::window::SurfaceCreation` component supplied by the SDL3 render
 integration.
 
 ```cpp

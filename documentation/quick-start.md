@@ -102,14 +102,14 @@ For a deeper tour, continue with [ecs/quick.md](ecs/quick.md) and
 
 ## 4. Open a Window
 
-Windowing is built from a backend-agnostic `WindowPlugin` plus a backend plugin.
-Use GLFW unless you have a reason to use SFML.
+Windowing is built from a backend-agnostic `WindowPlugin` plus the SDL3 backend
+plugin.
 
 ```cpp
 import epix.ecs;
 import epix.app;
 import epix.window;
-import epix.glfw.core;
+import epix.sdl3.core;
 
 int main() {
 	using namespace epix;
@@ -124,7 +124,7 @@ int main() {
 		   },
 		   .exit_condition = window::ExitCondition::OnPrimaryClosed,
 	   })
-	   .add_plugins(glfw::GLFWPlugin{});
+	   .add_plugins(sdl3::SDL3Plugin{});
 
 	app.run();
 }
@@ -137,8 +137,8 @@ See [window/quick.md](window/quick.md) for the backend details and event list.
 A rendered 2D app typically combines these plugins:
 
 - `TaskPoolPlugin` for background engine work.
-- `WindowPlugin` and `GLFWPlugin` for the OS event loop.
-- `GLFWRenderPlugin` and `RenderPlugin` for WebGPU surfaces and the render sub-app.
+- `WindowPlugin` and `SDL3Plugin` for the OS event loop.
+- `SDL3RenderPlugin` and `RenderPlugin` for WebGPU surfaces and the render sub-app.
 - `TransformPlugin` for local/global transforms.
 - `CoreGraphPlugin` for the built-in 2D render graph.
 - `SpritePlugin`, `Mesh`, or `Text` modules depending on what you draw.

@@ -27,16 +27,14 @@ epix_add_module(time)
 epix_add_module(input)
 epix_add_module(image)
 epix_add_module(window/window)
-epix_add_module(window/glfw)
-epix_add_module(window/sfml)
+epix_add_module(window/sdl3)
 epix_add_module(transform)
 epix_add_module(shader)
 epix_add_module(mesh)
 epix_add_module(camera)
 epix_add_module(sprite)
 epix_add_module(render/render)
-epix_add_module(render/glfw_render)
-epix_add_module(render/sfml_render)
+epix_add_module(render/sdl3_render)
 epix_add_module(render/core_graph)
 epix_add_module(render/imgui)
 epix_add_module(sprite_render)
@@ -82,8 +80,6 @@ target_link_libraries(${EPIX_ENGINE_TARGET} PUBLIC
   webgpu
   glm::glm
   slang::slang
-  glfw
-  SFML::Window
   box2d
   earcut_hpp
 )
@@ -112,6 +108,11 @@ target_link_libraries(${EPIX_ENGINE_TARGET} PRIVATE
   Taskflow
   stbimage
   libzstd_static
+  # SDL3 keeps process-wide state (its window registry and its property sets),
+  # so a second copy linked into an executable would not see the windows the
+  # engine created. It therefore stays inside the engine, and no public header
+  # exposes SDL.
+  SDL3::SDL3-static
 )
 # freetype/harfbuzz are private implementation details, but consumers (the text
 # tests) instantiate FreeType objects directly through the public headers.

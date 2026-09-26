@@ -16,8 +16,8 @@ import epix.ecs;
 import epix.app;
 import epix.render;
 import epix.window;
-import epix.glfw.core;
-import epix.glfw.render;
+import epix.sdl3.core;
+import epix.sdl3.render;
 import epix.input;
 import webgpu;
 extern "C++" {

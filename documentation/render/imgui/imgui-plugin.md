@@ -1,4 +1,4 @@
-﻿# ImGuiPlugin, Ctx & ImGuiState
+# ImGuiPlugin, Ctx & ImGuiState
 
 ## ImGuiPlugin
 
@@ -41,7 +41,7 @@ nothing else to configure.
 ### What `detach()` does
 
 Called during `App::run()` after the app exits.  Shuts down WebGPU and
-GLFW backends and destroys the ImGui context when the app exits.
+SDL3 backends and destroys the ImGui context when the app exits.
 
 ### Options
 
@@ -63,7 +63,7 @@ app.add_plugins(imgui::ImGuiPlugin{
 app.add_plugins(imgui::ImGuiPlugin{}.set_docking().set_viewports());
 ```
 
-**Requirements:** `render::RenderPlugin` (and a GLFW window backend) must be
+**Requirements:** `render::RenderPlugin` (and the SDL3 window backend) must be
 added before `ImGuiPlugin`.
 
 Source: `epix_engine/render/examples/module/imgui_basic.cpp`
@@ -164,7 +164,7 @@ ImGui frame start:
 app.add_systems(PreUpdate,
     into(my_setup).before(imgui::BeginFrameSet));
 
-// Run my_read after ImGui has processed GLFW input:
+// Run my_read after ImGui has processed SDL input:
 app.add_systems(PreUpdate,
     into(my_read).after(imgui::BeginFrameSet));
 ```
@@ -178,7 +178,7 @@ shows the complete per-frame sequence:
 
 | Schedule | System | Action |
 |----------|--------|--------|
-| `PreUpdate` (BeginFrameSet) | `imgui_begin_frame` | Lazy-inits GLFW backend; calls `ImGui_ImplGlfw_NewFrame()` + `ImGui::NewFrame()` |
+| `PreUpdate` (BeginFrameSet) | `imgui_begin_frame` | Lazy-inits the SDL3 backend; forwards the frame's staged SDL events to it; calls `ImGui_ImplSDL3_NewFrame()` + `ImGui::NewFrame()` |
 | `Update` (user systems) | — | User systems call `ImGui::*` via `Ctx` |
 | Post-every-schedule | `imgui_consume_input` | Checks `WantCaptureKeyboard` / `WantCaptureMouse`; advances event heads and sets bypass flags on `ButtonInput` so engine input systems do not see events ImGui consumed |
 | `Last` | `imgui_end_frame` | Calls `ImGui::EndFrame()` + `ImGui::Render()`; snapshots draw data into `ImGuiState` |
@@ -202,8 +202,8 @@ manually.
 
 When `enable_viewports = true`, each ImGui platform viewport (a floating
 ImGui window dragged outside the main window) gets its own `wgpu::Surface`
-created from the GLFW window ImGui manages.  The render system creates,
+created from the SDL window ImGui manages.  The render system creates,
 reconfigures, and destroys these surfaces automatically as viewports appear
 and disappear.  The framebuffer size of each viewport is captured on the main
-thread (GLFW is not thread-safe) and passed to the render thread via
+thread (SDL is not thread-safe) and passed to the render thread via
 `ViewportDrawDataSnapshot`.

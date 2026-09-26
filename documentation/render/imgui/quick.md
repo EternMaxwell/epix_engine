@@ -1,7 +1,7 @@
-﻿# epix.render.imgui — Quick Reference
+# epix.render.imgui — Quick Reference
 
 Integrates [Dear ImGui](https://github.com/ocornut/imgui) into the Epix engine with
-zero boilerplate.  Adding `ImGuiPlugin` wires up the GLFW and WebGPU backends,
+zero boilerplate.  Adding `ImGuiPlugin` wires up the SDL3 and WebGPU backends,
 manages the frame lifecycle, handles input consumption, and renders ImGui output
 on top of the scene — all automatically.  User systems only need to call ImGui
 API functions; no manual context management required.
@@ -19,7 +19,7 @@ import epix.render.imgui;
 
 | Name | Kind | Description |
 |------|------|-------------|
-| [`ImGuiPlugin`](imgui-plugin.md#imguiplugin) | Plugin | Wires up GLFW + WebGPU backends and all frame lifecycle systems |
+| [`ImGuiPlugin`](imgui-plugin.md#imguiplugin) | Plugin | Wires up SDL3 + WebGPU backends and all frame lifecycle systems |
 | [`Ctx`](imgui-plugin.md#ctx) | System param | Activates the ImGui context on the calling thread; enables ImGui API calls |
 | [`ImGuiState`](imgui-plugin.md#imguistate) | Resource | Holds the ImGui context pointer and per-frame draw snapshot |
 | [`BeginFrameSet`](imgui-plugin.md#beginframeset) | Schedule set | Set label for the `imgui_begin_frame` system in `PreUpdate` |
@@ -41,7 +41,7 @@ app.add_plugins(imgui::ImGuiPlugin{
 });
 ```
 
-**Requirements:** `RenderPlugin` (and a window backend such as `GLFWRenderPlugin`)
+**Requirements:** `RenderPlugin` (and a window backend such as `SDL3RenderPlugin`)
 must be added before `ImGuiPlugin`.
 
 ### 2. Draw ImGui in any system
@@ -71,10 +71,10 @@ systems, preventing concurrent ImGui API calls.
 | Lifecycle stage | What happens |
 |-----------------|--------------|
 | Plugin `attach()` | Creates `ImGuiContext`, sets `NavEnableKeyboard`, stores `ImGuiState` in the world |
-| `PreUpdate` (`BeginFrameSet`) | Lazy-inits GLFW backend on first available primary window; calls `ImGui_ImplGlfw_NewFrame()` + `ImGui::NewFrame()` |
+| `PreUpdate` (`BeginFrameSet`) | Lazy-inits the SDL3 backend on first available primary window; feeds it the frame's staged SDL events; calls `ImGui_ImplSDL3_NewFrame()` + `ImGui::NewFrame()` |
 | After every schedule | `imgui_consume_input` checks `WantCaptureKeyboard` / `WantCaptureMouse`; blocks key/mouse events from reaching other systems when ImGui owns them |
 | `Last` | Calls `ImGui::EndFrame()` + `ImGui::Render()`; snapshots draw data for pipelined rendering |
 | Render sub-app (after `RenderSet::Render`) | `imgui_render` lazy-inits the WebGPU backend; reconstructs draw data and submits a render pass that composites ImGui on top of the scene |
-| Plugin `detach()` | Shuts down WebGPU + GLFW backends; destroys the ImGui context |
+| Plugin `detach()` | Shuts down WebGPU + SDL3 backends; destroys the ImGui context |
 
 Source: `epix_engine/render/examples/module/imgui_basic.cpp`

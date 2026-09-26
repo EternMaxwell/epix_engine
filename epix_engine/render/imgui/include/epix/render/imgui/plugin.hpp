@@ -4,8 +4,8 @@
 #include <epix/app.hpp>
 #include <epix/common.hpp>
 #include <epix/ecs.hpp>
-#include <epix/glfw/core.hpp>
 #include <epix/input.hpp>
+#include <epix/sdl3/core.hpp>
 #include <epix/window.hpp>
 #include <webgpu/webgpu.hpp>
 #endif
@@ -15,7 +15,7 @@
 namespace epix::imgui {
 /** @brief Plugin that integrates Dear ImGui with the engine.
  *
- *  Sets up the ImGui context, GLFW and WebGPU backends, frame lifecycle
+ *  Sets up the ImGui context, SDL3 and WebGPU backends, frame lifecycle
  *  systems, and a render system that draws ImGui output on top of the
  *  scene each frame.
  *
@@ -47,7 +47,8 @@ EPIX_EXPORT inline struct BeginFrameSetT {
 // Frame lifecycle systems (main world)
 EPIX_API void imgui_begin_frame(
     ecs::ResMut<ImGuiState> state,
-    ecs::Res<glfw::GLFWwindows> windows,
+    ecs::Res<sdl3::SDL3windows> windows,
+    ecs::Res<sdl3::SDL3Events> staged_events,
     ecs::Query<ecs::Item<ecs::Entity>, ecs::With<::epix::window::Window, ::epix::window::PrimaryWindow>> primary);
 EPIX_API void imgui_end_frame(ecs::ResMut<ImGuiState> state);
 

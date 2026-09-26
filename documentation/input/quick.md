@@ -50,5 +50,5 @@ void on_scroll(ecs::EventReader<input::MouseScroll> scroll) {
 app.add_systems(app::Update, ecs::into(move_player, on_scroll));
 ```
 
-> The window/GLFW plugin is responsible for producing the raw events consumed by `InputPlugin`.
-> Add `glfw::GLFWPlugin` (or equivalent) before or alongside `InputPlugin`.
+> The window/SDL3 plugin is responsible for producing the raw events consumed by `InputPlugin`.
+> Add `sdl3::SDL3Plugin` (or equivalent) before or alongside `InputPlugin`.

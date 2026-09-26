@@ -24,7 +24,7 @@ the state that must live in a translation unit under a DLL.
 
 The repository uses two dependency paths:
 
-- **Vendored submodules** under `libs/`, including GLFW, SFML, spdlog,
+- **Vendored submodules** under `libs/`, including SDL3, spdlog,
 	FreeType, HarfBuzz, ImGui, Box2D, GoogleTest, Tracy, stb, uuid, glm,
 	taskflow, stdexec, and related libraries.
 - **CMake-fetched/generated support** for WebGPU, Slang, asio, and the generated
@@ -130,8 +130,8 @@ may be required the first time you configure a clean build directory.
 When `EPIX_ENABLE_EXAMPLE=ON`, CMake creates example executables for every
 example source under `examples/<group>/{header,module}`. Some examples:
 
-- [../examples/window/glfw/header/](../examples/window/glfw/header/) for a simple
-	GLFW window app.
+- [../examples/window/sdl3/header/](../examples/window/sdl3/header/) for a simple
+	SDL3 window app.
 - [../examples/render/header/render_plugin.cpp](../examples/render/header/render_plugin.cpp)
 	for the render plugin path.
 - [../examples/sprite_render/sprite/header/basic.cpp](../examples/sprite_render/sprite/header/basic.cpp)

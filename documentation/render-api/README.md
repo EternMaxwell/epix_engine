@@ -68,7 +68,7 @@ They inform tradeoff analysis only; no candidate imports their architecture.
 
 The first source review added requirements that every candidate must make concrete:
 
-- **Frame epochs, not borrowed world state.** Under the GLFW/SFML runner, render
+- **Frame epochs, not borrowed world state.** Under the SDL3 runner, render
   frame N can run while main frame N+1 updates, but the runner joins render N before
   it runs extraction for N+1. A candidate must label every extracted/render frame
   with a RenderEpoch and mutate render-owned persistent state only during this

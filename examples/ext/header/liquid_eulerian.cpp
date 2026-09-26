@@ -12,8 +12,8 @@
 #include <epix/ecs.hpp>
 #include <epix/extension/grid.hpp>
 #include <epix/extension/grid_gpu.hpp>
-#include <epix/glfw/core.hpp>
-#include <epix/glfw/render.hpp>
+#include <epix/sdl3/core.hpp>
+#include <epix/sdl3/render.hpp>
 #include <epix/input.hpp>
 #include <epix/mesh.hpp>
 #include <epix/sprite.hpp>
@@ -2805,8 +2805,8 @@ int main() {
             .exit_condition = window::ExitCondition::OnPrimaryClosed,
         })
         .add_plugins(input::InputPlugin{})
-        .add_plugins(glfw::GLFWPlugin{})
-        .add_plugins(glfw::GLFWRenderPlugin{})
+        .add_plugins(sdl3::SDL3Plugin{})
+        .add_plugins(sdl3::SDL3RenderPlugin{})
         .add_plugins(transform::TransformPlugin{})
         .add_plugins(time::TimePlugin{})
         .add_plugins(render::FrameCountPlugin{})

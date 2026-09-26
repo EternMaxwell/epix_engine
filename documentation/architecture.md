@@ -148,9 +148,8 @@ See [task/quick.md](task/quick.md), [time/quick.md](time/quick.md), and
 
 ## Window and Input
 
-Windows are ECS entities with a `Window` component. A backend plugin such as
-GLFW or SFML owns the native event loop and keeps window components synchronized
-with OS state.
+Windows are ECS entities with a `Window` component. The SDL3 backend owns the
+native event loop and keeps window components synchronized with OS state.
 
 Input is event-driven and stateful:
 

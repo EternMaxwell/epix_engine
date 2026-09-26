@@ -27,8 +27,8 @@ import epix.assets;
 import epix.camera;
 import epix.core_graph;
 import epix.ecs;
-import epix.glfw.core;
-import epix.glfw.render;
+import epix.sdl3.core;
+import epix.sdl3.render;
 import epix.image;
 import epix.input;
 import epix.mesh;
@@ -264,8 +264,8 @@ int main() {
                                           .exit_condition = window::ExitCondition::OnPrimaryClosed})
         .add_plugins(input::InputPlugin{})
         .add_plugins(time::TimePlugin{})
-        .add_plugins(glfw::GLFWPlugin{})
-        .add_plugins(glfw::GLFWRenderPlugin{})
+        .add_plugins(sdl3::SDL3Plugin{})
+        .add_plugins(sdl3::SDL3RenderPlugin{})
         .add_plugins(transform::TransformPlugin{})
         .add_plugins(camera::CameraPlugin{})
         .add_plugins(render::FrameCountPlugin{})

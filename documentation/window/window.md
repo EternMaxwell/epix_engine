@@ -1,10 +1,10 @@
-﻿# Window
+# Window
 
 Component-based OS window — attach a `Window` to an entity to create and control a native window through the active windowing backend.
 
 ## Overview
 
-`Window` is the central configuration component. Spawning an entity with a `Window` causes the active backend (`GLFWPlugin` or `SFMLPlugin`) to create a native OS window. Mutating the component's fields on a subsequent frame causes the backend to apply the change (title, cursor, size limits, fullscreen mode, etc.). Read-only fields are written back by the backend each frame (focused, iconified, cursor position, etc.).
+`Window` is the central configuration component. Spawning an entity with a `Window` causes the active backend (`SDL3Plugin`) to create a native OS window. Mutating the component's fields on a subsequent frame causes the backend to apply the change (title, cursor, size limits, fullscreen mode, etc.). Read-only fields are written back by the backend each frame (focused, iconified, cursor position, etc.).
 
 The ECS entity representing the window is the authoritative identity. Events carry the entity ID so systems can route event handling per-window.
 

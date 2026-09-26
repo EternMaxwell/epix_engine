@@ -1,9 +1,6 @@
 ﻿[submodule "libs/entt"]
 	path = libs/entt
 	url = https://github.com/skypjack/entt.git
-[submodule "libs/glfw"]
-	path = libs/glfw
-	url = https://github.com/glfw/glfw.git
 [submodule "libs/spdlog"]
 	path = libs/spdlog
 	url = https://github.com/gabime/spdlog.git
@@ -43,9 +40,6 @@
 [submodule "libs/webgpu-wrapper"]
 	path = libs/webgpu-wrapper
 	url = https://github.com/EternMaxwell/webgpu-cpp-wrapper.git
-[submodule "libs/sfml"]
-	path = libs/sfml
-	url = https://github.com/SFML/SFML.git
 [submodule "libs/efsw"]
 	path = libs/efsw
 	url = https://github.com/SpartanJ/efsw.git
@@ -58,3 +52,6 @@
 [submodule "libs/stdexec"]
 	path = libs/stdexec
 	url = https://github.com/NVIDIA/stdexec.git
+[submodule "libs/sdl3"]
+	path = libs/sdl3
+	url = https://github.com/libsdl-org/SDL.git

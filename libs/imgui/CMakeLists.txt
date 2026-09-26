@@ -8,7 +8,7 @@ file(GLOB MODULE_SOURCES
     "src/imgui_draw.cpp"
     "src/imgui_widgets.cpp"
     "src/imgui_tables.cpp"
-    "src/backends/imgui_impl_glfw.cpp"
+    "src/backends/imgui_impl_sdl3.cpp"
     # "src/backends/imgui_impl_vulkan.cpp"
     "src/backends/imgui_impl_wgpu.cpp"
 )
@@ -48,7 +48,7 @@ add_library(imgui STATIC ${MODULE_SOURCES})
 target_include_directories(imgui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_include_directories(imgui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src/backends)
 
-target_link_libraries(imgui PRIVATE glfw)
+target_link_libraries(imgui PRIVATE SDL3::SDL3-static)
 # target_link_libraries(imgui PRIVATE Vulkan-Headers)
 target_link_libraries(imgui PRIVATE webgpu)
 

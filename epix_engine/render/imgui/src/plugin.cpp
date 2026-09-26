@@ -1,17 +1,19 @@
 
-#include <GLFW/glfw3.h>
+#include <SDL3/SDL.h>
 #include <imgui.h>
-#include <imgui_impl_glfw.h>
+#include <imgui_impl_sdl3.h>
 #include <imgui_impl_wgpu.h>
 #include <spdlog/spdlog.h>
 
+#include <cstddef>
+#include <cstring>
 #include <epix/app.hpp>
 #include <epix/ecs.hpp>
-#include <epix/glfw/core.hpp>
-#include <epix/glfw/render.hpp>
 #include <epix/input.hpp>
 #include <epix/render.hpp>
 #include <epix/render/imgui.hpp>
+#include <epix/sdl3/core.hpp>
+#include <epix/sdl3/render.hpp>
 #include <epix/window.hpp>
 #include <webgpu/webgpu.hpp>
 
@@ -198,17 +200,17 @@ ViewportSurfaceData* ensure_viewport_surface(const epix::imgui::ViewportDrawData
                                              const wgpu::Adapter& adapter,
                                              const wgpu::Device& device) {
     if (!snap.platform_handle) return nullptr;
-    GLFWwindow* glfw_window = static_cast<GLFWwindow*>(snap.platform_handle);
+    SDL_Window* sdl_window = static_cast<SDL_Window*>(snap.platform_handle);
 
-    // Use the framebuffer size captured on the main thread — calling
-    // glfwGetFramebufferSize from the render thread is unsafe.
+    // Use the framebuffer size captured on the main thread — calling into SDL
+    // from the render thread is unsafe.
     int width  = snap.fb_width;
     int height = snap.fb_height;
     if (width <= 0 || height <= 0) return nullptr;
 
     auto it = g_viewport_surfaces.find(snap.viewport_id);
     if (it == g_viewport_surfaces.end()) {
-        wgpu::Surface surface = epix::glfw::render::get_wgpu_surface(instance, glfw_window);
+        wgpu::Surface surface = epix::sdl3::render::get_wgpu_surface(instance, sdl_window);
         wgpu::SurfaceCapabilities capabilities;
         auto status = surface.getCapabilities(adapter, &capabilities);
         if (status != wgpu::Status::eSuccess) {
@@ -346,11 +348,11 @@ void imgui::ImGuiPlugin::attach(App& app) {
     // Main world frame systems
     //
     // imgui_begin_frame must run on the main thread because it calls
-    // ImGui_ImplGlfw_NewFrame() which on Windows reaches SetWindowLongW(),
+    // ImGui_ImplSDL3_NewFrame() which on Windows reaches SetWindowLongW(),
     // a Win32 API that deadlocks when called from a worker thread.
-    // We register it as an extra system on the GLFWRunner which executes
+    // We register it as an extra system on the SDL3Runner which executes
     // before the schedule pipeline on the caller (main) thread.
-    app.runner_scope([&](glfw::GLFWRunner& runner) {
+    app.runner_scope([&](sdl3::SDL3Runner& runner) {
            auto sys = make_system_unique(imgui_begin_frame);
            sys->set_name("imgui begin frame");
            runner.append_system(std::move(sys));
@@ -359,7 +361,7 @@ void imgui::ImGuiPlugin::attach(App& app) {
             if (error == App::RunnerError::RunnerNotSet) {
                 throw std::runtime_error("ImGuiPlugin requires an AppRunner to be set before building");
             } else {
-                throw std::runtime_error("ImGuiPlugin requires a GLFWRunner as the AppRunner");
+                throw std::runtime_error("ImGuiPlugin requires an SDL3Runner as the AppRunner");
             }
             return error;
         });
@@ -394,21 +396,22 @@ void imgui::ImGuiPlugin::detach(App&) {
             ImGui_ImplWGPU_Shutdown();
             g_wgpu_initialized = false;
         }
-        if (io.BackendPlatformUserData) ImGui_ImplGlfw_Shutdown();
+        if (io.BackendPlatformUserData) ImGui_ImplSDL3_Shutdown();
         ImGui::DestroyContext();
     }
     g_viewport_surfaces.clear();
 }
 
 void imgui::imgui_begin_frame(ResMut<ImGuiState> state,
-                              Res<glfw::GLFWwindows> windows,
+                              Res<sdl3::SDL3windows> windows,
+                              Res<sdl3::SDL3Events> staged_events,
                               Query<Item<Entity>, With<win::Window, win::PrimaryWindow>> primary) {
     if (!state->ctx) return;
     ImGui::SetCurrentContext(static_cast<ImGuiContext*>(state->ctx));
 
     // Lazy-initialize backends on first frame when the primary window is available
     if (!state->initialized) {
-        spdlog::trace("[imgui] Attempting lazy initialization of GLFW backend.");
+        spdlog::trace("[imgui] Attempting lazy initialization of SDL3 backend.");
         std::optional<Entity> primary_entity;
         for (auto&& [entity] : primary.iter()) {
             primary_entity = entity;
@@ -417,24 +420,25 @@ void imgui::imgui_begin_frame(ResMut<ImGuiState> state,
         if (!primary_entity) return;  // no primary window yet
 
         auto it = windows->find(*primary_entity);
-        if (it == windows->end()) return;  // GLFW window not created yet
-        GLFWwindow* glfw_window = it->second;
+        if (it == windows->end()) return;  // SDL window not created yet
+        SDL_Window* sdl_window = it->second;
 
-        // Init GLFW backend (chain callbacks so engine events still work)
-        ImGui_ImplGlfw_InitForOther(glfw_window, true);
+        // The SDL3 backend takes its input from the event stream, which the
+        // SDL3 backend stages opaquely for the frame that is running.
+        ImGui_ImplSDL3_InitForOther(sdl_window);
 
         ImGuiIO& io = ImGui::GetIO();
         if (state->enable_viewports && !(io.BackendFlags & ImGuiBackendFlags_PlatformHasViewports)) {
             io.ConfigFlags &= ~ImGuiConfigFlags_ViewportsEnable;
-            spdlog::warn("[imgui] Platform viewports requested, but the GLFW backend did not enable them.");
+            spdlog::warn("[imgui] Platform viewports requested, but the SDL3 backend did not enable them.");
         }
 
         state->initialized = true;
-        spdlog::debug("[imgui] Initialized GLFW backend.");
+        spdlog::debug("[imgui] Initialized SDL3 backend.");
     }
 
     // Process deferred platform window updates from the previous frame.
-    // ImGui::UpdatePlatformWindows() calls GLFW window operations (create,
+    // ImGui::UpdatePlatformWindows() calls SDL window operations (create,
     // destroy, move, resize) which on Windows must run on the main thread.
     // We defer this here so it runs on the main thread before NewFrame().
     if (state->platform_update_needed) {
@@ -450,8 +454,8 @@ void imgui::imgui_begin_frame(ResMut<ImGuiState> state,
             viewport_snap.platform_handle = viewport->PlatformHandle;
             viewport_snap.minimized       = (viewport->Flags & ImGuiViewportFlags_IsMinimized) != 0;
             if (viewport->PlatformHandle) {
-                GLFWwindow* win = static_cast<GLFWwindow*>(viewport->PlatformHandle);
-                glfwGetFramebufferSize(win, &viewport_snap.fb_width, &viewport_snap.fb_height);
+                SDL_Window* win = static_cast<SDL_Window*>(viewport->PlatformHandle);
+                SDL_GetWindowSizeInPixels(win, &viewport_snap.fb_width, &viewport_snap.fb_height);
             }
             clone_draw_data(viewport->DrawData, viewport_snap);
             if (viewport_snap.fb_width > 0 && viewport_snap.fb_height > 0 && viewport_snap.fb_scale_x > 0.0f &&
@@ -466,19 +470,24 @@ void imgui::imgui_begin_frame(ResMut<ImGuiState> state,
     }
 
     if (state->initialized) {
-        // Find the primary GLFW window to check if it's still valid
+        // The SDL3 backend reads input from the events SDL delivered this frame.
+        for (std::size_t offset = 0; offset + sizeof(SDL_Event) <= staged_events->events.size();
+             offset += sizeof(SDL_Event)) {
+            SDL_Event event;
+            std::memcpy(&event, staged_events->events.data() + offset, sizeof(SDL_Event));
+            ImGui_ImplSDL3_ProcessEvent(&event);
+        }
+
+        // Find the primary window to check if it is still there
         std::optional<Entity> primary_entity;
         for (auto&& [entity] : primary.iter()) {
             primary_entity = entity;
             break;
         }
-        if (primary_entity) {
-            auto it = windows->find(*primary_entity);
-            if (it != windows->end() && !glfwWindowShouldClose(it->second)) {
-                ImGui_ImplGlfw_NewFrame();
-                ImGui::NewFrame();
-                state->frame_active = true;
-            }
+        if (primary_entity && windows->find(*primary_entity) != windows->end()) {
+            ImGui_ImplSDL3_NewFrame();
+            ImGui::NewFrame();
+            state->frame_active = true;
         }
     }
 }
@@ -502,7 +511,7 @@ void imgui::imgui_end_frame(ResMut<ImGuiState> state) {
     ImGuiIO& io = ImGui::GetIO();
     if (state->enable_viewports && can_use_platform_viewports(io)) {
         // Defer UpdatePlatformWindows() to the main thread at the start of the
-        // next frame in imgui_begin_frame. It calls GLFW window operations
+        // next frame in imgui_begin_frame. It calls SDL window operations
         // (create/destroy/move) which on Windows must run on the main thread.
         state->platform_update_needed = true;
     }

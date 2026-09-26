@@ -1,16 +1,25 @@
-﻿# TODO — window
+# TODO — window
 
 Features that are planned, partially implemented, or have an API stub only.  
 See also: [project-wide todo](../todo.md)
 
 - [~] **`WindowLevel::AlwaysOnBottom`** — `AlwaysOnBottom` is declared in the
-  `WindowLevel` enum, but the GLFW backend only has native handling for the
-  always-on-top state and the SFML backend only caches the requested level.
-  `AlwaysOnBottom` therefore has no native effect on either backend.
+  `WindowLevel` enum, but SDL3 only models the always-on-top state
+  (`SDL_SetWindowAlwaysOnTop`). `AlwaysOnBottom` therefore has no native effect
+  and a window asking for it reads back as `Normal`.
 
-- [~] **Attention request differs between backends** — In GLFW,
-  `Window::attention_request` triggers `glfwRequestWindowAttention` (a taskbar
-  notification). In SFML the same flag calls `requestFocus()`, which requests
-  focus instead. The two backends therefore expose different semantics.
+- [~] **Window icon cannot be cleared** — `Window::icon` accepts an
+  `optional<Handle<Image>>`, and assigning an image installs it through
+  `SDL_SetWindowIcon`. SDL has no "restore the default icon" call, so assigning
+  `std::nullopt` clears the component field without changing the native icon.
 
-- [ ] **Custom cursor in SFML** — `CursorIcon` accepting a `CustomCursor` (image asset + hotspot) is part of the API but the SFML `update_window_states` system does not yet load the image and create an `sf::Cursor` from it. The standard cursor shapes are applied correctly; custom cursors are silently ignored by the SFML backend.
+- [~] **`CursorMode::Disabled` needs keyboard focus** — SDL applies relative
+  mouse mode to the keyboard-focused window only, so the mode engages when the
+  window has focus. The backend re-asserts it whenever the window gains focus,
+  which covers the normal case, but a request made while another window holds
+  focus does not take effect until focus arrives.
+
+- [ ] **`KeyWorld1` / `KeyWorld2` and `KeyF25` have no SDL key code** — SDL3
+  stops at `SDLK_F24` and has no key code for the two "world" keys, so those
+  three engine key codes cannot be produced or consumed by this backend.
+  `map_key_to_sdl3` maps them to `SDLK_UNKNOWN`.

@@ -4,7 +4,7 @@ ECS events broadcast by the windowing backend each frame when OS-level window ev
 
 ## Overview
 
-`WindowPlugin` registers all event types. The active backend (`GLFWPlugin` / `SFMLPlugin`) polls OS events and writes to these queues during the `PreUpdate` phase. Systems in `Update` or later can read them.
+`WindowPlugin` registers all event types. The active backend (`SDL3Plugin`) receives OS events from SDL and writes to these queues each frame. Systems in `Update` or later can read them.
 
 All events carry a `ecs::Entity window` field identifying which window entity produced the event.
 

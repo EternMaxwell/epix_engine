@@ -212,7 +212,7 @@ TEST(TonemappingPlugin, InstallsBundledBevyLuts) {
 
 // Bevy's UpscalingPlugin owns the per-view selected pipeline and installs a
 // typed view node in Core2D.  This verifies the public registration contract;
-// the GLFW mesh-rendering example verifies the resulting output path.
+// the SDL3 mesh-rendering example verifies the resulting output path.
 TEST(UpscalingPlugin, RegistersPerViewPipelineAndTypedCore2dNode) {
     static_assert(epix::render::graph::ViewNode<epix::core_graph::UpscalingNode>);
     static_assert(!std::copy_constructible<PipelineServer>);

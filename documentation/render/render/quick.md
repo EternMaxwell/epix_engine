@@ -1,4 +1,4 @@
-﻿# epix.render — Quick Reference
+# epix.render — Quick Reference
 
 The `epix.render` module is the WebGPU-backed rendering subsystem.  It sets up a
 dedicated *render sub-app*, extracts data from the main world each frame, drives
@@ -93,8 +93,8 @@ both foundation modules.
 ```cpp
 app.add_plugins(TaskPoolPlugin{})
    .add_plugins(window::WindowPlugin{})
-   .add_plugins(glfw::GLFWPlugin{})
-   .add_plugins(glfw::GLFWRenderPlugin{})
+   .add_plugins(sdl3::SDL3Plugin{})
+   .add_plugins(sdl3::SDL3RenderPlugin{})
    .add_plugins(transform::TransformPlugin{})
    .add_plugins(render::RenderPlugin{}.set_validation(2));
 ```

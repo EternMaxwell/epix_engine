@@ -38,7 +38,7 @@ EPIX_EXPORT struct ViewportDrawDataSnapshot : DrawDataSnapshot {
     unsigned int viewport_id = 0;
     void* platform_handle    = nullptr;
     bool minimized           = false;
-    int fb_width             = 0;  // captured on main thread (GLFW not thread-safe)
+    int fb_width             = 0;  // captured on main thread (SDL is not thread-safe)
     int fb_height            = 0;
 };
 

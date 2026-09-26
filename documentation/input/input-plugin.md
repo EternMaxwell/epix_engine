@@ -10,7 +10,7 @@ Registers all input infrastructure — events, resources, and frame-update syste
 2. Calls `app.world_mut().init_resource<ButtonInput<KeyCode>>()` and `init_resource<ButtonInput<MouseButton>>()`.
 3. Adds `ButtonInput<KeyCode>::collect_events` and `ButtonInput<MouseButton>::collect_events` to the `First` schedule so button state is ready before `Update` systems run.
 
-The plugin does **not** produce the raw events itself — a window backend (e.g. `glfw::GLFWPlugin`) must be added alongside it to push events into the queues.
+The plugin does **not** produce the raw events itself — the window backend (`sdl3::SDL3Plugin`) must be added alongside it to push events into the queues.
 
 ## Usage
 
@@ -26,7 +26,7 @@ int main() {
     app.add_plugins(app::TaskPoolPlugin{})
        .add_plugins(window::WindowPlugin{ /* ... */ })
        .add_plugins(input::InputPlugin{})   // registers events + ButtonInput resources
-       .add_plugins(glfw::GLFWPlugin{})     // produces the raw events
+       .add_plugins(sdl3::SDL3Plugin{})     // produces the raw events
        // ...
        .run();
 }
