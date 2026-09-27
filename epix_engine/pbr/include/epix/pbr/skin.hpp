@@ -9,6 +9,7 @@
 #include <epix/common.hpp>
 #include <epix/mesh/skinning.hpp>
 #include <epix/render/mesh/offset_allocator.hpp>
+#include <epix/render/render_phase.hpp>
 #include <epix/render/sync_world.hpp>
 #include <epix/transform.hpp>
 #include <glm/glm.hpp>
@@ -279,5 +280,23 @@ EPIX_EXPORT EPIX_API void extract_skins(
     app::Extract<ecs::Query<ChangedTransformItem, ChangedTransformFilter>> changed_transforms,
     app::Extract<JointTransformQuery> joints,
     app::Extract<ecs::RemovedComponents<mesh::SkinnedMesh>> removed_skinned_meshes);
+
+/** @brief Tag every skinned mesh as un-batchable where skins use uniform buffers
+ *  (Bevy `no_automatic_skin_batching`, `render/skin.rs:611-622`).
+ *
+ *  A skinned mesh's joints are bound at a dynamic offset per entity, so on a
+ *  platform without storage buffers for skins two such meshes cannot share a
+ *  batch at all - the whole point of the system is to stop the batcher trying.
+ *  Where storage buffers are available the question does not arise, which is why
+ *  the system returns early.
+ *
+ *  Bevy uses `try_insert`, which does nothing if the entity is gone; Epix's
+ *  `Commands::entity` does not validate, so `insert` is the same operation here. */
+EPIX_EXPORT EPIX_API void no_automatic_skin_batching(
+    ecs::Commands commands,
+    ecs::Query<ecs::Item<ecs::Entity>,
+               ecs::Filter<ecs::With<mesh::SkinnedMesh>, ecs::Without<render::phase::NoAutomaticBatching>>>
+        query,
+    ecs::Res<wgpu::Device> render_device);
 
 }  // namespace epix::pbr

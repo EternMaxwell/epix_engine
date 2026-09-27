@@ -295,4 +295,19 @@ void extract_skins(ecs::ResMut<SkinUniforms> skin_uniforms, app::Extract<ecs::Qu
     }
 }
 
+void no_automatic_skin_batching(
+    ecs::Commands commands,
+    ecs::Query<ecs::Item<ecs::Entity>,
+               ecs::Filter<ecs::With<mesh::SkinnedMesh>, ecs::Without<render::phase::NoAutomaticBatching>>>
+        query,
+    ecs::Res<wgpu::Device> render_device) {
+    wgpu::Limits limits{};
+    if (render_device->getLimits(&limits) != wgpu::Status::eSuccess) return;
+    if (!::epix::pbr::skins_use_uniform_buffers(limits)) return;
+
+    for (auto&& [entity] : query.iter()) {
+        commands.entity(entity).insert(render::phase::NoAutomaticBatching{});
+    }
+}
+
 }  // namespace epix::pbr

@@ -191,3 +191,45 @@ TEST(SkinPrepare, ExtractSkinsFillsTheStagingBuffer) {
     const glm::mat4 expected{1.0f};
     EXPECT_EQ(uniforms.current_staging_buffer[*index], expected) << "identity transform times identity inverse bind pose";
 }
+
+/** @brief Skinned meshes are tagged un-batchable exactly where skins use uniform
+ *  buffers (Bevy `no_automatic_skin_batching`, `render/skin.rs:611-622`).
+ *
+ *  The expectation is derived from the same predicate the system uses rather than
+ *  hard-coded, because which branch runs is a property of the platform: with
+ *  storage buffers available the question does not arise and nothing is tagged.
+ *  `skins_use_uniform_buffers` memoises once per process, as Bevy's `OnceLock`
+ *  does, so the answer is whatever the first device in this binary reported. */
+TEST(SkinPrepare, NoAutomaticSkinBatchingFollowsThePlatform) {
+    App app = App::create();
+    app.add_events<epix::window::WindowClosed>();
+    add_render_prerequisites(app);
+    try {
+        app.add_plugins(render::RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+
+    auto render_app = app.get_sub_app_mut(render::Render);
+    ASSERT_TRUE(render_app.has_value());
+
+    const auto& device = render_app->get().world().resource<wgpu::Device>();
+    wgpu::Limits limits{};
+    ASSERT_EQ(device.getLimits(&limits), wgpu::Status::eSuccess);
+    const bool uniform_buffers = pbr::skins_use_uniform_buffers(limits);
+
+    // One skinned mesh and one mesh that is not skinned: only the first is a
+    // candidate, and only where the platform needs it.
+    const epix::ecs::Entity skinned = render_app->get().world_mut().spawn(epix::mesh::SkinnedMesh{}).id();
+    const epix::ecs::Entity plain   = render_app->get().world_mut().spawn(epix::transform::GlobalTransform{}).id();
+
+    render_app->get().add_systems(render::Render,
+                                  epix::ecs::into(epix::pbr::no_automatic_skin_batching).set_name("no automatic skin batching"));
+    render_app->get().run_schedule(render::Render);
+
+    const auto tagged = [&](epix::ecs::Entity entity) {
+        return render_app->get().world().entity(entity).get<render::phase::NoAutomaticBatching>().has_value();
+    };
+    EXPECT_EQ(tagged(skinned), uniform_buffers) << "tagged exactly where skins bind at dynamic offsets";
+    EXPECT_FALSE(tagged(plain)) << "a mesh that is not skinned is never tagged";
+}
