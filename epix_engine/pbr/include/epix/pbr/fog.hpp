@@ -27,15 +27,11 @@ EPIX_EXPORT inline constexpr float REVISED_KOSCHMIEDER_CONTRAST_THRESHOLD = 0.05
  *
  *  A larger visibility gives a smaller exponent, which is the point: the fog is meant
  *  to be that much less dense when you can see further. */
-EPIX_EXPORT inline float koschmieder(float visibility, float contrast_threshold) {
-    return -std::log(contrast_threshold) / visibility;
-}
+EPIX_EXPORT EPIX_API float koschmieder(float visibility, float contrast_threshold);
 
 /** @brief The density of an `Exponential` falloff for a desired visibility distance
  *  (Bevy `FogFalloff::from_visibility_contrast`, `fog.rs:318`). */
-EPIX_EXPORT inline float fog_exponential_density(float visibility, float contrast_threshold) {
-    return koschmieder(visibility, contrast_threshold);
-}
+EPIX_EXPORT EPIX_API float fog_exponential_density(float visibility, float contrast_threshold);
 
 /** @brief The density of an `ExponentialSquared` falloff for a desired visibility
  *  distance (Bevy `FogFalloff::from_visibility_contrast_squared`, `fog.rs:335`).
@@ -44,9 +40,7 @@ EPIX_EXPORT inline float fog_exponential_density(float visibility, float contras
  *  `koschmieder`: the square root is of `-ln(c) / visibility^2`, not of the plain
  *  Koschmieder exponent. Dropping that second division produces a density that is
  *  wrong by a factor of the visibility, which still looks like fog. */
-EPIX_EXPORT inline float fog_exponential_squared_density(float visibility, float contrast_threshold) {
-    return std::sqrt(koschmieder(visibility, contrast_threshold) / visibility);
-}
+EPIX_EXPORT EPIX_API float fog_exponential_squared_density(float visibility, float contrast_threshold);
 
 /** @brief The extinction coefficients of an `Atmospheric` falloff (Bevy
  *  `FogFalloff::from_visibility_contrast_colors`, `fog.rs:413-422`).
@@ -61,25 +55,17 @@ EPIX_EXPORT inline float fog_exponential_squared_density(float visibility, float
  *
  *  Channels are linear RGBA, as Bevy takes them from `LinearRgba`; the conversion from
  *  whatever colour type the caller holds is the caller's. */
-EPIX_EXPORT inline glm::vec3 fog_atmospheric_extinction(glm::vec3 extinction_rgb,
+EPIX_EXPORT EPIX_API glm::vec3 fog_atmospheric_extinction(glm::vec3 extinction_rgb,
                                                         float extinction_alpha,
                                                         float visibility,
-                                                        float contrast_threshold) {
-    const float e = static_cast<float>(std::numbers::e);
-    return glm::vec3(std::pow(1.0f - extinction_rgb.x, e), std::pow(1.0f - extinction_rgb.y, e),
-                     std::pow(1.0f - extinction_rgb.z, e)) *
-           koschmieder(visibility, contrast_threshold) * std::pow(extinction_alpha, e);
-}
+                                                        float contrast_threshold);
 
 /** @brief The in-scattering coefficients of an `Atmospheric` falloff (Bevy
  *  `FogFalloff::from_visibility_contrast_colors`, `fog.rs:424-425`).
  *
  *  Not inverted, unlike the extinction: the in-scattered light is the colour you see,
  *  so a blue in-scattering colour adds blue. */
-EPIX_EXPORT inline glm::vec3 fog_atmospheric_inscattering(glm::vec3 inscattering_rgb) {
-    const float e = static_cast<float>(std::numbers::e);
-    return glm::vec3(std::pow(inscattering_rgb.x, e), std::pow(inscattering_rgb.y, e), std::pow(inscattering_rgb.z, e));
-}
+EPIX_EXPORT EPIX_API glm::vec3 fog_atmospheric_inscattering(glm::vec3 inscattering_rgb);
 
 /** @brief The linear fog falloff (Bevy `FogFalloff::Linear`). */
 EPIX_EXPORT struct FogFalloffLinear {
@@ -230,33 +216,7 @@ namespace epix::pbr {
  *
  *  A camera with no fog gets mode off and everything zero, which is how "no fog" is
  *  expressed on the GPU rather than by leaving the binding absent. */
-EPIX_EXPORT inline GpuFog gpu_fog_from(const DistanceFog& fog) {
-    GpuFog gpu;
-    gpu.base_color                 = fog.color;
-    gpu.directional_light_color    = fog.directional_light_color;
-    gpu.directional_light_exponent = fog.directional_light_exponent;
-
-    std::visit(
-        [&](const auto& falloff) {
-            using T = std::decay_t<decltype(falloff)>;
-            if constexpr (std::is_same_v<T, FogFalloffLinear>) {
-                gpu.mode = GPU_FOG_MODE_LINEAR;
-                gpu.be   = glm::vec3(falloff.start, falloff.end, 0.0f);
-            } else if constexpr (std::is_same_v<T, FogFalloffExponential>) {
-                gpu.mode = GPU_FOG_MODE_EXPONENTIAL;
-                gpu.be   = glm::vec3(falloff.density, 0.0f, 0.0f);
-            } else if constexpr (std::is_same_v<T, FogFalloffExponentialSquared>) {
-                gpu.mode = GPU_FOG_MODE_EXPONENTIAL_SQUARED;
-                gpu.be   = glm::vec3(falloff.density, 0.0f, 0.0f);
-            } else {
-                gpu.mode = GPU_FOG_MODE_ATMOSPHERIC;
-                gpu.be   = falloff.extinction;
-                gpu.bi   = falloff.inscattering;
-            }
-        },
-        fog.falloff.value);
-    return gpu;
-}
+EPIX_EXPORT EPIX_API GpuFog gpu_fog_from(const DistanceFog& fog);
 
 /** @brief A view's offset into the fog uniform buffer (Bevy `ViewFogUniformOffset`,
  *  `render/fog.rs:125-127`), read later by the mesh view bind group. */
