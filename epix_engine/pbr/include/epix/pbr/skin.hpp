@@ -129,4 +129,18 @@ EPIX_EXPORT struct EPIX_API SkinUniforms {
     std::vector<render::sync_world::MainEntity> all_skins() const;
 };
 
+/** @brief Upload this frame's joint matrices to the GPU (Bevy `prepare_skins`,
+ *  `render/skin.rs:199-268`).
+ *
+ *  Three things happen in order, and each matters: the current and previous
+ *  buffers are swapped, so what the motion-vector prepass reads as "previous"
+ *  really is last frame's; the buffers grow by a factor of 1.5 (rounded to a
+ *  multiple of four) when the staging data no longer fits, with `MAX_JOINTS` of
+ *  extra room because a full uniform buffer's worth must stay bindable where
+ *  skins use uniform buffers; and when they grow, the fresh previous buffer is
+ *  filled from the *current* staging data, which is Bevy's documented one-frame
+ *  approximation - a new previous buffer has no history to hold. */
+EPIX_EXPORT EPIX_API void prepare_skins(ecs::Res<wgpu::Device> render_device, ecs::Res<wgpu::Queue> render_queue,
+                                        ecs::ResMut<SkinUniforms> uniform);
+
 }  // namespace epix::pbr

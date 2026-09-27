@@ -58,4 +58,49 @@ std::vector<render::sync_world::MainEntity> SkinUniforms::all_skins() const {
     return skins;
 }
 
+void prepare_skins(ecs::Res<wgpu::Device> render_device, ecs::Res<wgpu::Queue> render_queue,
+                   ecs::ResMut<SkinUniforms> uniform) {
+    SkinUniforms& uniforms = *uniform;
+    if (uniforms.current_staging_buffer.empty()) return;
+
+    // Swap current and previous buffers: what was current last frame is this
+    // frame's previous, which is what the motion-vector prepass reads.
+    std::swap(uniforms.current_buffer, uniforms.prev_buffer);
+
+    // Resize if necessary, including extra space equal to `MAX_JOINTS` because a
+    // full uniform buffer's worth has to be bindable when skins use uniform
+    // buffers on this platform.
+    const std::uint64_t needed_size =
+        static_cast<std::uint64_t>(uniforms.current_staging_buffer.size() + MAX_JOINTS) * sizeof(glm::mat4);
+    if (uniforms.current_buffer.getSize() < needed_size) {
+        std::uint64_t new_size = uniforms.current_buffer.getSize();
+        while (new_size < needed_size) {
+            // 1.5x growth factor, rounded to a multiple of four.
+            new_size = ((new_size + new_size / 2) + 3) & ~std::uint64_t{3};
+        }
+
+        wgpu::Limits limits{};
+        const bool uniform_buffers =
+            render_device->getLimits(&limits) == wgpu::Status::eSuccess && ::epix::pbr::skins_use_uniform_buffers(limits);
+        const wgpu::BufferUsage usage =
+            (uniform_buffers ? wgpu::BufferUsage::eUniform : wgpu::BufferUsage::eStorage) | wgpu::BufferUsage::eCopyDst;
+        uniforms.current_buffer = render_device->createBuffer(
+            wgpu::BufferDescriptor().setLabel("skin uniform buffer").setSize(new_size).setUsage(usage));
+        uniforms.prev_buffer = render_device->createBuffer(
+            wgpu::BufferDescriptor().setLabel("skin uniform buffer").setSize(new_size).setUsage(usage));
+
+        // The new previous buffer has no previous joint data of its own, so it is
+        // filled with the current frame's - Bevy's documented one-frame
+        // approximation for motion vectors.
+        render_queue->writeBuffer(uniforms.prev_buffer, 0, uniforms.current_staging_buffer.data(),
+                                  uniforms.current_staging_buffer.size() * sizeof(glm::mat4));
+    }
+
+    render_queue->writeBuffer(uniforms.current_buffer, 0, uniforms.current_staging_buffer.data(),
+                              uniforms.current_staging_buffer.size() * sizeof(glm::mat4));
+
+    // The previous buffer is deliberately not written: it already holds last
+    // frame's joints and that data is still on the GPU.
+}
+
 }  // namespace epix::pbr
