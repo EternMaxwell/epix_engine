@@ -1041,3 +1041,27 @@ TEST(ImageParity, PayloadLengthIsCheckedInDebugBuildsOnly) {
     EXPECT_EQ(image.texture_descriptor.size.height, 2u);
 #endif
 }
+
+/** @brief Every address mode reaches the sampler as written (Bevy
+ *  `impl From<ImageAddressMode> for AddressMode`, `bevy_image/src/image.rs:876-886`).
+ *
+ *  `ClampToBorder` is the one that matters: it is a wgpu-native *native extension*
+ *  rather than part of the base enum, and the port used to answer `ClampToEdge` for
+ *  it - silently changing how a sampler clamps instead of failing, which is the kind
+ *  of divergence that shows up only as a wrong pixel. `as_wgpu` is a value
+ *  function, so this needs no device. */
+TEST(ImageParity, ClampToBorderReachesTheSampler) {
+    epix::image::ImageSamplerDescriptor descriptor{};
+    descriptor.address_mode_u = epix::image::ImageAddressMode::ClampToBorder;
+    descriptor.address_mode_v = epix::image::ImageAddressMode::MirrorRepeat;
+    descriptor.address_mode_w = epix::image::ImageAddressMode::Repeat;
+
+    const wgpu::SamplerDescriptor converted = descriptor.as_wgpu();
+    EXPECT_EQ(converted.addressModeU, wgpu::AddressMode::eClampToBorder)
+        << "the native extension is expressible, so nothing is downgraded";
+    EXPECT_EQ(converted.addressModeV, wgpu::AddressMode::eMirrorRepeat);
+    EXPECT_EQ(converted.addressModeW, wgpu::AddressMode::eRepeat);
+
+    descriptor.address_mode_u = epix::image::ImageAddressMode::ClampToEdge;
+    EXPECT_EQ(descriptor.as_wgpu().addressModeU, wgpu::AddressMode::eClampToEdge);
+}

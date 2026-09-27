@@ -177,10 +177,15 @@ wgpu::AddressMode address_mode_cast(ImageAddressMode mode) noexcept {
         case ImageAddressMode::MirrorRepeat:
             return wgpu::AddressMode::eMirrorRepeat;
         case ImageAddressMode::ClampToBorder:
+            // wgpu-native keeps `ClampToBorder` as a native extension rather than in the
+            // base `AddressMode` enum, and the port's generated bindings carry it
+            // (`AddressMode::eClampToBorder`), so the mode reaches the sampler as written
+            // instead of being silently downgraded to edge clamping. Bevy maps it the
+            // same way, and the device requests every feature the adapter supports, so
+            // where `AddressModeClampToBorder` is available the sampler is valid. The
+            // border *colour* is still dropped: the bindings have no field for it.
+            return wgpu::AddressMode::eClampToBorder;
         default:
-            // wgpu-native's C API has no `AddressMode::ClampToBorder` (Bevy's wgpu
-            // does), so the address mode falls back to edge clamping. Recorded as
-            // an intentional wgpu-native FFI gap in the tracker.
             return wgpu::AddressMode::eClampToEdge;
     }
 }
