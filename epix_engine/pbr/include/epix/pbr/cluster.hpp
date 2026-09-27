@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <epix/app.hpp>
@@ -14,6 +15,7 @@
 #include <epix/render.hpp>
 #include <glm/glm.hpp>
 #include <optional>
+#include <type_traits>
 #include <unordered_map>
 #include <variant>
 #include <vector>
@@ -588,9 +590,10 @@ EPIX_EXPORT struct ExtractedViewClusters {
  *  The system half - the `Extract` query with `RenderEntity`, the removal from
  *  inactive cameras, and the component insertion - lands with the plugin that
  *  schedules it; this is the part with the behaviour. */
-template <typename Mapper>
-    requires std::invocable<Mapper&, ecs::Entity, ecs::Entity&>
-EPIX_EXPORT ExtractedViewClusters extract_view_clusters(const Clusters& clusters, Mapper&& mapper) {
+EPIX_EXPORT template <typename Mapper>
+    requires std::invocable<Mapper&, ecs::Entity, ecs::Entity&> &&
+                 std::convertible_to<std::invoke_result_t<Mapper&, ecs::Entity, ecs::Entity&>, bool>
+ExtractedViewClusters extract_view_clusters(const Clusters& clusters, Mapper&& mapper) {
     std::size_t entity_count = 0;
     for (const auto& cluster : clusters.clusterable_objects) entity_count += cluster.entities.size();
 

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <epix/assets.hpp>
@@ -18,6 +19,7 @@
 #include <limits>
 #include <optional>
 #include <tuple>
+#include <type_traits>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -672,9 +674,10 @@ EPIX_EXPORT inline float orthographic_first_slice_depth(const glm::mat4& clip_fr
  *  arithmetic verifiable on its own; Bevy performs the same test inline and skips
  *  objects outside the view. The result is compared against the view's cluster
  *  index limit by the caller. */
-template <typename InView>
-    requires std::invocable<InView&, const camera::Sphere&>
-EPIX_EXPORT float estimate_cluster_index_count(const std::vector<ClusterableObjectAssignmentData>& clusterable_objects,
+EPIX_EXPORT template <typename InView>
+    requires std::invocable<InView&, const camera::Sphere&> &&
+                 std::convertible_to<std::invoke_result_t<InView&, const camera::Sphere&>, bool>
+float estimate_cluster_index_count(const std::vector<ClusterableObjectAssignmentData>& clusterable_objects,
                                                const glm::mat4& view_from_world,
                                                glm::vec3 view_from_world_scale,
                                                const glm::mat4& clip_from_view,
@@ -1098,9 +1101,10 @@ EPIX_EXPORT struct UniformClusterableObjectLimit {
  *  live in a fixed buffer of `MAX_UNIFORM_BUFFER_CLUSTERABLE_OBJECTS`, and
  *  anything past it is dropped. The frustum test is a predicate, as in the index
  *  estimate, so the capping behaviour can be verified on its own. */
-template <typename InView>
-    requires std::invocable<InView&, const camera::Sphere&>
-EPIX_EXPORT UniformClusterableObjectLimit limit_clusterable_objects_for_uniform_buffer(
+EPIX_EXPORT template <typename InView>
+    requires std::invocable<InView&, camera::Sphere> &&
+                 std::convertible_to<std::invoke_result_t<InView&, camera::Sphere>, bool>
+UniformClusterableObjectLimit limit_clusterable_objects_for_uniform_buffer(
     std::vector<ClusterableObjectAssignmentData> objects, InView&& in_view, std::size_t max_objects) {
     // Sorted first, so the objects that survive the cap are the ones a clustered
     // lookup should prefer: Bevy uses `(object_type.ordering(), entity)`, the same
@@ -1259,9 +1263,10 @@ EPIX_EXPORT inline ClusterableObjectAssignmentData spot_light_assignment_data(
  *  can count how many times it runs. Getting the cache wrong is quiet - a slot
  *  shared between indices would reuse a neighbouring cluster's bounds, which would
  *  cull a light that should light that cluster. */
-template <typename Compute>
-    requires std::invocable<Compute&>
-EPIX_EXPORT inline const camera::Sphere& cached_cluster_sphere(std::vector<std::optional<camera::Sphere>>& cache,
+EPIX_EXPORT template <typename Compute>
+    requires std::invocable<Compute&> &&
+                 std::convertible_to<std::invoke_result_t<Compute&>, camera::Sphere>
+inline const camera::Sphere& cached_cluster_sphere(std::vector<std::optional<camera::Sphere>>& cache,
                                                                std::size_t cluster_index,
                                                                Compute&& compute) {
     std::optional<camera::Sphere>& slot = cache[cluster_index];
