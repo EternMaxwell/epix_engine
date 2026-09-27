@@ -16,6 +16,7 @@
 
 using namespace epix::app;
 using namespace epix::assets;
+using namespace epix::render;
 
 namespace pbr    = epix::pbr;
 namespace render = epix::render;
@@ -123,4 +124,70 @@ TEST(SkinPrepare, RemoveSkinFreesAndForgets) {
     // A skin that was never registered is a no-op rather than an error.
     pbr::remove_skin(uniforms, skin);
     EXPECT_EQ(uniforms.total_joints, 0u);
+}
+
+/** @brief Extraction fills the joint staging buffer for a visible skinned mesh
+ *  (Bevy `extract_skins`, `render/skin.rs:296-345`).
+ *
+ *  This is the driving test for the whole write side: the mesh and its joints live
+ *  in the main world, `extract_skins` runs on the extraction schedule, and what is
+ *  checked is the render world's `SkinUniforms` - the skin is registered and the
+ *  staging buffer holds the joint matrix at its allocation's offset. Identities
+ *  everywhere make the expected matrix the identity, so the arithmetic that
+ *  matters (transform times inverse bind pose) is what is exercised rather than
+ *  the numbers. */
+TEST(SkinPrepare, ExtractSkinsFillsTheStagingBuffer) {
+    App app = App::create();
+    app.add_events<epix::window::WindowClosed>();
+    add_render_prerequisites(app);
+    try {
+        app.add_plugins(render::RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+
+    // The joints and the mesh that skins them, all in the main world.
+    const epix::ecs::Entity joint_a = app.world_mut().spawn(epix::transform::GlobalTransform{}).id();
+    const epix::ecs::Entity joint_b = app.world_mut().spawn(epix::transform::GlobalTransform{}).id();
+
+    // The asset store for this type does not exist until it is asked for, so the
+    // test creates it: nothing else in the app registers a store for skins.
+    app.world_mut().insert_resource(Assets<epix::mesh::SkinnedMeshInverseBindposes>{});
+    auto& inverse_bindposes = app.world_mut().resource_mut<Assets<epix::mesh::SkinnedMeshInverseBindposes>>();
+    const auto handle       = inverse_bindposes.add(
+        epix::mesh::SkinnedMeshInverseBindposes(std::vector<glm::mat4>{glm::mat4{1.0f}, glm::mat4{1.0f}}));
+
+    epix::camera::ViewVisibility visible;
+    visible.set_visible();
+    const epix::ecs::Entity skinned_mesh_entity =
+        app.world_mut()
+            .spawn(epix::mesh::SkinnedMesh{.inverse_bindposes = handle, .joints = {joint_a, joint_b}}, visible)
+            .id();
+
+    // The render world's side of the pipeline.
+    auto render_app = app.get_sub_app_mut(render::Render);
+    ASSERT_TRUE(render_app.has_value());
+    render_app->get().add_systems(ExtractSchedule, epix::ecs::into(epix::pbr::extract_skins).set_name("extract skins"));
+
+    const auto& device = render_app->get().world().resource<wgpu::Device>();
+    wgpu::Limits limits{};
+    ASSERT_EQ(device.getLimits(&limits), wgpu::Status::eSuccess);
+    render_app->get().world_mut().insert_resource(pbr::SkinUniforms::make(device, limits));
+
+    auto render_sub = app.take_sub_app(render::Render);
+    ASSERT_TRUE(render_sub);
+    render_sub->extract(app);
+    render_sub->resource_scope([](epix::ecs::Schedules& schedules, epix::ecs::World& world) {
+        schedules.schedule_mut(ExtractSchedule).apply_deferred(world);
+    });
+
+    const auto& uniforms = render_sub->world().resource<pbr::SkinUniforms>();
+    const auto skin      = render::sync_world::MainEntity{skinned_mesh_entity};
+    const auto index     = uniforms.skin_index(skin);
+    ASSERT_TRUE(index.has_value()) << "the visible skinned mesh is allocated";
+    EXPECT_EQ(uniforms.total_joints, 2u) << "both joints are counted";
+
+    ASSERT_GE(uniforms.current_staging_buffer.size(), static_cast<std::size_t>(*index) + 2u);
+    const glm::mat4 expected{1.0f};
+    EXPECT_EQ(uniforms.current_staging_buffer[*index], expected) << "identity transform times identity inverse bind pose";
 }
