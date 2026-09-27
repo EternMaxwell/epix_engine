@@ -106,6 +106,104 @@ public epix::mesh_types::Mesh mesh_instance(uint instance_index) {
 }
 )slang";
 
+/** @brief Slang representation of pinned Bevy 0.18 `lightmap.wgsl`.
+ *
+ *  `unpack2x16unorm` is not a Slang intrinsic, so the reference's call is spelled
+ *  out: the low 16 bits are x and the high 16 are y, divided by 65535 - the exact
+ *  inverse of the CPU-side packing in `pack_lightmap_uv_rect`. */
+constexpr const char* kLightmapShader = R"slang(
+module epix.lightmap;
+
+import epix.mesh_bindings;
+
+// Bevy declares `binding_array<texture_2d<f32>, 4>` here; Slang spells a binding
+// array as an unsized array of resources, sized by the layout's entry count.
+#ifdef MULTIPLE_LIGHTMAPS_IN_ARRAY
+public [[vk::binding(4, 2)]] Texture2D<float4> lightmaps_textures[];
+public [[vk::binding(5, 2)]] SamplerState lightmaps_samplers[];
+#else
+public [[vk::binding(4, 2)]] Texture2D<float4> lightmaps_texture;
+public [[vk::binding(5, 2)]] SamplerState lightmaps_sampler;
+#endif
+
+/** WGSL `unpack2x16unorm`: low half to x, high half to y. */
+float2 epix_unpack2x16unorm(uint packed) {
+    return float2(float(packed & 0xffffu), float(packed >> 16u)) / 65535.0;
+}
+
+// Samples the lightmap, if any, and returns indirect illumination from it.
+public float3 lightmap(float2 uv, float exposure, uint instance_index) {
+    const uint2 packed_uv_rect = epix::mesh_bindings::mesh_instance(instance_index).lightmap_uv_rect;
+    const float4 uv_rect = float4(epix_unpack2x16unorm(packed_uv_rect.x),
+                                  epix_unpack2x16unorm(packed_uv_rect.y));
+    const float2 lightmap_uv = lerp(uv_rect.xy, uv_rect.zw, uv);
+    const uint lightmap_slot =
+        epix::mesh_bindings::mesh_instance(instance_index).material_and_lightmap_bind_group_slot >> 16u;
+
+    // Bicubic 4-tap, as in Bevy and the two references it cites.
+#ifdef LIGHTMAP_BICUBIC_SAMPLING
+    const float2 texture_size = float2(epix::lightmap::lightmap_size(lightmap_slot));
+    const float2 texel_size = 1.0 / texture_size;
+    const float2 puv = lightmap_uv * texture_size + 0.5;
+    const float2 iuv = floor(puv);
+    const float2 fuv = frac(puv);
+    const float g0x = epix::lightmap::g0(fuv.x);
+    const float g1x = epix::lightmap::g1(fuv.x);
+    const float h0x = epix::lightmap::h0_approx(fuv.x);
+    const float h1x = epix::lightmap::h1_approx(fuv.x);
+    const float h0y = epix::lightmap::h0_approx(fuv.y);
+    const float h1y = epix::lightmap::h1_approx(fuv.y);
+    const float2 p0 = (float2(iuv.x + h0x, iuv.y + h0y) - 0.5) * texel_size;
+    const float2 p1 = (float2(iuv.x + h1x, iuv.y + h0y) - 0.5) * texel_size;
+    const float2 p2 = (float2(iuv.x + h0x, iuv.y + h1y) - 0.5) * texel_size;
+    const float2 p3 = (float2(iuv.x + h1x, iuv.y + h1y) - 0.5) * texel_size;
+    const float3 color = epix::lightmap::g0(fuv.y) *
+                             (g0x * epix::lightmap::sample(p0, lightmap_slot) +
+                              g1x * epix::lightmap::sample(p1, lightmap_slot)) +
+                         epix::lightmap::g1(fuv.y) *
+                             (g0x * epix::lightmap::sample(p2, lightmap_slot) +
+                              g1x * epix::lightmap::sample(p3, lightmap_slot));
+#else
+    const float3 color = epix::lightmap::sample(lightmap_uv, lightmap_slot);
+#endif
+
+    return color * exposure;
+}
+
+public uint2 lightmap_size(uint lightmap_slot) {
+#ifdef MULTIPLE_LIGHTMAPS_IN_ARRAY
+    uint width = 0;
+    uint height = 0;
+    lightmaps_textures[lightmap_slot].GetDimensions(width, height);
+    return uint2(width, height);
+#else
+    uint width = 0;
+    uint height = 0;
+    lightmaps_texture.GetDimensions(width, height);
+    return uint2(width, height);
+#endif
+}
+
+public float3 sample(float2 uv, uint lightmap_slot) {
+    // Mipmapping lightmaps is usually a bad idea due to leaking across UV islands,
+    // so there is no harm in using mip level 0, and it lets us avoid control-flow
+    // uniformity problems - Bevy's reasoning, kept verbatim.
+#ifdef MULTIPLE_LIGHTMAPS_IN_ARRAY
+    return lightmaps_textures[lightmap_slot].SampleLevel(lightmaps_samplers[lightmap_slot], uv, 0.0).rgb;
+#else
+    return lightmaps_texture.SampleLevel(lightmaps_sampler, uv, 0.0).rgb;
+#endif
+}
+
+public float w0(float a) { return (1.0 / 6.0) * (a * (a * (-a + 3.0) - 3.0) + 1.0); }
+public float w1(float a) { return (1.0 / 6.0) * (a * a * (3.0 * a - 6.0) + 4.0); }
+public float w2(float a) { return (1.0 / 6.0) * (a * (a * (-3.0 * a + 3.0) + 3.0) + 1.0); }
+public float w3(float a) { return (1.0 / 6.0) * (a * a * a); }
+public float g0(float a) { return epix::lightmap::w0(a) + epix::lightmap::w1(a); }
+public float g1(float a) { return epix::lightmap::w2(a) + epix::lightmap::w3(a); }
+public float h0_approx(float a) { return -0.2 - a * (0.24 * a - 0.44); }
+public float h1_approx(float a) { return 1.0 + a * (0.24 * a - 0.04); }
+)slang";
 /** @brief Slang representation of pinned Bevy 0.18 `forward_io.wgsl`. */
 constexpr std::string_view kForwardIoShader = R"slang(
 module epix.forward_io;
@@ -1225,6 +1323,7 @@ void register_mesh_shaders(ecs::World& world) {
     registry->get().insert_asset_static(MESH_TYPES_SHADER_PATH, shader_bytes(kMeshTypesShader));
     registry->get().insert_asset_static(MESH_BINDINGS_SHADER_PATH, shader_bytes(kMeshBindingsShader));
     registry->get().insert_asset_static(FORWARD_IO_SHADER_PATH, shader_bytes(kForwardIoShader));
+    registry->get().insert_asset_static(LIGHTMAP_SHADER_PATH, shader_bytes(kLightmapShader));
     registry->get().insert_asset_static(MESH_VIEW_TYPES_SHADER_PATH, shader_bytes(kMeshViewTypesShader));
     registry->get().insert_asset_static(ATMOSPHERE_TYPES_SHADER_PATH, shader_bytes(kAtmosphereTypesShader));
     registry->get().insert_asset_static(MESH_VIEW_BINDINGS_SHADER_PATH, shader_bytes(kMeshViewBindingsShader));
@@ -1240,6 +1339,8 @@ void register_mesh_shaders(ecs::World& world) {
             server->get().load<shader::Shader>(std::string("embedded://") + std::string(MESH_TYPES_SHADER_PATH)),
         .mesh_bindings =
             server->get().load<shader::Shader>(std::string("embedded://") + std::string(MESH_BINDINGS_SHADER_PATH)),
+        .lightmap =
+            server->get().load<shader::Shader>(std::string("embedded://") + std::string(LIGHTMAP_SHADER_PATH)),
         .forward_io =
             server->get().load<shader::Shader>(std::string("embedded://") + std::string(FORWARD_IO_SHADER_PATH)),
         .mesh_view_types =

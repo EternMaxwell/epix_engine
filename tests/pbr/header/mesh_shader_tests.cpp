@@ -98,6 +98,9 @@ TEST(MeshShaders, RegistersAndLoadsEmbeddedModulesThroughAssetServer) {
     expect_embedded_shader_loaded(app, "embedded://pbr/prepass_bindings.slang");
     expect_embedded_shader_loaded(app, "embedded://pbr/view_transformations.slang");
     expect_embedded_shader_loaded(app, "embedded://pbr/mesh_functions.slang");
+    // The lightmap library imports `epix.mesh_bindings`, so its import graph is what
+    // this checks as well (Bevy `lightmap.wgsl:1-11`).
+    expect_embedded_shader_loaded(app, "embedded://pbr/lightmap.slang");
     // The forward mesh shader is a root: it has entry points rather than a
     // module declaration, and it imports the libraries above.
     expect_embedded_shader_loaded(app, "embedded://pbr/mesh.slang");
@@ -113,6 +116,7 @@ TEST(MeshShaders, RegistersAndLoadsEmbeddedModulesThroughAssetServer) {
     const auto culling          = shaders.get(handles.occlusion_culling.id());
     const auto morph            = shaders.get(handles.morph.id());
     const auto skinning         = shaders.get(handles.skinning.id());
+    const auto lightmap         = shaders.get(handles.lightmap.id());
     ASSERT_TRUE(types.has_value());
     ASSERT_TRUE(bindings.has_value());
     ASSERT_TRUE(io.has_value());
@@ -122,6 +126,7 @@ TEST(MeshShaders, RegistersAndLoadsEmbeddedModulesThroughAssetServer) {
     ASSERT_TRUE(culling.has_value());
     ASSERT_TRUE(morph.has_value());
     ASSERT_TRUE(skinning.has_value());
+    ASSERT_TRUE(lightmap.has_value());
 
     // `mesh_types`, `forward_io`, `mesh_view_types` and `atmosphere_types` are
     // leaves; `mesh_bindings` declares exactly one import, and it is a custom

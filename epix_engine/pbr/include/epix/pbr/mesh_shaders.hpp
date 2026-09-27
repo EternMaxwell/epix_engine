@@ -18,6 +18,8 @@ EPIX_EXPORT inline constexpr std::string_view MESH_BINDINGS_SHADER_PATH = "pbr/m
 /** @brief The embedded path of the forward pass's vertex input and output
  *  (Bevy `render/forward_io.wgsl`). */
 EPIX_EXPORT inline constexpr std::string_view FORWARD_IO_SHADER_PATH = "pbr/forward_io.slang";
+/** @brief The lightmap sampling library (Bevy `lightmap.wgsl`). */
+EPIX_EXPORT inline constexpr std::string_view LIGHTMAP_SHADER_PATH = "pbr/lightmap.slang";
 /** @brief The embedded path of the group-0 view types (Bevy
  *  `render/mesh_view_types.wgsl`). */
 EPIX_EXPORT inline constexpr std::string_view MESH_VIEW_TYPES_SHADER_PATH = "pbr/mesh_view_types.slang";
@@ -60,6 +62,8 @@ EPIX_EXPORT struct MeshShaderHandles {
     assets::Handle<shader::Shader> mesh_types;
     assets::Handle<shader::Shader> mesh_bindings;
     assets::Handle<shader::Shader> forward_io;
+    /** @brief The lightmap sampling library (Bevy `lightmap.wgsl`). */
+    assets::Handle<shader::Shader> lightmap;
     assets::Handle<shader::Shader> mesh_view_types;
     assets::Handle<shader::Shader> atmosphere_types;
     assets::Handle<shader::Shader> mesh_view_bindings;
