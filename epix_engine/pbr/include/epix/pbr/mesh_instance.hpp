@@ -304,7 +304,7 @@ inline void MeshCullingData::update(MeshCullingDataBuffer& mesh_culling_data_buf
  *  `RenderMeshInstanceGpuBuilder::update` does. Bevy stores an `Affine3` and an
  *  `Option<NonMaxU32>`; Epix's convention is the full `glm::mat4` and a plain
  *  optional, with the non-max invariant documented as elsewhere. */
-EPIX_EXPORT struct RenderMeshInstanceGpuBuilder {
+EPIX_EXPORT struct EPIX_API RenderMeshInstanceGpuBuilder {
     RenderMeshInstanceShared shared;
     glm::mat4 world_from_local{1.0f};
     glm::uvec2 lightmap_uv_rect{0u, 0u};
