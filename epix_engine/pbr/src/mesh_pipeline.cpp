@@ -258,84 +258,55 @@ wgpu::MultisampleState mesh_pipeline_multisample_state(std::uint32_t msaa_sample
     return state;
 }
 
-MeshMorphSkinningSetup setup_morph_and_skinning_defs(const MeshPipelineKey& key,
-                                                                        const mesh::MeshVertexBufferLayoutRef& layout,
-                                                                        std::uint32_t offset,
-                                                                        bool skins_use_uniform_buffers) {
+render::BindGroupLayoutDescriptor setup_morph_and_skinning_defs(
+    const MeshLayouts& mesh_layouts, const mesh::MeshVertexBufferLayoutRef& layout, std::uint32_t offset,
+    const MeshPipelineKey& key, std::vector<::epix::shader::ShaderDefVal>& shader_defs,
+    std::vector<mesh::VertexAttributeDescriptor>& vertex_attributes, bool skins_use_uniform_buffers) {
     using Def = ::epix::shader::ShaderDefVal;
 
     const bool is_morphed            = key.intersects(MeshPipelineKey::MORPH_TARGETS);
     const bool is_lightmapped        = key.intersects(MeshPipelineKey::LIGHTMAPPED);
     const bool motion_vector_prepass = key.intersects(MeshPipelineKey::MOTION_VECTOR_PREPASS);
-    const bool skinned               = is_skinned(layout);
 
-    MeshMorphSkinningSetup setup;
-    if (skins_use_uniform_buffers) setup.shader_defs.emplace_back("SKINS_USE_UNIFORM_BUFFERS");
+    if (skins_use_uniform_buffers) shader_defs.emplace_back("SKINS_USE_UNIFORM_BUFFERS");
 
     const auto add_skin_data = [&] {
-        setup.shader_defs.emplace_back("SKINNED");
-        setup.vertex_attributes.push_back({.name = "joint_index", .shader_location = offset});
-        setup.vertex_attributes.push_back({.name = "joint_weight", .shader_location = offset + 1});
-        setup.skinned = true;
+        shader_defs.emplace_back("SKINNED");
+        vertex_attributes.push_back(mesh::Mesh::ATTRIBUTE_JOINT_INDEX.at_shader_location(offset));
+        vertex_attributes.push_back(mesh::Mesh::ATTRIBUTE_JOINT_WEIGHT.at_shader_location(offset + 1));
     };
-    const auto add_morph = [&] { setup.shader_defs.emplace_back("MORPH_TARGETS"); };
+    const auto add_morph = [&] { shader_defs.emplace_back("MORPH_TARGETS"); };
 
+    const bool skinned = is_skinned(layout);
     if (skinned && !is_morphed && motion_vector_prepass) {
         add_skin_data();
-        setup.layout = MeshLayoutKind::SkinnedMotion;
-    } else if (skinned && !is_morphed) {
-        add_skin_data();
-        setup.layout = MeshLayoutKind::Skinned;
-    } else if (skinned && is_morphed && motion_vector_prepass) {
-        add_skin_data();
-        add_morph();
-        setup.layout = MeshLayoutKind::MorphedSkinnedMotion;
-    } else if (skinned && is_morphed) {
-        add_skin_data();
-        add_morph();
-        setup.layout = MeshLayoutKind::MorphedSkinned;
-    } else if (is_morphed && motion_vector_prepass) {
-        add_morph();
-        setup.layout = MeshLayoutKind::MorphedMotion;
-    } else if (is_morphed) {
-        add_morph();
-        setup.layout = MeshLayoutKind::Morphed;
-    } else if (is_lightmapped) {
-        setup.layout = MeshLayoutKind::Lightmapped;
-    } else {
-        setup.layout = MeshLayoutKind::ModelOnly;
+        return mesh_layouts.skinned_motion;
     }
-    return setup;
-}
-
-namespace {
-
-/** The mesh bind group layout a specialization's morph and skinning key selects
- *  (Bevy indexes `MeshLayouts` with the value its
- *  `setup_morph_and_skinning_defs` returns, `render/mesh.rs:2443-2451`). */
-const render::BindGroupLayoutDescriptor& mesh_layout_for(const MeshLayouts& layouts, MeshLayoutKind kind) {
-    switch (kind) {
-        case MeshLayoutKind::Lightmapped:
-            return layouts.lightmapped;
-        case MeshLayoutKind::Morphed:
-            return layouts.morphed;
-        case MeshLayoutKind::MorphedMotion:
-            return layouts.morphed_motion;
-        case MeshLayoutKind::Skinned:
-            return layouts.skinned;
-        case MeshLayoutKind::SkinnedMotion:
-            return layouts.skinned_motion;
-        case MeshLayoutKind::MorphedSkinned:
-            return layouts.morphed_skinned;
-        case MeshLayoutKind::MorphedSkinnedMotion:
-            return layouts.morphed_skinned_motion;
-        case MeshLayoutKind::ModelOnly:
-            break;
+    if (skinned && !is_morphed) {
+        add_skin_data();
+        return mesh_layouts.skinned;
     }
-    return layouts.model_only;
+    if (skinned && is_morphed && motion_vector_prepass) {
+        add_skin_data();
+        add_morph();
+        return mesh_layouts.morphed_skinned_motion;
+    }
+    if (skinned && is_morphed) {
+        add_skin_data();
+        add_morph();
+        return mesh_layouts.morphed_skinned;
+    }
+    if (is_morphed && motion_vector_prepass) {
+        add_morph();
+        return mesh_layouts.morphed_motion;
+    }
+    if (is_morphed) {
+        add_morph();
+        return mesh_layouts.morphed;
+    }
+    if (is_lightmapped) return mesh_layouts.lightmapped;
+    return mesh_layouts.model_only;
 }
-
-}  // namespace
 
 std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineError> MeshPipeline::specialize(
     const MeshPipelineKey& key, const mesh::MeshVertexBufferLayoutRef& layout) const {
@@ -362,9 +333,22 @@ std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineE
     // so a default build emits none of them and neither does this port
     // (`PBR-244`).
 
-    const MeshMorphSkinningSetup morph_and_skinning =
-        setup_morph_and_skinning_defs(key, layout, 6, skins_use_uniform_buffers);
-    shader_defs.insert(shader_defs.end(), morph_and_skinning.shader_defs.begin(), morph_and_skinning.shader_defs.end());
+    // The vertex buffer layout is resolved from the attributes the mesh has, at
+    // their fixed locations (Bevy's `layout.0.get_layout(&vertex_attributes)`).
+    // Bevy fills these before the morph and skinning step, which appends the joint
+    // attributes at `offset` and hands back the layout the key selects.
+    const MeshVertexAttributePresence attributes = mesh_vertex_attribute_presence(layout);
+    std::vector<mesh::VertexAttributeDescriptor> vertex_attributes;
+    if (attributes.position) vertex_attributes.push_back(mesh::Mesh::ATTRIBUTE_POSITION.at_shader_location(0));
+    if (attributes.normal) vertex_attributes.push_back(mesh::Mesh::ATTRIBUTE_NORMAL.at_shader_location(1));
+    if (attributes.uv_0) vertex_attributes.push_back(mesh::Mesh::ATTRIBUTE_UV_0.at_shader_location(2));
+    if (attributes.uv_1) vertex_attributes.push_back(mesh::Mesh::ATTRIBUTE_UV_1.at_shader_location(3));
+    if (attributes.tangent) vertex_attributes.push_back(mesh::Mesh::ATTRIBUTE_TANGENT.at_shader_location(4));
+    if (attributes.color) vertex_attributes.push_back(mesh::Mesh::ATTRIBUTE_COLOR.at_shader_location(5));
+
+    const render::BindGroupLayoutDescriptor mesh_layout =
+        setup_morph_and_skinning_defs(mesh_layouts, layout, 6, key, shader_defs, vertex_attributes,
+                                      skins_use_uniform_buffers);
 
     {
         auto key_defs = specialize_mesh_key_shader_defs(key, pass.is_opaque);
@@ -377,21 +361,6 @@ std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineE
         shader_defs.insert(shader_defs.end(), capability_defs.begin(), capability_defs.end());
     }
     append_names(pass.shader_defs);
-
-    // The vertex buffer layout is resolved from the attributes the mesh has, at
-    // their fixed locations (Bevy's `layout.0.get_layout(&vertex_attributes)`).
-    const MeshVertexAttributePresence attributes = mesh_vertex_attribute_presence(layout);
-    std::vector<mesh::VertexAttributeDescriptor> vertex_attributes;
-    if (attributes.position) vertex_attributes.push_back(mesh::Mesh::ATTRIBUTE_POSITION.at_shader_location(0));
-    if (attributes.normal) vertex_attributes.push_back(mesh::Mesh::ATTRIBUTE_NORMAL.at_shader_location(1));
-    if (attributes.uv_0) vertex_attributes.push_back(mesh::Mesh::ATTRIBUTE_UV_0.at_shader_location(2));
-    if (attributes.uv_1) vertex_attributes.push_back(mesh::Mesh::ATTRIBUTE_UV_1.at_shader_location(3));
-    if (attributes.tangent) vertex_attributes.push_back(mesh::Mesh::ATTRIBUTE_TANGENT.at_shader_location(4));
-    if (attributes.color) vertex_attributes.push_back(mesh::Mesh::ATTRIBUTE_COLOR.at_shader_location(5));
-    if (morph_and_skinning.skinned) {
-        vertex_attributes.push_back(mesh::Mesh::ATTRIBUTE_JOINT_INDEX.at_shader_location(6));
-        vertex_attributes.push_back(mesh::Mesh::ATTRIBUTE_JOINT_WEIGHT.at_shader_location(7));
-    }
 
     auto vertex_buffer_layout = layout.value->get_layout(vertex_attributes);
     if (!vertex_buffer_layout) return std::unexpected(vertex_buffer_layout.error());
@@ -434,7 +403,7 @@ std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineE
         .label = pass.label,
         .layouts =
             std::vector<render::BindGroupLayoutDescriptor>{view_layout.main_layout, view_layout.binding_array_layout,
-                                                           mesh_layout_for(mesh_layouts, morph_and_skinning.layout)},
+                                                           mesh_layout},
         .vertex    = std::move(vertex_state),
         .primitive = wgpu::PrimitiveState()
                          .setTopology(key.primitive_topology())

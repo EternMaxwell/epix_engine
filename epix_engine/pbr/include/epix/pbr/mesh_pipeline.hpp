@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <epix/common.hpp>
 #include <epix/mesh.hpp>
+#include <epix/pbr/mesh_bindings.hpp>
 #include <epix/shader.hpp>
 #include <string>
 #include <vector>
@@ -182,33 +183,6 @@ EPIX_EXPORT EPIX_API wgpu::DepthStencilState mesh_pipeline_depth_state(wgpu::Tex
 EPIX_EXPORT EPIX_API wgpu::MultisampleState mesh_pipeline_multisample_state(std::uint32_t msaa_samples,
                                                                           bool alpha_to_coverage_enabled);
 
-/** @brief Which mesh bind-group layout a key's mesh needs (Bevy's `MeshLayouts`
- *  fields, `render/mesh.rs:2312-2370`).
- *
- *  Named rather than handed back as a layout because a layout is a device object;
- *  the assembly that owns the device maps this to the real one. */
-EPIX_EXPORT enum class MeshLayoutKind {
-    ModelOnly,
-    Lightmapped,
-    Morphed,
-    MorphedMotion,
-    Skinned,
-    SkinnedMotion,
-    MorphedSkinned,
-    MorphedSkinnedMotion,
-};
-
-/** @brief What the morph and skinning step contributes (Bevy
- *  `setup_morph_and_skinning_defs`, `render/mesh.rs:2312-2370`). */
-EPIX_EXPORT struct MeshMorphSkinningSetup {
-    std::vector<::epix::shader::ShaderDefVal> shader_defs;
-    std::vector<MeshVertexAttributeLocation> vertex_attributes;
-    MeshLayoutKind layout = MeshLayoutKind::ModelOnly;
-    /** @brief Whether the skinned attributes were added, which is what the joint
-     *  locations in `vertex_attributes` mean. */
-    bool skinned = false;
-};
-
 /** @brief Whether a mesh's vertex layout provides both joint attributes (Bevy
  *  `is_skinned`, `bevy_pbr/src/render/mesh.rs:2308-2311`).
  *
@@ -221,8 +195,9 @@ EPIX_EXPORT inline bool is_skinned(const mesh::MeshVertexBufferLayoutRef& layout
            layout.value->contains(mesh::Mesh::ATTRIBUTE_JOINT_WEIGHT);
 }
 
-/** @brief The defs and vertex attributes a mesh's morph and skinning state adds
- *  (Bevy `setup_morph_and_skinning_defs`, `render/mesh.rs:2312-2370`).
+/** @brief Add a mesh's morph and skinning shader defs and vertex attributes, and
+ *  hand back the mesh bind-group layout its key needs (Bevy
+ *  `setup_morph_and_skinning_defs`, `render/mesh.rs:2312-2370`).
  *
  *  `offset` is the shader location the mesh's own attributes ended at, so the joint
  *  index and weight land immediately after them. Bevy's one call site passes the
@@ -236,10 +211,14 @@ EPIX_EXPORT inline bool is_skinned(const mesh::MeshVertexBufferLayoutRef& layout
  *  choose which variant**, so a morphed motion-vector mesh takes the morphed motion
  *  layout. Lightmapping is checked *after* motion only because it is the last family,
  *  not because motion outranks it. A version that treated the four flags as
- *  independent would produce a layout that does not exist. */
-EPIX_EXPORT EPIX_API MeshMorphSkinningSetup setup_morph_and_skinning_defs(const MeshPipelineKey& key,
-                                                                        const mesh::MeshVertexBufferLayoutRef& layout,
-                                                                        std::uint32_t offset,
-                                                                        bool skins_use_uniform_buffers);
+ *  independent would produce a layout that does not exist.
+ *
+ *  Bevy returns the layout itself, cloned out of `mesh_layouts`; the descriptor is a
+ *  plain value here too, so the device object is still created by whoever interns
+ *  it. */
+EPIX_EXPORT EPIX_API render::BindGroupLayoutDescriptor setup_morph_and_skinning_defs(
+    const MeshLayouts& mesh_layouts, const mesh::MeshVertexBufferLayoutRef& layout, std::uint32_t offset,
+    const MeshPipelineKey& key, std::vector<::epix::shader::ShaderDefVal>& shader_defs,
+    std::vector<mesh::VertexAttributeDescriptor>& vertex_attributes, bool skins_use_uniform_buffers);
 
 }  // namespace epix::pbr
