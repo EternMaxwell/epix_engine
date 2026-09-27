@@ -630,10 +630,18 @@ Image::Image(wgpu::Extent3D size,
              wgpu::TextureFormat format,
              assets::RenderAssetUsages asset_usage) {
     // Bevy's `Image::new` only debug-asserts the payload length, and only for formats that
-    // report a pixel size.
+    // report a pixel size: the check is compiled out of release builds entirely, which is
+    // what `debug_assert_eq!` means. A plain `assert` comes back on in a release build that
+    // leaves `NDEBUG` unset, so the guard is written the way the rest of the port writes a
+    // debug-only check.
     if (const auto pixel_size = texture_format_pixel_size(format)) {
         const std::size_t volume = static_cast<std::size_t>(size.width) * size.height * size.depthOrArrayLayers;
-        assert(volume * *pixel_size == image_data.size() && "Pixel data, size and format have to match");
+#ifndef NDEBUG
+        if (volume * *pixel_size != image_data.size()) {
+            throw std::invalid_argument("Pixel data, size and format have to match");
+        }
+#endif
+        (void)volume;
     }
 
     texture_descriptor.size          = size;

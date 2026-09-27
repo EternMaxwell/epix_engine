@@ -1018,3 +1018,26 @@ TEST(ImageConvert, MatchesBevyConvertGates) {
     EXPECT_EQ(swapped->raw_view()[2], std::byte{1});
     EXPECT_EQ(swapped->raw_view()[3], std::byte{4});
 }
+
+/** @brief The payload-length check is a debug-build check, as Bevy's is (Bevy
+ *  `Image::new`, `bevy_image/src/image.rs:1007-1030`).
+ *
+ *  Bevy writes `debug_assert_eq!`, which release builds compile out; a plain
+ *  `assert` would come back on in a release build that leaves `NDEBUG` unset and
+ *  abort where Bevy constructs the image. This build defines `NDEBUG`, so what is
+ *  checkable here is the release behaviour: a mismatched payload is accepted
+ *  rather than fatal. */
+TEST(ImageParity, PayloadLengthIsCheckedInDebugBuildsOnly) {
+#ifndef NDEBUG
+    GTEST_SKIP() << "debug build: the check is active, and the release behaviour is what this pins";
+#else
+    const wgpu::Extent3D size{2u, 2u, 1u};
+    // Two pixels short of a 2x2 RGBA8 image: Bevy's debug assertion would fire in a
+    // debug build and nothing happens in release.
+    const std::vector<std::byte> short_payload(2 * 2 * 4 - 2, std::byte{0});
+    const epix::image::Image image{size, wgpu::TextureDimension::e2D, short_payload, wgpu::TextureFormat::eRGBA8Unorm,
+                                   epix::assets::RenderAssetUsages::RENDER_WORLD};
+    EXPECT_EQ(image.texture_descriptor.size.width, 2u) << "the image is constructed whatever the lengths are";
+    EXPECT_EQ(image.texture_descriptor.size.height, 2u);
+#endif
+}

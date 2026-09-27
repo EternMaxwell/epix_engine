@@ -831,8 +831,10 @@ EPIX_EXPORT class EPIX_API Image {
     /** @brief Create an image from raw binary data and the corresponding metadata
      * (Bevy `Image::new`).
      *
-     * Panics (throws `std::invalid_argument`) if the length of `data`, the volume of `size`
-     * and the size of `format` do not match. */
+     * In **debug builds only**, throws `std::invalid_argument` if the length of `data`, the
+     * volume of `size` and the size of `format` do not match - the counterpart of Bevy's
+     * `debug_assert_eq!`, which release builds compile out. A release build constructs the
+     * image whatever the lengths are, exactly as Bevy does. */
     Image(wgpu::Extent3D size,
           wgpu::TextureDimension dimension,
           std::vector<std::byte> data,
