@@ -106,12 +106,9 @@ EPIX_EXPORT inline constexpr std::uint32_t CLUSTER_COUNT_MASK = (1u << CLUSTER_C
  *  bindings clustered forward wants, so the cluster data goes into uniform
  *  buffers instead. Each field is masked to its width, which is what Bevy's
  *  `& MASK` does: an out-of-range value silently keeps only the low bits. */
-EPIX_EXPORT inline std::uint32_t pack_offset_and_counts(std::size_t offset,
+EPIX_EXPORT EPIX_API std::uint32_t pack_offset_and_counts(std::size_t offset,
                                                         std::uint32_t point_count,
-                                                        std::uint32_t spot_count) {
-    return ((static_cast<std::uint32_t>(offset) & CLUSTER_OFFSET_MASK) << (CLUSTER_COUNT_SIZE * 2)) |
-           ((point_count & CLUSTER_COUNT_MASK) << CLUSTER_COUNT_SIZE) | (spot_count & CLUSTER_COUNT_MASK);
-}
+                                                        std::uint32_t spot_count);
 
 }  // namespace epix::pbr
 
@@ -293,14 +290,8 @@ EPIX_EXPORT inline constexpr std::size_t uniform_offsets_component(std::size_t n
  *
  *  The uniform form cannot carry the probe counts at all, which is why it packs
  *  only the point and spot counts - see `pack_offset_and_counts`. */
-EPIX_EXPORT inline GpuClusterOffsetsAndCounts pack_cluster_offsets_and_counts_storage(
-    std::size_t offset, const ClusterableObjectCounts& counts) {
-    return GpuClusterOffsetsAndCounts{
-        glm::uvec4(static_cast<std::uint32_t>(offset), counts.point_lights, counts.spot_lights,
-                   counts.reflection_probes),
-        glm::uvec4(counts.irradiance_volumes, counts.decals, 0u, 0u),
-    };
-}
+EPIX_EXPORT EPIX_API GpuClusterOffsetsAndCounts pack_cluster_offsets_and_counts_storage(
+    std::size_t offset, const ClusterableObjectCounts& counts);
 
 /** @brief Where an index lands in the uniform form of the index list (Bevy
  *  `ViewClusterBindings::push_index`, `bevy_pbr/src/cluster.rs:418-424`).
@@ -322,11 +313,9 @@ EPIX_EXPORT inline constexpr std::size_t uniform_index_lists_sub_index(std::size
 /** @brief Or one index into the word it belongs to, which is Bevy's
  *  `|= index << (8 * sub_index)` (`cluster.rs:423-424`); the caller has already
  *  cleared the word if the slot must be empty. */
-EPIX_EXPORT inline std::uint32_t pack_index_into_uniform_word(std::uint32_t word,
+EPIX_EXPORT EPIX_API std::uint32_t pack_index_into_uniform_word(std::uint32_t word,
                                                               std::size_t n_indices,
-                                                              std::uint32_t index) {
-    return word | (index << (8 * uniform_index_lists_sub_index(n_indices)));
-}
+                                                              std::uint32_t index);
 
 /** @brief The uniform form of a view's cluster index list (Bevy
  *  `GpuClusterableObjectIndexListsUniform`, `cluster.rs:557-560`). Its elements
@@ -573,32 +562,11 @@ EPIX_EXPORT struct ExtractedClusterableObjects {
  *  form, where the index list cannot grow past `MAX_INDICES`, hitting that limit
  *  stops the walk for the whole view, keeping what was already written. The
  *  storage form has no such limit. */
-EPIX_EXPORT inline ViewClusterBindings prepare_view_cluster_bindings(
+EPIX_EXPORT EPIX_API ViewClusterBindings prepare_view_cluster_bindings(
     const std::vector<ExtractedClusterableObjectElement>& data,
     const std::unordered_map<ecs::Entity, std::size_t>& entity_to_index,
     wgpu::BufferBindingType binding_type,
-    bool supports_storage_buffers) {
-    ViewClusterBindings bindings{binding_type};
-    bindings.clear();
-
-    for (const auto& record : data) {
-        if (record.kind == ExtractedClusterableObjectElement::Kind::ClusterHeader) {
-            bindings.push_offset_and_counts(bindings.indices_count(), record.counts);
-            continue;
-        }
-        const auto found = entity_to_index.find(record.entity);
-        if (found == entity_to_index.end()) continue;
-        if (bindings.indices_count() >= VIEW_CLUSTER_MAX_INDICES && !supports_storage_buffers) {
-            // Bevy warns here, once per view that overflows (cluster.rs:317-325).
-            spdlog::warn(
-                "[pbr] Clusterable object index lists are full! The clusterable objects in the view are present in too "
-                "many clusters.");
-            break;
-        }
-        bindings.push_index(found->second);
-    }
-    return bindings;
-}
+    bool supports_storage_buffers);
 
 /** @brief What one view's extraction produces (Bevy `extract_clusters`,
  *  `bevy_pbr/src/cluster.rs:278-285`): the flat records plus the view's cluster
