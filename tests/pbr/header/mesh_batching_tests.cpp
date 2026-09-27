@@ -184,3 +184,36 @@ TEST(MeshBatching, AdapterRefusesWhenTheGpuBuilderOwnsTheInstances) {
         }));
     render_app->get().run_schedule(render::RenderStartup);
 }
+
+/** @brief The full-batch adapter's interface and the one method that runs in
+ *  either mode (Bevy `GetFullBatchData for MeshPipeline`,
+ *  `bevy_pbr/src/render/mesh.rs:2040-2144`). */
+TEST(MeshBatching, FullBatchDataMatchesBevy) {
+    // The specialization satisfies Bevy's interface: the buffer input type, the
+    // two GPU-mode readers, the CPU-mode uniform builder, and the metadata writer
+    // with their exact result types.
+    static_assert(render::batching::GetFullBatchDataImpl<pbr::MeshPipeline>,
+                  "GetFullBatchData<MeshPipeline> must satisfy the batching adapter concept");
+    static_assert(std::same_as<render::batching::GetFullBatchData<pbr::MeshPipeline>::BufferInputData,
+                               pbr::MeshInputUniform>,
+                  "the GPU instance builder writes MeshInputUniform");
+
+    // The metadata writer is the one method both modes use, so it needs no ECS and
+    // no device: it records where a batch's output begins and which batch set it
+    // belongs to, in the indexed or the non-indexed buffer as asked.
+    render::batching::UntypedPhaseIndirectParametersBuffers buffers;
+    buffers.indexed_cpu_metadata.push(render::batching::IndirectParametersCpuMetadata{});
+    buffers.non_indexed_cpu_metadata.push(render::batching::IndirectParametersCpuMetadata{});
+
+    const render::batching::GetFullBatchData<pbr::MeshPipeline> adapter;
+    adapter.write_batch_indirect_parameters_metadata(true, 7u, std::optional<std::uint32_t>{3u}, buffers, 0u);
+    adapter.write_batch_indirect_parameters_metadata(false, 9u, std::nullopt, buffers, 0u);
+
+    ASSERT_NE(buffers.indexed_cpu_metadata.get(0), nullptr);
+    EXPECT_EQ(buffers.indexed_cpu_metadata.get(0)->base_output_index, 7u);
+    EXPECT_EQ(buffers.indexed_cpu_metadata.get(0)->batch_set_index, 3u);
+    ASSERT_NE(buffers.non_indexed_cpu_metadata.get(0), nullptr);
+    EXPECT_EQ(buffers.non_indexed_cpu_metadata.get(0)->base_output_index, 9u);
+    EXPECT_EQ(buffers.non_indexed_cpu_metadata.get(0)->batch_set_index, ~0u)
+        << "Bevy writes !0 when the batch belongs to no batch set";
+}

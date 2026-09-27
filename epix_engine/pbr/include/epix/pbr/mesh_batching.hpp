@@ -95,4 +95,121 @@ struct GetBatchData<epix::pbr::MeshPipeline> {
     }
 };
 
+/** @brief Everything the binned, GPU-preprocessed path needs from the 3D mesh
+ *  pipeline (Bevy `GetFullBatchData for MeshPipeline`,
+ *  `bevy_pbr/src/render/mesh.rs:2040-2144`).
+ *
+ *  The four methods are the two halves of a mode: `get_index_and_compare_data` and
+ *  `get_binned_index` are the **GPU-building** side, where the instance record
+ *  already holds the index the GPU instance builder assigned, and
+ *  `get_binned_batch_data` is the **CPU-building** side, where this code assembles
+ *  the uniform itself. Both refuse loudly when called in the other mode rather than
+ *  reading a map that is empty by construction - which is Bevy's behaviour, and the
+ *  reason each is a separate method rather than one function with a branch.
+ *
+ *  `write_batch_indirect_parameters_metadata` is the only one that runs in either
+ *  mode: it records, per batch, where the batch's output starts and which batch set
+ *  it belongs to, with `!0` standing in for "no batch set" exactly as Bevy writes
+ *  it. */
+template <>
+struct GetFullBatchData<epix::pbr::MeshPipeline> {
+    using BufferInputData = epix::pbr::MeshInputUniform;
+    using BufferData      = GetBatchData<epix::pbr::MeshPipeline>::BufferData;
+    using CompareData     = GetBatchData<epix::pbr::MeshPipeline>::CompareData;
+    using Param           = GetBatchData<epix::pbr::MeshPipeline>::Param;
+
+    std::optional<std::pair<std::uint32_t, std::optional<CompareData>>> get_index_and_compare_data(
+        Param& param, epix::render::sync_world::MainEntity main_entity) const {
+        const auto& mesh_instances = std::get<0>(param);
+        // This should only be called during GPU building.
+        if (mesh_instances->is_cpu_building()) {
+            spdlog::error(
+                "[pbr] get_index_and_compare_data should never be called in CPU mesh uniform building mode; "
+                "the CPU builder owns the instance data.");
+            return std::nullopt;
+        }
+        const auto found = mesh_instances->gpu_instances.find(main_entity);
+        if (found == mesh_instances->gpu_instances.end()) return std::nullopt;
+        const epix::pbr::RenderMeshInstanceGpu& mesh_instance = found->second;
+
+        const auto& lightmaps       = std::get<1>(param);
+        const auto lightmap_found   = lightmaps->render_lightmaps.find(main_entity);
+        const epix::pbr::RenderLightmap* maybe_lightmap =
+            lightmap_found == lightmaps->render_lightmaps.end() ? nullptr : &lightmap_found->second;
+
+        return std::make_pair(
+            mesh_instance.current_uniform_index,
+            mesh_instance.shared.should_batch()
+                ? std::optional<CompareData>{CompareData{
+                      mesh_instance.shared.material_bindings_index.group, mesh_instance.shared.mesh_asset_id,
+                      maybe_lightmap ? std::optional{maybe_lightmap->slab_index} : std::nullopt}}
+                : std::nullopt);
+    }
+
+    std::optional<BufferData> get_binned_batch_data(Param& param,
+                                                    epix::render::sync_world::MainEntity main_entity) const {
+        const auto& [mesh_instances, lightmaps, render_meshes, mesh_allocator, skin_uniforms] = param;
+        // This should only be called during CPU building.
+        if (!mesh_instances->is_cpu_building()) {
+            spdlog::error(
+                "[pbr] get_binned_batch_data should never be called in GPU mesh uniform building mode; the GPU "
+                "instance builder owns the instance data.");
+            return std::nullopt;
+        }
+        const auto found = mesh_instances->cpu_instances.find(main_entity);
+        if (found == mesh_instances->cpu_instances.end()) return std::nullopt;
+        const epix::pbr::RenderMeshInstanceCpu& mesh_instance = found->second;
+
+        (void)render_meshes;
+        const auto vertex_slice          = mesh_allocator->mesh_vertex_slice(mesh_instance.shared.mesh_asset_id);
+        const std::uint32_t first_vertex = vertex_slice ? vertex_slice->range.first : 0u;
+
+        const auto lightmap_found = lightmaps->render_lightmaps.find(main_entity);
+        const epix::pbr::RenderLightmap* maybe_lightmap =
+            lightmap_found == lightmaps->render_lightmaps.end() ? nullptr : &lightmap_found->second;
+        const std::optional<std::pair<epix::pbr::LightmapSlotIndex, ::epix::image::Rect>> lightmap_for_uniform =
+            maybe_lightmap ? std::optional{std::pair{maybe_lightmap->slot_index, maybe_lightmap->uv_rect}}
+                           : std::nullopt;
+
+        const auto material_bind_group = mesh_instance.shared.material_bindings_index;
+        const auto current_skin_index  = skin_uniforms->skin_index(main_entity);
+
+        return epix::pbr::MeshUniform::make(mesh_instance.transforms, first_vertex, material_bind_group.slot,
+                                           lightmap_for_uniform, current_skin_index,
+                                           std::optional{mesh_instance.shared.tag});
+    }
+
+    std::optional<std::uint32_t> get_binned_index(Param& param,
+                                                 epix::render::sync_world::MainEntity main_entity) const {
+        const auto& mesh_instances = std::get<0>(param);
+        // This should only be called during GPU building.
+        if (mesh_instances->is_cpu_building()) {
+            spdlog::error(
+                "[pbr] get_binned_index should never be called in CPU mesh uniform building mode; the CPU builder "
+                "owns the instance data.");
+            return std::nullopt;
+        }
+        const auto found = mesh_instances->gpu_instances.find(main_entity);
+        if (found == mesh_instances->gpu_instances.end()) return std::nullopt;
+        return found->second.current_uniform_index;
+    }
+
+    void write_batch_indirect_parameters_metadata(bool indexed, std::uint32_t base_output_index,
+                                                  std::optional<std::uint32_t> batch_set_index,
+                                                  UntypedPhaseIndirectParametersBuffers& phase_indirect_parameters_buffers,
+                                                  std::uint32_t indirect_parameters_offset) const {
+        const IndirectParametersCpuMetadata indirect_parameters{
+            .base_output_index = base_output_index,
+            .batch_set_index   = batch_set_index ? *batch_set_index : ~0u,
+        };
+
+        if (indexed) {
+            phase_indirect_parameters_buffers.indexed_cpu_metadata.set(indirect_parameters_offset, indirect_parameters);
+        } else {
+            phase_indirect_parameters_buffers.non_indexed_cpu_metadata.set(indirect_parameters_offset,
+                                                                           indirect_parameters);
+        }
+    }
+};
+
 }  // namespace epix::render::batching
