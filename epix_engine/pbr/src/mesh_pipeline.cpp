@@ -1,11 +1,17 @@
 #include <array>
 #include <epix/core_graph/core3d.hpp>
 #include <epix/image.hpp>
+#include <epix/pbr/mesh_batching.hpp>
 #include <epix/pbr/mesh_pipeline.hpp>
 #include <epix/pbr/mesh_pipeline_resource.hpp>
 #include <epix/render/view.hpp>
 #include <string>
 #include <vector>
+
+// The adapter must satisfy the customization point's own concept, as the 2D
+// pipeline's does.
+static_assert(epix::render::batching::GetBatchDataImpl<epix::pbr::MeshPipeline>,
+              "GetBatchData<MeshPipeline> must satisfy its own concept");
 
 namespace epix::pbr {
 
