@@ -271,11 +271,12 @@ struct MaterialPlugin {
         // contents.
         render_app->get().world_mut().init_resource<RenderMaterialInstances>();
 
-        // `MaterialExtractionSystems` is **not** registered in the schedule, because
-        // this port has no exercised way to register a set: `SetConfig` exposes no
-        // public way to set its label, and no plugin in the engine does it. The port
-        // warns and ignores ordering constraints whose set is absent, so the two
-        // orderings below are declared but not enforced. Recorded as PBR-869.
+        // The set must be in the schedule before anything can be ordered against it:
+        // the port warns and *ignores* a hierarchy or dependency whose set is absent,
+        // which is how a declared ordering can end up enforcing nothing. `SetConfig`'s
+        // label is private, so the documented `sets(...)` helper is the way in.
+        render_app->get().configure_sets(app::ScheduleInfo(render::ExtractSchedule),
+                                         ecs::sets(MaterialExtractionSystems::Extract));
         render_app->get().add_systems(
             app::ScheduleInfo(render::ExtractSchedule),
             ecs::into(extract_mesh_materials<M>).in_set(MaterialExtractionSystems::Extract).set_name(
