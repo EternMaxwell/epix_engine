@@ -3,9 +3,14 @@
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets/asset_changed.hpp>
+#include <epix/assets/store.hpp>
+#include <epix/camera/visibility.hpp>
 #include <epix/common.hpp>
+#include <epix/mesh/skinning.hpp>
 #include <epix/render/mesh/offset_allocator.hpp>
 #include <epix/render/sync_world.hpp>
+#include <epix/transform.hpp>
 #include <glm/glm.hpp>
 #include <unordered_map>
 #include <vector>
@@ -155,5 +160,124 @@ EPIX_EXPORT EPIX_API void prepare_skins(ecs::Res<wgpu::Device> render_device, ec
  *  `total_joints` falls by the skin's joint count. A skin that was never
  *  registered is a no-op. */
 EPIX_EXPORT EPIX_API void remove_skin(SkinUniforms& skin_uniforms, render::sync_world::MainEntity skinned_mesh_entity);
+
+/** @brief The term that selects the skins whose data changed this frame (Bevy
+ *  `Or<(Changed<ViewVisibility>, Changed<SkinnedMesh>, AssetChanged<SkinnedMesh>)>`,
+ *  `render/skin.rs:302-308`).
+ *
+ *  Epix has `Added` and `Modified` rather than `Changed`, so each `Changed<T>` is
+ *  the pair - the same spelling `GpuMeshExtractionChangedFilter` uses. */
+using SkinnedMeshChangedFilter = ecs::Or<ecs::Added<camera::ViewVisibility>, ecs::Modified<camera::ViewVisibility>,
+                                         ecs::Added<mesh::SkinnedMesh>, ecs::Modified<mesh::SkinnedMesh>,
+                                         assets::AssetChanged<mesh::SkinnedMesh>>;
+
+/** @brief The fraction of the scene's joints past which change detection is
+ *  skipped and every joint is re-extracted (Bevy
+ *  `JOINT_EXTRACTION_THRESHOLD_FACTOR`, `render/skin.rs:24`).
+ *
+ *  A quarter: past that, the bookkeeping for fine-grained detection costs more
+ *  than re-extracting the transforms. The comparison is against the number of
+ *  *changed entities*, not changed joints, which Bevy notes is a deliberate
+ *  approximation. */
+EPIX_EXPORT inline constexpr double JOINT_EXTRACTION_THRESHOLD_FACTOR = 0.25;
+
+/** @brief One changed skin: its visibility decides whether it stays allocated
+ *  (Bevy's `(Entity, &ViewVisibility, &SkinnedMesh)`). */
+using ChangedSkinnedMeshItem = ecs::Item<ecs::Entity, const camera::ViewVisibility&, const mesh::SkinnedMesh&>;
+
+/** @brief One skinned mesh and the entity it belongs to (Bevy's
+ *  `(Entity, &SkinnedMesh)`). */
+using SkinnedMeshItem = ecs::Item<ecs::Entity, const mesh::SkinnedMesh&>;
+
+/** @brief The joint transforms every skin reads (Bevy's
+ *  `Query<&GlobalTransform>`). */
+using JointTransformQuery = ecs::Query<ecs::Item<const transform::GlobalTransform&>>;
+
+/** @brief The entities whose transform moved this frame (Bevy's
+ *  `Query<(Entity, &GlobalTransform), Changed<GlobalTransform>>`). */
+using ChangedTransformItem = ecs::Item<ecs::Entity, const transform::GlobalTransform&>;
+
+/** @brief The term that selects the moved transforms, spelled as the pair Epix
+ *  has rather than Bevy's `Changed<GlobalTransform>`. */
+using ChangedTransformFilter = ecs::Or<ecs::Added<transform::GlobalTransform>,
+                                       ecs::Modified<transform::GlobalTransform>>;
+
+/** @brief Allocate space for a skin and fill in its joints (Bevy `add_skin`,
+ *  `render/skin.rs:507-581`).
+ *
+ *  Space is allocated in units of `JOINTS_PER_ALLOCATION_UNIT`, the joints'
+ *  matrices are written into the staging buffer (grown with identity matrices
+ *  where the allocator placed them past the end), the reverse mapping from each
+ *  joint to this skin is recorded for the fine-grained extraction, and
+ *  `total_joints` rises by the skin's joint count. A skin whose joints cannot be
+ *  allocated is reported and skipped, as Bevy does.
+ *
+ *  A missing inverse-bind-pose asset, or a joint with no transform, contributes
+ *  an identity matrix rather than failing: Bevy's `match` falls through to
+ *  `Mat4::IDENTITY` for exactly that case. */
+EPIX_EXPORT EPIX_API void add_skin(render::sync_world::MainEntity skinned_mesh_entity,
+                                   const mesh::SkinnedMesh& skinned_mesh, SkinUniforms& skin_uniforms,
+                                   const assets::Assets<mesh::SkinnedMeshInverseBindposes>& inverse_bindposes,
+                                   app::Extract<JointTransformQuery>& joints);
+
+/** @brief Recompute one skin's joints into the staging buffer (Bevy
+ *  `extract_joints_for_skin`, `render/skin.rs:457-505`).
+ *
+ *  A skin that was just added is skipped - `add_skin` already wrote all of its
+ *  joints - and so is one with no allocation or no inverse bind poses. Each
+ *  joint's matrix is its transform times its inverse bind pose, paired by index.
+ *
+ *  The queries are taken as the extraction wrapper because that is what the
+ *  extract system holds: Epix's `Extract` forwards `get`/`iter` to the query it
+ *  wraps but is not convertible to it, so a helper called from extraction takes
+ *  the wrapper, where Bevy's takes `&Query`. */
+EPIX_EXPORT EPIX_API void
+extract_joints_for_skin(render::sync_world::MainEntity skin_entity, const mesh::SkinnedMesh& skin,
+                        SkinUniforms& skin_uniforms,
+                        app::Extract<ecs::Query<ChangedSkinnedMeshItem, SkinnedMeshChangedFilter>>& changed_skinned_meshes,
+                        const assets::Assets<mesh::SkinnedMeshInverseBindposes>& inverse_bindposes,
+                        app::Extract<JointTransformQuery>& joints);
+
+/** @brief Recompute the joints of every skin the changed transforms reach (Bevy
+ *  `extract_joints`, `render/skin.rs:389-455`).
+ *
+ *  The heuristic is the point of the function: once the number of *entities* whose
+ *  transform changed exceeds a quarter of the scene's joints, fine-grained
+ *  detection is not worth its own cost, so every skin is re-extracted; otherwise
+ *  only the skins that `joint_to_skins` maps the changed joints to. Bevy counts
+ *  changed entities rather than joints and says so - the approximation is
+ *  deliberate. */
+EPIX_EXPORT EPIX_API void extract_joints(
+    SkinUniforms& skin_uniforms, app::Extract<ecs::Query<SkinnedMeshItem>>& skinned_meshes,
+    app::Extract<ecs::Query<ChangedSkinnedMeshItem, SkinnedMeshChangedFilter>>& changed_skinned_meshes,
+    const assets::Assets<mesh::SkinnedMeshInverseBindposes>& inverse_bindposes,
+    app::Extract<ecs::Query<ChangedTransformItem, ChangedTransformFilter>>& changed_transforms,
+    app::Extract<JointTransformQuery>& joints);
+
+/** @brief Re-allocate the skins whose visibility or data changed (Bevy
+ *  `add_or_delete_skins`, `render/skin.rs:349-385`).
+ *
+ *  Every changed skin is removed first and re-added only if it is still visible,
+ *  so a skin never keeps an allocation it no longer matches. */
+EPIX_EXPORT EPIX_API void add_or_delete_skins(
+    SkinUniforms& skin_uniforms,
+    app::Extract<ecs::Query<ChangedSkinnedMeshItem, SkinnedMeshChangedFilter>>& changed_skinned_meshes,
+    const assets::Assets<mesh::SkinnedMeshInverseBindposes>& inverse_bindposes, app::Extract<JointTransformQuery>& joints);
+
+/** @brief Fill the joint buffers for every skinned mesh this frame (Bevy
+ *  `extract_skins`, `render/skin.rs:296-345`).
+ *
+ *  The three steps are Bevy's and happen in this order: skins that appeared,
+ *  disappeared or changed are allocated or released; the joints of the skins the
+ *  changed transforms reach are re-extracted; and the skins whose component was
+ *  removed are released - but only if `add_or_delete_skins` did not already see
+ *  them, because a component can be removed and re-added in the same frame. */
+EPIX_EXPORT EPIX_API void extract_skins(
+    ecs::ResMut<SkinUniforms> skin_uniforms, app::Extract<ecs::Query<SkinnedMeshItem>> skinned_meshes,
+    app::Extract<ecs::Query<ChangedSkinnedMeshItem, SkinnedMeshChangedFilter>> changed_skinned_meshes,
+    app::Extract<ecs::Res<assets::Assets<mesh::SkinnedMeshInverseBindposes>>> inverse_bindposes,
+    app::Extract<ecs::Query<ChangedTransformItem, ChangedTransformFilter>> changed_transforms,
+    app::Extract<JointTransformQuery> joints,
+    app::Extract<ecs::RemovedComponents<mesh::SkinnedMesh>> removed_skinned_meshes);
 
 }  // namespace epix::pbr
