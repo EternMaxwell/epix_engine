@@ -211,9 +211,7 @@ EPIX_EXPORT EPIX_API void prepare_environment_uniform_buffer(
  *  offset: a view that is a `Camera3d` gets a uniform here even without an
  *  `EnvironmentMapLight`, holding the identity, and the offset-0 arm there covers only
  *  views that extraction never saw at all. */
-EPIX_EXPORT inline EnvironmentMapUniform environment_map_uniform_from(glm::quat rotation) {
-    return EnvironmentMapUniform{.transform = glm::inverse(glm::mat4_cast(rotation))};
-}
+EPIX_EXPORT EPIX_API EnvironmentMapUniform environment_map_uniform_from(glm::quat rotation);
 
 /** @brief The uniform for a view with no environment map light: the identity, so the
  *  sample direction passes through unrotated (Bevy `EnvironmentMapUniform::default`). */
@@ -231,11 +229,8 @@ EPIX_EXPORT inline EnvironmentMapUniform environment_map_uniform_default() { ret
  *  beyond the far plane still lights the scene, which is the conservative choice - if
  *  it were culled on the far plane, a probe the camera has not reached yet would stop
  *  contributing the moment the camera's far plane moved inside it. */
-EPIX_EXPORT inline bool light_probe_frustum_cull(const glm::mat4& world_from_light,
-                                                 const ::epix::camera::Frustum& view_frustum) {
-    const ::epix::camera::Aabb unit_cube{.center = glm::vec3(0.0f), .half_extents = glm::vec3(0.5f)};
-    return view_frustum.intersects_obb(unit_cube, world_from_light, true, false);
-}
+EPIX_EXPORT EPIX_API bool light_probe_frustum_cull(const glm::mat4& world_from_light,
+                                                 const ::epix::camera::Frustum& view_frustum);
 
 /** @brief A light probe's sort key: its **squared** distance from the camera (Bevy
  *  `LightProbeInfo::camera_distance_sort_key`, `light_probe/mod.rs:575-582`).
@@ -244,11 +239,8 @@ EPIX_EXPORT inline bool light_probe_frustum_cull(const glm::mat4& world_from_lig
  *  float rather than Bevy's `FloatOrd` because that wrapper exists to make the sort
  *  total in the presence of NaN, which the sort here does not need. The lists come out
  *  nearest-first, which is the order the shader walks them in. */
-EPIX_EXPORT inline float light_probe_camera_distance_sort_key(const glm::mat4& world_from_light,
-                                                              glm::vec3 view_translation) {
-    const glm::vec3 offset = glm::vec3(world_from_light[3]) - view_translation;
-    return glm::dot(offset, offset);
-}
+EPIX_EXPORT EPIX_API float light_probe_camera_distance_sort_key(const glm::mat4& world_from_light,
+                                                              glm::vec3 view_translation);
 
 /** @brief What one gathered probe contributes to the uniform, standing in for Bevy's
  *  `LightProbeInfo<C>`, which is generic only because the asset ids differ per probe
@@ -279,25 +271,9 @@ EPIX_EXPORT struct LightProbeRecord {
  *
  *  `indices` maps a texture id to its slot in the view's binding arrays and is updated
  *  in place, exactly as Bevy's `get_or_insert_cubemap` does. */
-EPIX_EXPORT inline void light_probes_gather_list(std::vector<RenderLightProbe>& out,
+EPIX_EXPORT EPIX_API void light_probes_gather_list(std::vector<RenderLightProbe>& out,
                                                  std::unordered_map<std::uint64_t, std::uint32_t>& indices,
-                                                 const std::vector<LightProbeRecord>& probes) {
-    const std::size_t count = std::min(probes.size(), MAX_VIEW_LIGHT_PROBES);
-    for (std::size_t i = 0; i < count; ++i) {
-        const LightProbeRecord& probe = probes[i];
-
-        // The texture's slot, inserted on first sight; identical textures share it.
-        auto [entry, inserted] = indices.try_emplace(probe.texture_id, static_cast<std::uint32_t>(indices.size()));
-        (void)inserted;
-
-        out.push_back(RenderLightProbe{
-            .light_from_world_transposed      = probe.light_from_world_transposed,
-            .texture_index                    = static_cast<std::int32_t>(entry->second),
-            .intensity                        = probe.intensity,
-            .affects_lightmapped_mesh_diffuse = probe.affects_lightmapped_mesh_diffuse ? 1u : 0u,
-        });
-    }
-}
+                                                 const std::vector<LightProbeRecord>& probes);
 
 /** @brief The environment map layout entries: the diffuse and specular cubemap
  *  bindings, their sampler, and the uniform (Bevy

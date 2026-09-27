@@ -45,4 +45,40 @@ void prepare_environment_uniform_buffer(ecs::Commands commands,
     }
 }
 
+EnvironmentMapUniform environment_map_uniform_from(glm::quat rotation) {
+    return EnvironmentMapUniform{.transform = glm::inverse(glm::mat4_cast(rotation))};
+}
+
+bool light_probe_frustum_cull(const glm::mat4& world_from_light,
+                                                 const ::epix::camera::Frustum& view_frustum) {
+    const ::epix::camera::Aabb unit_cube{.center = glm::vec3(0.0f), .half_extents = glm::vec3(0.5f)};
+    return view_frustum.intersects_obb(unit_cube, world_from_light, true, false);
+}
+
+float light_probe_camera_distance_sort_key(const glm::mat4& world_from_light,
+                                                              glm::vec3 view_translation) {
+    const glm::vec3 offset = glm::vec3(world_from_light[3]) - view_translation;
+    return glm::dot(offset, offset);
+}
+
+void light_probes_gather_list(std::vector<RenderLightProbe>& out,
+                                                 std::unordered_map<std::uint64_t, std::uint32_t>& indices,
+                                                 const std::vector<LightProbeRecord>& probes) {
+    const std::size_t count = std::min(probes.size(), MAX_VIEW_LIGHT_PROBES);
+    for (std::size_t i = 0; i < count; ++i) {
+        const LightProbeRecord& probe = probes[i];
+
+        // The texture's slot, inserted on first sight; identical textures share it.
+        auto [entry, inserted] = indices.try_emplace(probe.texture_id, static_cast<std::uint32_t>(indices.size()));
+        (void)inserted;
+
+        out.push_back(RenderLightProbe{
+            .light_from_world_transposed      = probe.light_from_world_transposed,
+            .texture_index                    = static_cast<std::int32_t>(entry->second),
+            .intensity                        = probe.intensity,
+            .affects_lightmapped_mesh_diffuse = probe.affects_lightmapped_mesh_diffuse ? 1u : 0u,
+        });
+    }
+}
+
 }  // namespace epix::pbr
