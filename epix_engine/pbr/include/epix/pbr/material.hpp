@@ -238,6 +238,12 @@ struct Material {
 };
 
 
+/** @brief The extraction systems that record specialization ticks, which the sweep
+ *  then consumes (Bevy `MaterialExtractEntitiesNeedingSpecializationSystems`,
+ *  `material.rs:392`). */
+EPIX_EXPORT enum class MaterialExtractEntitiesNeedingSpecializationSystems {
+    Extract, /**< The per-material pass that records specialization ticks. */
+};
 /** @brief The extraction systems of one material type, which the sweeps order
  *  around (Bevy `MaterialExtractionSystems`, `material.rs:396`). */
 EPIX_EXPORT enum class MaterialExtractionSystems {
@@ -252,12 +258,45 @@ struct EntitiesNeedingSpecialization {
     std::vector<ecs::Entity> entities;
 };
 
-/** @brief The last specialization tick of each entity needing it (Bevy
- *  `EntitySpecializationTickPair<M>`, `material.rs:612-628`). */
-EPIX_EXPORT template <typename M>
-struct EntitySpecializationTickPair {
-    render::sync_world::MainEntityHashMap<ecs::Tick> entities;
+/** @brief Ticks saying when an entity's pipeline was last specialized (Bevy
+ *  `EntitySpecializationTickPair`, `material.rs:944-952`). Bevy keeps **two**
+ *  ticks for a subtle reason: a specialization can be invalidated either by the
+ *  system's own tick moving or by the material registry's, and the two are
+ *  advanced by different systems. */
+EPIX_EXPORT struct EntitySpecializationTickPair {
+    /** @brief The standard system tick. */
+    ecs::Tick system_tick;
+    /** @brief The `RenderMaterialInstances` tick, advanced by
+     *  `late_sweep_material_instances`. */
+    ecs::Tick material_instances_tick;
 };
+
+/** @brief When each entity's pipeline was last specialized (Bevy
+ *  `EntitySpecializationTicks`, `material.rs:904-908`). */
+EPIX_EXPORT struct EntitySpecializationTicks {
+    render::sync_world::MainEntityHashMap<EntitySpecializationTickPair> entities;
+};
+
+/** @brief Records, for every entity the main world queued, when its pipeline was
+ *  last specialized (Bevy `extract_entities_needs_specialization<M>`,
+ *  `material.rs:786-805`).
+ *
+ *  Both ticks are stored because either can invalidate a specialization: the
+ *  system tick moves with the frame, and the registry tick moves when a material
+ *  instance is swept. */
+EPIX_EXPORT template <typename M>
+void extract_entities_needs_specialization(
+    app::Extract<ecs::Res<EntitiesNeedingSpecialization<M>>> entities_needing_specialization,
+    ecs::ResMut<EntitySpecializationTicks> entity_specialization_ticks,
+    ecs::Res<RenderMaterialInstances> render_material_instances,
+    ecs::SystemChangeTick ticks) {
+    for (const ecs::Entity entity : entities_needing_specialization->entities) {
+        entity_specialization_ticks->entities.insert_or_assign(
+            render::sync_world::MainEntity{entity},
+            EntitySpecializationTickPair{.system_tick = ticks.this_run(),
+                                        .material_instances_tick = render_material_instances->current_change_tick});
+    }
+}
 
 /** @brief Queues the entities whose mesh or material changed so they are
  *  re-specialized (Bevy `check_entities_needing_specialization<M>`,
@@ -322,6 +361,7 @@ void check_light_entities_needing_specialization(
  *  caches). The registry resource is inserted here rather than by Bevy's
  *  `MaterialsPlugin`, which is global and unported. */
 EPIX_EXPORT template <typename M>
+    requires std::derived_from<M, Material<M>>
 struct MaterialPlugin {
     void attach(app::App& app) {
         app_register_asset<M>(app);
@@ -356,9 +396,19 @@ struct MaterialPlugin {
                 .set_name("early sweep material instances"));
         render_app->get().add_systems(app::ScheduleInfo(render::ExtractSchedule),
                                       ecs::into(late_sweep_material_instances).set_name("late sweep material instances"));
-    }
 
-    void attach_post_update(app::App& app) {
+        if (render_app) {
+            // Bevy orders this set's systems after the mesh extraction and before
+            // the sweep; the set has to be registered for the ordering to apply.
+            render_app->get().configure_sets(app::ScheduleInfo(render::ExtractSchedule),
+                                             ecs::sets(MaterialExtractEntitiesNeedingSpecializationSystems::Extract));
+            render_app->get().world_mut().init_resource<EntitySpecializationTicks>();
+            render_app->get().add_systems(
+                app::ScheduleInfo(render::ExtractSchedule),
+                ecs::into(extract_entities_needs_specialization<M>)
+                    .in_set(MaterialExtractEntitiesNeedingSpecializationSystems::Extract)
+                    .set_name("extract entities needing material specialization"));
+        }
         app.add_systems(app::ScheduleInfo(app::PostUpdate),
                         ecs::into(check_entities_needing_specialization<M>)
                             .after(assets::AssetSystems::WriteEvents)
@@ -371,6 +421,8 @@ struct MaterialPlugin {
                                 .set_name("check light entities needing material specialization"));
         }
     }
+
+
 };
 
 

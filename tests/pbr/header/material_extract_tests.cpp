@@ -44,7 +44,7 @@ void add_render_prerequisites(App& app) {
 
 /** @brief A stand-in material type: the registry is untyped, as Bevy's is, so the
  *  systems can be driven before the 3D `Material` counterpart exists. */
-struct StandInMaterial {};
+struct StandInMaterial : pbr::Material<StandInMaterial> {};
 
 }  // namespace
 
@@ -83,6 +83,10 @@ TEST(MaterialExtract, VisibilityDecidesRecordsAndTheSweepsAdvanceTheTick) {
     // The plugin registers the systems and creates the registry, so this covers both
     // its asset registration and the ordering it installs.
     application.add_plugins(pbr::MaterialPlugin<Material>{});
+
+    // The plugin also creates the specialization-tick resource its extraction
+    // system writes, which is what makes the two halves one path.
+    EXPECT_TRUE(render_app->get().world().get_resource<pbr::EntitySpecializationTicks>().has_value());
 
     auto render_sub = application.take_sub_app(Render);
     ASSERT_TRUE(render_sub);
