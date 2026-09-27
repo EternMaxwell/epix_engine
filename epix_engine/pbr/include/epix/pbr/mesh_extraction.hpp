@@ -27,6 +27,16 @@
 
 namespace epix::pbr {
 
+/** @brief The extraction systems that must finish before systems reading what they
+ *  extracted (Bevy `MeshExtractionSystems`, `render/mesh.rs:1339`).
+ *
+ *  Bevy attaches it to the mesh extraction systems inside `MeshRenderPlugin`; the
+ *  plugin is not ported yet, so the first user is the lightmap extraction, which
+ *  orders after it as Bevy's `LightmapPlugin` does. */
+EPIX_EXPORT enum class MeshExtractionSystems {
+    Extract, /**< The mesh extraction pass this ordering set marks. */
+};
+
 /** @brief All the data the GPU mesh extraction needs from a mesh entity (Bevy
  *  `GpuMeshExtractionQuery`, `bevy_pbr/src/render/mesh.rs:1460-1477`).
  *

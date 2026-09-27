@@ -79,8 +79,10 @@ TEST(LightmapExtract, InitialisesEmptyAndAllocatesForVisibleLightmaps) {
     const epix::ecs::Entity lit = app.world_mut().spawn(pbr::Lightmap{}, visible).id();
     const epix::ecs::Entity invisible = app.world_mut().spawn(pbr::Lightmap{}, epix::camera::ViewVisibility::hidden()).id();
 
-    render_app->get().add_systems(RenderStartup, epix::ecs::into(epix::pbr::init_render_lightmaps).set_name("init lightmaps"));
-    render_app->get().add_systems(ExtractSchedule, epix::ecs::into(epix::pbr::extract_lightmaps).set_name("extract lightmaps"));
+    // The systems are registered by the plugin rather than by hand, so this also covers
+    // its scheduling: the initialiser at render startup, the extraction on the extract
+    // schedule after `MeshExtractionSystems` (Bevy `LightmapPlugin::build`).
+    app.add_plugins(pbr::LightmapPlugin{});
     render_app->get().run_schedule(RenderStartup);
 
     // What the initialiser leaves behind: an empty resource, not a pre-built slab.

@@ -216,4 +216,17 @@ EPIX_EXPORT EPIX_API void extract_lightmaps(
 EPIX_EXPORT EPIX_API void init_render_lightmaps(ecs::Commands commands, ecs::Res<wgpu::Device> render_device,
                                                ecs::Res<wgpu::Adapter> render_adapter);
 
+/** @brief Registers the lightmap systems (Bevy `LightmapPlugin`,
+ *  `bevy_pbr/src/lightmap/mod.rs:170-198`).
+ *
+ *  Bevy's `load_shader_library!(app, "lightmap.wgsl")` corresponds to the
+ *  `epix.lightmap` module that `register_mesh_shaders` embeds; what is left for the
+ *  plugin is the two systems and their places in the schedule - the initialiser at
+ *  render startup, and the extraction after `MeshExtractionSystems`, which is what
+ *  makes a lightmap allocated in the same frame as its mesh. */
+EPIX_EXPORT struct EPIX_API LightmapPlugin {
+    /** @brief Bevy's build-time hook, spelled `attach` in this port's plugin protocol. */
+    void attach(app::App& app);
+};
+
 }  // namespace epix::pbr

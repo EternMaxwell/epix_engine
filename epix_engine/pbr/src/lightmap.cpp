@@ -3,6 +3,7 @@
 #include <bit>
 #include <cassert>
 #include <cstdint>
+#include <epix/pbr/mesh_extraction.hpp>
 #include <epix/render/assets.hpp>
 #include <optional>
 #include <utility>
@@ -145,6 +146,17 @@ void init_render_lightmaps(ecs::Commands commands, ecs::Res<wgpu::Device> render
     RenderLightmaps lightmaps;
     lightmaps.bindless_supported = bindless_supported;
     commands.insert_resource(std::move(lightmaps));
+}
+
+void LightmapPlugin::attach(app::App& app) {
+    auto render_app = app.get_sub_app_mut(render::Render);
+    if (!render_app) return;
+
+    render_app->get().add_systems(app::ScheduleInfo(render::RenderStartup),
+                                  ecs::into(init_render_lightmaps).set_name("init render lightmaps"));
+    render_app->get().add_systems(
+        app::ScheduleInfo(render::ExtractSchedule),
+        ecs::into(extract_lightmaps).after(MeshExtractionSystems::Extract).set_name("extract lightmaps"));
 }
 
 }  // namespace epix::pbr
