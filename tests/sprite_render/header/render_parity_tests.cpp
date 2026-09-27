@@ -435,3 +435,30 @@ TEST(Material2dRenderCommand, SkipsWhenTheInstanceOrPreparedMaterialIsMissing) {
     ASSERT_TRUE(observed.has_value()) << "an unprepared material must skip the draw";
     EXPECT_EQ(observed->type, render::phase::RenderCommandError::Type::Skip);
 }
+
+/** @brief The default `ColorMaterial` is reachable at a well-known handle (Bevy
+ *  inserts it at `Handle::<ColorMaterial>::default()`,
+ *  `bevy_sprite_render/src/mesh2d/color_material.rs:21-32`).
+ *
+ *  Bevy's plugin inserts its magenta default *at the default-asset handle*, which
+ *  is what makes that handle resolve. Epix names the handle instead, because its
+ *  `Handle` deletes the default constructor - so the property to check is that the
+ *  named handle resolves the material, which is what this does through the same
+ *  `Assets::insert` the plugin calls. A material stored at a freshly allocated
+ *  index would fail this: it would exist with nothing able to name it. */
+TEST(Material2dPlugin, DefaultColorMaterialResolvesAtItsWellKnownHandle) {
+    using Material = sprite_render::ColorMaterial;
+
+    epix::assets::Assets<Material> materials;
+    EXPECT_FALSE(materials.get(sprite_render::DEFAULT_COLOR_MATERIAL_HANDLE).has_value())
+        << "nothing is there before the plugin inserts it";
+
+    const auto inserted = materials.insert(sprite_render::DEFAULT_COLOR_MATERIAL_HANDLE.id(),
+                                           Material{.color = glm::vec4(1.0f, 0.0f, 1.0f, 1.0f)});
+    ASSERT_TRUE(inserted.has_value()) << "the plugin inserts rather than re-allocating";
+
+    const auto resolved = materials.get(sprite_render::DEFAULT_COLOR_MATERIAL_HANDLE);
+    ASSERT_TRUE(resolved.has_value()) << "and the well-known handle resolves it";
+    const glm::vec4 expected_magenta{1.0f, 0.0f, 1.0f, 1.0f};
+    EXPECT_EQ(resolved->get().color, expected_magenta) << "the default is Bevy's magenta";
+}

@@ -10,6 +10,7 @@
 #include <glm/glm.hpp>
 #include <optional>
 #include <string_view>
+#include <uuid.h>
 #endif
 
 namespace epix::sprite_render {
@@ -101,6 +102,19 @@ EPIX_EXPORT struct ColorMaterial : Material2d<ColorMaterial> {
         return material;
     }
 };
+
+/** @brief The well-known handle the default magenta `ColorMaterial` is inserted
+ *  at (Bevy's `Handle::<ColorMaterial>::default()`,
+ *  `color_material.rs:21-32`).
+ *
+ *  Bevy inserts its default material *at the default-asset handle*, which is what
+ *  makes that handle resolve. Epix's `Handle` deletes its default constructor (the
+ *  same divergence `MeshMaterial2d`'s `Default` records), so the counterpart is a
+ *  named handle with a fixed id - the pattern `image::DEFAULT_IMAGE_HANDLE` uses.
+ *  Without it the default material sits at a freshly allocated index that nothing
+ *  can name. */
+struct ColorMaterial;
+inline const assets::Handle<ColorMaterial> DEFAULT_COLOR_MATERIAL_HANDLE{uuids::uuid{}};
 }  // namespace epix::sprite_render
 
 namespace epix::render::render_resource {
