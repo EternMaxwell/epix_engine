@@ -30,15 +30,6 @@ glm::mat4 point_light_face_clip_from_world(
            glm::inverse(point_light_face_world_from_view(rotations, light_translation, face_index));
 }
 
-std::uint32_t point_light_shadow_array_layer(std::size_t light_index, std::size_t face_index) {
-    return static_cast<std::uint32_t>(light_index * POINT_LIGHT_CUBE_FACE_COUNT + face_index);
-}
-
-std::string point_light_shadow_pass_name(std::size_t light_index, std::size_t face_index) {
-    return "shadow_point_light_" + std::to_string(light_index) + "_" +
-           std::string(camera::face_index_to_name(face_index));
-}
-
 std::vector<ShadowViewRequest> point_light_shadow_view_requests(
     const std::vector<std::pair<ecs::Entity, glm::vec3>>& shadow_casting_lights,
     float shadow_map_near_z,
@@ -63,10 +54,6 @@ std::vector<ShadowViewRequest> point_light_shadow_view_requests(
         }
     }
     return requests;
-}
-
-std::string directional_shadow_pass_name(std::size_t light_index, std::size_t cascade_index) {
-    return "shadow_directional_light_" + std::to_string(light_index) + "_cascade_" + std::to_string(cascade_index);
 }
 
 void fill_gpu_directional_cascades(GpuDirectionalLight& light,
@@ -158,10 +145,6 @@ bool should_update_point_light_frusta(bool light_changed,
     if (!global_lights_changed && !light_changed) return false;
     if (!shadows_enabled) return false;
     return in_global_lights;
-}
-
-bool should_update_directional_cascade_frusta(bool shadows_enabled, bool light_visible) {
-    return shadows_enabled && light_visible;
 }
 
 void shrink_entities(std::vector<ecs::Entity>& visible_entities) {

@@ -46,10 +46,6 @@ CascadeShadowConfig build_cascade_shadow_config(const CascadeShadowConfigBuilder
     };
 }
 
-CascadeShadowConfig default_cascade_shadow_config() {
-    return build_cascade_shadow_config(CascadeShadowConfigBuilder{});
-}
-
 std::vector<std::pair<float, float>> cascade_bounds(const CascadeShadowConfig& config) {
     const float overlap_factor = 1.0f - config.overlap_proportion;
 

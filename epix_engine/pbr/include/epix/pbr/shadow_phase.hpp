@@ -125,12 +125,17 @@ EPIX_EXPORT EPIX_API glm::mat4 point_light_face_clip_from_world(
 /** @brief The texture array layer a point light's face writes to (Bevy
  *  `render/light.rs:1293`): each light owns six consecutive layers of the shared
  *  cubemap array. */
-EPIX_EXPORT EPIX_API std::uint32_t point_light_shadow_array_layer(std::size_t light_index, std::size_t face_index);
+EPIX_EXPORT inline std::uint32_t point_light_shadow_array_layer(std::size_t light_index, std::size_t face_index) {
+    return static_cast<std::uint32_t>(light_index * POINT_LIGHT_CUBE_FACE_COUNT + face_index);
+}
 
 /** @brief The pass name Bevy gives a point light's face (Bevy
  *  `render/light.rs:1328-1332`), which is what shows up in a capture and a
  *  profiler, so it is worth keeping identical. */
-EPIX_EXPORT EPIX_API std::string point_light_shadow_pass_name(std::size_t light_index, std::size_t face_index);
+EPIX_EXPORT inline std::string point_light_shadow_pass_name(std::size_t light_index, std::size_t face_index) {
+    return "shadow_point_light_" + std::to_string(light_index) + "_" +
+           std::string(camera::face_index_to_name(face_index));
+}
 
 /** @brief One shadow view a view's lights need (Bevy `prepare_lights`,
  *  `render/light.rs:1290-1360` for the point-light case). */
@@ -164,7 +169,9 @@ EPIX_EXPORT EPIX_API std::vector<ShadowViewRequest> point_light_shadow_view_requ
 
 /** @brief The pass name Bevy gives a directional light's cascade (Bevy
  *  `render/light.rs:1582-1584`). */
-EPIX_EXPORT EPIX_API std::string directional_shadow_pass_name(std::size_t light_index, std::size_t cascade_index);
+EPIX_EXPORT inline std::string directional_shadow_pass_name(std::size_t light_index, std::size_t cascade_index) {
+    return "shadow_directional_light_" + std::to_string(light_index) + "_cascade_" + std::to_string(cascade_index);
+}
 
 /** @brief Fill a light's GPU cascades from its extracted cascades and its
  *  configuration's bounds (Bevy `render/light.rs:1536-1541`).
@@ -269,7 +276,9 @@ EPIX_EXPORT EPIX_API bool should_update_point_light_frusta(bool light_changed,
  *  Bevy's query also excludes entities with a `Camera`, which is a query-shape
  *  constraint to keep it from conflicting with camera queries rather than a
  *  runtime condition, so it has no counterpart here. */
-EPIX_EXPORT EPIX_API bool should_update_directional_cascade_frusta(bool shadows_enabled, bool light_visible);
+EPIX_EXPORT inline bool should_update_directional_cascade_frusta(bool shadows_enabled, bool light_visible) {
+    return shadows_enabled && light_visible;
+}
 
 /** @brief Bound a visible-entity list's capacity (Bevy `shrink_entities`,
  *  `bevy_light/src/lib.rs:286-300`).

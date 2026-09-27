@@ -27,11 +27,15 @@ EPIX_EXPORT inline constexpr float REVISED_KOSCHMIEDER_CONTRAST_THRESHOLD = 0.05
  *
  *  A larger visibility gives a smaller exponent, which is the point: the fog is meant
  *  to be that much less dense when you can see further. */
-EPIX_EXPORT EPIX_API float koschmieder(float visibility, float contrast_threshold);
+EPIX_EXPORT inline float koschmieder(float visibility, float contrast_threshold) {
+    return -std::log(contrast_threshold) / visibility;
+}
 
 /** @brief The density of an `Exponential` falloff for a desired visibility distance
  *  (Bevy `FogFalloff::from_visibility_contrast`, `fog.rs:318`). */
-EPIX_EXPORT EPIX_API float fog_exponential_density(float visibility, float contrast_threshold);
+EPIX_EXPORT inline float fog_exponential_density(float visibility, float contrast_threshold) {
+    return koschmieder(visibility, contrast_threshold);
+}
 
 /** @brief The density of an `ExponentialSquared` falloff for a desired visibility
  *  distance (Bevy `FogFalloff::from_visibility_contrast_squared`, `fog.rs:335`).
@@ -40,7 +44,9 @@ EPIX_EXPORT EPIX_API float fog_exponential_density(float visibility, float contr
  *  `koschmieder`: the square root is of `-ln(c) / visibility^2`, not of the plain
  *  Koschmieder exponent. Dropping that second division produces a density that is
  *  wrong by a factor of the visibility, which still looks like fog. */
-EPIX_EXPORT EPIX_API float fog_exponential_squared_density(float visibility, float contrast_threshold);
+EPIX_EXPORT inline float fog_exponential_squared_density(float visibility, float contrast_threshold) {
+    return std::sqrt(koschmieder(visibility, contrast_threshold) / visibility);
+}
 
 /** @brief The extinction coefficients of an `Atmospheric` falloff (Bevy
  *  `FogFalloff::from_visibility_contrast_colors`, `fog.rs:413-422`).
@@ -65,7 +71,10 @@ EPIX_EXPORT EPIX_API glm::vec3 fog_atmospheric_extinction(glm::vec3 extinction_r
  *
  *  Not inverted, unlike the extinction: the in-scattered light is the colour you see,
  *  so a blue in-scattering colour adds blue. */
-EPIX_EXPORT EPIX_API glm::vec3 fog_atmospheric_inscattering(glm::vec3 inscattering_rgb);
+EPIX_EXPORT inline glm::vec3 fog_atmospheric_inscattering(glm::vec3 inscattering_rgb) {
+    const float e = static_cast<float>(std::numbers::e);
+    return glm::vec3(std::pow(inscattering_rgb.x, e), std::pow(inscattering_rgb.y, e), std::pow(inscattering_rgb.z, e));
+}
 
 /** @brief The linear fog falloff (Bevy `FogFalloff::Linear`). */
 EPIX_EXPORT struct FogFalloffLinear {

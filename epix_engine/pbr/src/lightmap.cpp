@@ -35,15 +35,6 @@ LightmapSlotIndex LightmapSlab::allocate(assets::AssetId<::epix::image::Image> i
     return LightmapSlotIndex{.index = static_cast<std::uint16_t>(slot)};
 }
 
-void LightmapSlab::insert(LightmapSlotIndex index, render::texture::GpuImage gpu_image) {
-    lightmaps[index.index] = AllocatedLightmap{.gpu_image = std::move(gpu_image), .asset_id = std::nullopt};
-}
-
-void LightmapSlab::remove(const render::texture::FallbackImage& fallback_images, LightmapSlotIndex index) {
-    lightmaps[index.index] = AllocatedLightmap{.gpu_image = fallback_images.d2, .asset_id = std::nullopt};
-    free_slots_bitmask |= 1u << index.index;
-}
-
 std::pair<std::vector<const wgpu::TextureView*>, std::vector<const wgpu::Sampler*>>
 LightmapSlab::build_binding_arrays() const {
     std::vector<const wgpu::TextureView*> texture_views;
@@ -55,10 +46,6 @@ LightmapSlab::build_binding_arrays() const {
         samplers.push_back(&allocated.gpu_image.sampler);
     }
     return {std::move(texture_views), std::move(samplers)};
-}
-
-std::pair<const wgpu::TextureView*, const wgpu::Sampler*> LightmapSlab::bindings_for_first_lightmap() const {
-    return {&lightmaps[0].gpu_image.texture_view, &lightmaps[0].gpu_image.sampler};
 }
 
 LightmapSlabIndex RenderLightmaps::create_slab(const render::texture::FallbackImage& fallback_images) {

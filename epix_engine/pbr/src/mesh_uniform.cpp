@@ -6,7 +6,7 @@
 
 namespace epix::pbr {
 
-EPIX_EXPORT EPIX_API std::array<glm::vec4, 3> to_transpose(const glm::mat4& world_from_local) {
+std::array<glm::vec4, 3> to_transpose(const glm::mat4& world_from_local) {
     return {
         glm::vec4(world_from_local[0][0], world_from_local[1][0], world_from_local[2][0], world_from_local[3][0]),
         glm::vec4(world_from_local[0][1], world_from_local[1][1], world_from_local[2][1], world_from_local[3][1]),
@@ -14,7 +14,7 @@ EPIX_EXPORT EPIX_API std::array<glm::vec4, 3> to_transpose(const glm::mat4& worl
     };
 }
 
-EPIX_EXPORT EPIX_API std::pair<std::array<glm::vec4, 2>, float> inverse_transpose_3x3(const glm::mat4& world_from_local) {
+std::pair<std::array<glm::vec4, 2>, float> inverse_transpose_3x3(const glm::mat4& world_from_local) {
     // The affine's inverse; its 3x3 part is the inverse of the 3x3 because the
     // fourth column does not affect it. Transposed, because that is what
     // transforms normals.

@@ -78,7 +78,9 @@ EPIX_EXPORT EPIX_API CascadeShadowConfig build_cascade_shadow_config(const Casca
 
 /** @brief `CascadeShadowConfig::default()` builds from the default builder
  *  (Bevy `cascade.rs:33-37`). */
-EPIX_EXPORT EPIX_API CascadeShadowConfig default_cascade_shadow_config();
+EPIX_EXPORT inline CascadeShadowConfig default_cascade_shadow_config() {
+    return build_cascade_shadow_config(CascadeShadowConfigBuilder{});
+}
 
 /** @brief One cascade of a directional light's shadow map (Bevy `Cascade`,
  *  `bevy_light/src/cascade.rs:169-184`). */

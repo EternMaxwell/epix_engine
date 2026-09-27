@@ -45,10 +45,6 @@ void prepare_environment_uniform_buffer(ecs::Commands commands,
     }
 }
 
-EnvironmentMapUniform environment_map_uniform_from(glm::quat rotation) {
-    return EnvironmentMapUniform{.transform = glm::inverse(glm::mat4_cast(rotation))};
-}
-
 bool light_probe_frustum_cull(const glm::mat4& world_from_light,
                                                  const ::epix::camera::Frustum& view_frustum) {
     const ::epix::camera::Aabb unit_cube{.center = glm::vec3(0.0f), .half_extents = glm::vec3(0.5f)};

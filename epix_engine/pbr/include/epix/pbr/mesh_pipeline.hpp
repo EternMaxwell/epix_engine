@@ -216,7 +216,10 @@ EPIX_EXPORT struct MeshMorphSkinningSetup {
  *  `setup_morph_and_skinning_defs` takes the layout rather than a pre-computed
  *  flag. Bevy reads `layout.0.contains(..)`; the reference's `value` is where
  *  Epix's interned layout lives. */
-EPIX_EXPORT EPIX_API bool is_skinned(const mesh::MeshVertexBufferLayoutRef& layout);
+EPIX_EXPORT inline bool is_skinned(const mesh::MeshVertexBufferLayoutRef& layout) {
+    return layout.value->contains(mesh::Mesh::ATTRIBUTE_JOINT_INDEX) &&
+           layout.value->contains(mesh::Mesh::ATTRIBUTE_JOINT_WEIGHT);
+}
 
 /** @brief The defs and vertex attributes a mesh's morph and skinning state adds
  *  (Bevy `setup_morph_and_skinning_defs`, `render/mesh.rs:2312-2370`).

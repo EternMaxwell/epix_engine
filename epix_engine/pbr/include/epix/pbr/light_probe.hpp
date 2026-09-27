@@ -211,7 +211,9 @@ EPIX_EXPORT EPIX_API void prepare_environment_uniform_buffer(
  *  offset: a view that is a `Camera3d` gets a uniform here even without an
  *  `EnvironmentMapLight`, holding the identity, and the offset-0 arm there covers only
  *  views that extraction never saw at all. */
-EPIX_EXPORT EPIX_API EnvironmentMapUniform environment_map_uniform_from(glm::quat rotation);
+EPIX_EXPORT inline EnvironmentMapUniform environment_map_uniform_from(glm::quat rotation) {
+    return EnvironmentMapUniform{.transform = glm::inverse(glm::mat4_cast(rotation))};
+}
 
 /** @brief The uniform for a view with no environment map light: the identity, so the
  *  sample direction passes through unrotated (Bevy `EnvironmentMapUniform::default`). */

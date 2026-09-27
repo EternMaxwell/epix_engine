@@ -121,11 +121,16 @@ EPIX_EXPORT struct EPIX_API LightmapSlab {
 
     /** @brief Fill a slot once its image has been uploaded (Bevy
      *  `LightmapSlab::insert`, `lightmap/mod.rs:430-435`). */
-    void insert(LightmapSlotIndex index, render::texture::GpuImage gpu_image);
+    void insert(LightmapSlotIndex index, render::texture::GpuImage gpu_image) {
+        lightmaps[index.index] = AllocatedLightmap{.gpu_image = std::move(gpu_image), .asset_id = std::nullopt};
+    }
 
     /** @brief Free a slot back to the fallback image (Bevy
      *  `LightmapSlab::remove`, `lightmap/mod.rs:437-446`). */
-    void remove(const render::texture::FallbackImage& fallback_images, LightmapSlotIndex index);
+    void remove(const render::texture::FallbackImage& fallback_images, LightmapSlotIndex index) {
+        lightmaps[index.index] = AllocatedLightmap{.gpu_image = fallback_images.d2, .asset_id = std::nullopt};
+        free_slots_bitmask |= 1u << index.index;
+    }
 
     /** @brief Every slot's texture view and sampler, in slot order: what the
      *  lightmapped layout's binding array binds when binding arrays are usable
@@ -137,7 +142,9 @@ EPIX_EXPORT struct EPIX_API LightmapSlab {
      *  layout without binding arrays binds (Bevy
      *  `LightmapSlab::bindings_for_first_lightmap`,
      *  `lightmap/mod.rs:469-474`). */
-    std::pair<const wgpu::TextureView*, const wgpu::Sampler*> bindings_for_first_lightmap() const;
+    std::pair<const wgpu::TextureView*, const wgpu::Sampler*> bindings_for_first_lightmap() const {
+        return {&lightmaps[0].gpu_image.texture_view, &lightmaps[0].gpu_image.sampler};
+    }
 };
 
 /** @brief All lightmaps in the render world (Bevy `RenderLightmaps`,

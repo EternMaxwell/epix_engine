@@ -98,7 +98,10 @@ EPIX_EXPORT inline constexpr std::size_t POINT_LIGHT_CUBE_FACE_COUNT = 6;
 /** @brief How many layers the point-light shadow texture needs (Bevy
  *  `render/light.rs:1030`): six per shadow-casting point light, and at least one
  *  cubemap even when nothing casts, because the texture is created regardless. */
-EPIX_EXPORT EPIX_API std::uint32_t point_light_shadow_texture_layers(std::size_t point_light_shadow_maps_count);
+EPIX_EXPORT inline std::uint32_t point_light_shadow_texture_layers(std::size_t point_light_shadow_maps_count) {
+    return static_cast<std::uint32_t>(std::max<std::size_t>(point_light_shadow_maps_count, 1) *
+                                      POINT_LIGHT_CUBE_FACE_COUNT);
+}
 
 /** @brief How many layers the directional shadow texture needs (Bevy
  *  `render/light.rs:1080-1082`): the directional cascades plus the spot-light
@@ -107,23 +110,30 @@ EPIX_EXPORT EPIX_API std::uint32_t point_light_shadow_texture_layers(std::size_t
  *  The two share this single array - which is why a spot light's shadow map index
  *  is offset by the cascade count rather than starting at zero - and the spot
  *  count is already capped by the layers left over after the cascades. */
-EPIX_EXPORT EPIX_API std::uint32_t directional_light_shadow_texture_layers(std::size_t num_directional_cascades_enabled,
-                                                                         std::size_t spot_light_shadow_maps_count);
+EPIX_EXPORT inline std::uint32_t directional_light_shadow_texture_layers(std::size_t num_directional_cascades_enabled,
+                                                                        std::size_t spot_light_shadow_maps_count) {
+    return static_cast<std::uint32_t>(
+        std::max<std::size_t>(num_directional_cascades_enabled + spot_light_shadow_maps_count, 1));
+}
 
 /** @brief The side of the directional shadow map texture (Bevy
  *  `render/light.rs:1076-1079`): the configured size clamped to the device's
  *  maximum 2D dimension, so an oversized request degrades rather than failing.
  *  A point light's is not clamped separately, since its cubemap faces are the
  *  same size. */
-EPIX_EXPORT EPIX_API std::uint32_t directional_light_shadow_texture_size(std::size_t shadow_map_size,
-                                                                       std::size_t max_texture_dimension_2d);
+EPIX_EXPORT inline std::uint32_t directional_light_shadow_texture_size(std::size_t shadow_map_size,
+                                                                      std::size_t max_texture_dimension_2d) {
+    return static_cast<std::uint32_t>(std::min(shadow_map_size, max_texture_dimension_2d));
+}
 
 /** @brief How many point lights get shadow maps (Bevy `render/light.rs:1250-1253`):
  *  the first `point_light_count` in the sorted list, capped by the device's
  *  cubemap count. The lights are sorted shadow-casting first, so the cap keeps the
  *  ones that matter, and each of these gets `POINT_LIGHT_CUBE_FACE_COUNT` views. */
-EPIX_EXPORT EPIX_API std::size_t point_light_shadow_view_count(std::size_t point_light_count,
-                                                             std::size_t max_texture_cubes);
+EPIX_EXPORT inline std::size_t point_light_shadow_view_count(std::size_t point_light_count,
+                                                             std::size_t max_texture_cubes) {
+    return std::min(point_light_count, max_texture_cubes);
+}
 
 /** @brief What a shadow view belongs to (Bevy `LightEntity`,
  *  `light.rs:690-703`): a directional light's cascade, a point light's cubemap
@@ -298,7 +308,10 @@ EPIX_EXPORT EPIX_API std::pair<glm::vec4, float> spot_light_custom_data(float in
 /** @brief A point light's packed cube-face data (Bevy `render/light.rs:936-946`):
  *  the lower-right 2x2 values of the cube-face projection matrix, which the
  *  shader uses to reconstruct the direction to each of the six faces. */
-EPIX_EXPORT EPIX_API glm::vec4 point_light_custom_data(const glm::mat4& cube_face_projection);
+EPIX_EXPORT inline glm::vec4 point_light_custom_data(const glm::mat4& cube_face_projection) {
+    return glm::vec4(cube_face_projection[2][2], cube_face_projection[2][3], cube_face_projection[3][2],
+                     cube_face_projection[3][3]);
+}
 
 /** @brief Whether a spot light's `SPOT_LIGHT_Y_NEGATIVE` flag is set (Bevy
  *  `render/light.rs:920-923`).
@@ -314,7 +327,9 @@ EPIX_EXPORT inline bool spot_light_y_negative(glm::vec3 light_direction) { retur
  *  Bevy multiplies the whole `vec4` including alpha - "we don't use the alpha at
  *  all", so there is no reason to touch only the first three components - then
  *  takes the xyz and puts `1 / range²` in w. */
-EPIX_EXPORT EPIX_API glm::vec4 pack_light_color_intensity_range(glm::vec4 color, float intensity, float range);
+EPIX_EXPORT inline glm::vec4 pack_light_color_intensity_range(glm::vec4 color, float intensity, float range) {
+    return glm::vec4(glm::vec3(color * intensity), 1.0f / (range * range));
+}
 
 /** @brief The flags word for a point light, given its position in the sorted
  *  list (Bevy `prepare_lights`, `render/light.rs:887-916`).
@@ -349,7 +364,9 @@ EPIX_EXPORT EPIX_API std::size_t num_directional_cascades_enabled(
  *  the ambient light's colour, which is already linear, scaled by its
  *  brightness. The light is the camera's override when it has one and the global
  *  ambient otherwise, resolved by the caller. */
-EPIX_EXPORT EPIX_API glm::vec4 pack_ambient_color(glm::vec4 linear_color, float brightness);
+EPIX_EXPORT inline glm::vec4 pack_ambient_color(glm::vec4 linear_color, float brightness) {
+    return linear_color * brightness;
+}
 
 /** @brief The cluster factors a view's lights carry (Bevy `render/light.rs:1232-1237`).
  *
@@ -357,14 +374,19 @@ EPIX_EXPORT EPIX_API glm::vec4 pack_ambient_color(glm::vec4 linear_color, float 
  *  width and height - how much of the screen one cluster covers - while z and w
  *  are `calculate_cluster_factors`' log-based pair, which the shader uses to
  *  recover a view Z from a slice index. */
-EPIX_EXPORT EPIX_API glm::vec4 pack_cluster_factors(glm::uvec3 cluster_dimensions,
-                                                  glm::vec2 viewport_size,
-                                                  glm::vec2 log_factors);
+EPIX_EXPORT inline glm::vec4 pack_cluster_factors(glm::uvec3 cluster_dimensions,
+                                                 glm::vec2 viewport_size,
+                                                 glm::vec2 log_factors) {
+    return glm::vec4(static_cast<float>(cluster_dimensions.x) / viewport_size.x,
+                     static_cast<float>(cluster_dimensions.y) / viewport_size.y, log_factors.x, log_factors.y);
+}
 
 /** @brief The dimensions word of a view's lights (Bevy `render/light.rs:1238`):
  *  x, y and z are the cluster counts, and w is how many clusters there are in
  *  total. */
-EPIX_EXPORT EPIX_API glm::uvec4 pack_cluster_dimensions(glm::uvec3 cluster_dimensions);
+EPIX_EXPORT inline glm::uvec4 pack_cluster_dimensions(glm::uvec3 cluster_dimensions) {
+    return glm::uvec4(cluster_dimensions, cluster_dimensions.x * cluster_dimensions.y * cluster_dimensions.z);
+}
 
 /** @brief The offset that turns a spot light's index into its shadow map's
  *  (Bevy `render/light.rs:1240-1244`).
@@ -375,8 +397,10 @@ EPIX_EXPORT EPIX_API glm::uvec4 pack_cluster_dimensions(glm::uvec3 cluster_dimen
  *  count and adding the cascade count converts one index to the other. Adding the
  *  two in the wrong order, or the wrong way round, silently reads the wrong
  *  shadow map. */
-EPIX_EXPORT EPIX_API std::int32_t spot_light_shadowmap_offset(std::size_t num_directional_cascades_enabled,
-                                                            std::size_t point_light_count);
+EPIX_EXPORT inline std::int32_t spot_light_shadowmap_offset(std::size_t num_directional_cascades_enabled,
+                                                            std::size_t point_light_count) {
+    return static_cast<std::int32_t>(num_directional_cascades_enabled) - static_cast<std::int32_t>(point_light_count);
+}
 
 /** @brief A directional light's flags and the cascades it was granted (Bevy
  *  `render/light.rs:1171-1196`).
@@ -427,7 +451,9 @@ EPIX_EXPORT inline constexpr std::uint32_t NO_CLUSTERED_DECAL = 0xFFFFFFFFu;
  *  rather than a second copy. The near plane is the light's `shadow_map_near_z`,
  *  and there is no far plane: the projection is infinite, and a light's `range`
  *  bounds what matters. */
-EPIX_EXPORT EPIX_API glm::mat4 cube_face_projection(float shadow_map_near_z);
+EPIX_EXPORT inline glm::mat4 cube_face_projection(float shadow_map_near_z) {
+    return camera::perspective_infinite_reverse_rh(std::numbers::pi_v<float> / 2.0f, 1.0f, shadow_map_near_z);
+}
 
 /** @brief Where one directional light's cascades sit in a view's shared shadow
  *  array (Bevy `prepare_lights`, `render/light.rs:1484-1525`). */

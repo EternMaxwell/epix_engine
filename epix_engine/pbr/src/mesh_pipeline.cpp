@@ -258,11 +258,6 @@ wgpu::MultisampleState mesh_pipeline_multisample_state(std::uint32_t msaa_sample
     return state;
 }
 
-bool is_skinned(const mesh::MeshVertexBufferLayoutRef& layout) {
-    return layout.value->contains(mesh::Mesh::ATTRIBUTE_JOINT_INDEX) &&
-           layout.value->contains(mesh::Mesh::ATTRIBUTE_JOINT_WEIGHT);
-}
-
 MeshMorphSkinningSetup setup_morph_and_skinning_defs(const MeshPipelineKey& key,
                                                                         const mesh::MeshVertexBufferLayoutRef& layout,
                                                                         std::uint32_t offset,

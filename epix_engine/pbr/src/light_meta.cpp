@@ -10,27 +10,6 @@ AmbientLight resolve_ambient_light(const AmbientLight* camera_override,
                         .affects_lightmapped_meshes = global.affects_lightmapped_meshes};
 }
 
-std::uint32_t point_light_shadow_texture_layers(std::size_t point_light_shadow_maps_count) {
-    return static_cast<std::uint32_t>(std::max<std::size_t>(point_light_shadow_maps_count, 1) *
-                                      POINT_LIGHT_CUBE_FACE_COUNT);
-}
-
-std::uint32_t directional_light_shadow_texture_layers(std::size_t num_directional_cascades_enabled,
-                                                                         std::size_t spot_light_shadow_maps_count) {
-    return static_cast<std::uint32_t>(
-        std::max<std::size_t>(num_directional_cascades_enabled + spot_light_shadow_maps_count, 1));
-}
-
-std::uint32_t directional_light_shadow_texture_size(std::size_t shadow_map_size,
-                                                                       std::size_t max_texture_dimension_2d) {
-    return static_cast<std::uint32_t>(std::min(shadow_map_size, max_texture_dimension_2d));
-}
-
-std::size_t point_light_shadow_view_count(std::size_t point_light_count,
-                                                             std::size_t max_texture_cubes) {
-    return std::min(point_light_count, max_texture_cubes);
-}
-
 LightCounts count_lights(const std::vector<ExtractedPointLight>& point_lights,
                                             const std::vector<ExtractedDirectionalLight>& directional_lights,
                                             std::size_t max_texture_array_layers,
@@ -112,15 +91,6 @@ std::pair<glm::vec4, float> spot_light_custom_data(float inner_angle,
     return {glm::vec4(light_direction.x, light_direction.z, spot_scale, spot_offset), std::tan(outer_angle)};
 }
 
-glm::vec4 point_light_custom_data(const glm::mat4& cube_face_projection) {
-    return glm::vec4(cube_face_projection[2][2], cube_face_projection[2][3], cube_face_projection[3][2],
-                     cube_face_projection[3][3]);
-}
-
-glm::vec4 pack_light_color_intensity_range(glm::vec4 color, float intensity, float range) {
-    return glm::vec4(glm::vec3(color * intensity), 1.0f / (range * range));
-}
-
 std::uint32_t point_light_gpu_flags(std::size_t index,
                                                        const ExtractedPointLight& light,
                                                        const LightCounts& counts) {
@@ -160,26 +130,6 @@ std::size_t num_directional_cascades_enabled(
     return std::min(enabled, max_texture_array_layers);
 }
 
-glm::vec4 pack_ambient_color(glm::vec4 linear_color, float brightness) {
-    return linear_color * brightness;
-}
-
-glm::vec4 pack_cluster_factors(glm::uvec3 cluster_dimensions,
-                                                  glm::vec2 viewport_size,
-                                                  glm::vec2 log_factors) {
-    return glm::vec4(static_cast<float>(cluster_dimensions.x) / viewport_size.x,
-                     static_cast<float>(cluster_dimensions.y) / viewport_size.y, log_factors.x, log_factors.y);
-}
-
-glm::uvec4 pack_cluster_dimensions(glm::uvec3 cluster_dimensions) {
-    return glm::uvec4(cluster_dimensions, cluster_dimensions.x * cluster_dimensions.y * cluster_dimensions.z);
-}
-
-std::int32_t spot_light_shadowmap_offset(std::size_t num_directional_cascades_enabled,
-                                                            std::size_t point_light_count) {
-    return static_cast<std::int32_t>(num_directional_cascades_enabled) - static_cast<std::int32_t>(point_light_count);
-}
-
 DirectionalLightFlagsAndCascades directional_light_gpu_flags(
     const ExtractedDirectionalLight& light,
     std::size_t index,
@@ -205,10 +155,6 @@ DirectionalLightFlagsAndCascades directional_light_gpu_flags(
         result.flags |= DirectionalLightFlags::AFFECTS_LIGHTMAPPED_MESH_DIFFUSE;
     }
     return result;
-}
-
-glm::mat4 cube_face_projection(float shadow_map_near_z) {
-    return camera::perspective_infinite_reverse_rh(std::numbers::pi_v<float> / 2.0f, 1.0f, shadow_map_near_z);
 }
 
 std::vector<DirectionalShadowSlice> directional_shadow_slices(
