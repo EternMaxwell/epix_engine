@@ -179,4 +179,32 @@ EPIX_EXPORT struct EPIX_API RenderLightmaps {
                 LightmapSlotIndex slot_index);
 };
 
+/** @brief One changed lightmap: its visibility decides whether it is allocated
+ *  (Bevy's `(Entity, &ViewVisibility, &Lightmap)`). */
+using ChangedLightmapItem = ecs::Item<ecs::Entity, const camera::ViewVisibility&, const Lightmap&>;
+
+/** @brief The term that selects the lightmaps that changed (Bevy
+ *  `Or<(Changed<ViewVisibility>, Changed<Lightmap>)>`), spelled as the pair Epix has
+ *  rather than `Changed`. */
+using ChangedLightmapFilter =
+    ecs::Or<ecs::Added<camera::ViewVisibility>, ecs::Modified<camera::ViewVisibility>,
+            ecs::Added<Lightmap>, ecs::Modified<Lightmap>>;
+
+/** @brief Extract every lightmap from the scene into `RenderLightmaps` (Bevy
+ *  `extract_lightmaps`, `lightmap/mod.rs:203-289`).
+ *
+ *  Three things happen, in Bevy's order: a changed and visible lightmap with no
+ *  record is allocated a slab and slot and marked pending; a removed one hands its
+ *  record and slot back - unless it is still in the changed query, because a
+ *  component removed and re-added in one frame keeps the slot it just took; and the
+ *  pending slots are swept, retrying those whose image has not been uploaded yet,
+ *  filling those whose has, and reporting any whose asset id has gone.
+ */
+EPIX_EXPORT EPIX_API void extract_lightmaps(
+    ecs::ResMut<RenderLightmaps> render_lightmaps,
+    app::Extract<ecs::Query<ChangedLightmapItem, ChangedLightmapFilter>> changed_lightmaps_query,
+    app::Extract<ecs::RemovedComponents<Lightmap>> removed_lightmaps_query,
+    ecs::Res<render::RenderAssets<render::texture::GpuImage>> images,
+    ecs::Res<render::texture::FallbackImage> fallback_images);
+
 }  // namespace epix::pbr

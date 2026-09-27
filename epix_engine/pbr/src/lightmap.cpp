@@ -3,6 +3,7 @@
 #include <bit>
 #include <cassert>
 #include <cstdint>
+#include <epix/render/assets.hpp>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -71,6 +72,63 @@ void RenderLightmaps::remove(const render::texture::FallbackImage& fallback_imag
     LightmapSlab& slab = slabs[slab_index.index];
     slab.remove(fallback_images, slot_index);
     if (!slab.is_full()) free_slabs.insert(slab_index.index);
+}
+
+void extract_lightmaps(ecs::ResMut<RenderLightmaps> render_lightmaps,
+                       app::Extract<ecs::Query<ChangedLightmapItem, ChangedLightmapFilter>> changed_lightmaps_query,
+                       app::Extract<ecs::RemovedComponents<Lightmap>> removed_lightmaps_query,
+                       ecs::Res<render::RenderAssets<render::texture::GpuImage>> images,
+                       ecs::Res<render::texture::FallbackImage> fallback_images) {
+    RenderLightmaps& lightmaps = *render_lightmaps;
+
+    // Every changed, visible lightmap that does not have a record yet is allocated a
+    // slab and slot; an invisible one is simply skipped, and an already-recorded one
+    // is left alone - which is what makes the system idempotent across frames.
+    for (auto&& [entity, view_visibility, lightmap] : changed_lightmaps_query.iter()) {
+        const render::sync_world::MainEntity main_entity{entity};
+        if (lightmaps.render_lightmaps.contains(main_entity)) continue;
+        if (!view_visibility.get()) continue;
+
+        const auto [slab_index, slot_index] = lightmaps.allocate(*fallback_images, lightmap.image.id());
+        lightmaps.render_lightmaps.emplace(
+            main_entity, RenderLightmap{.uv_rect          = lightmap.uv_rect,
+                                        .slab_index       = slab_index,
+                                        .slot_index       = slot_index,
+                                        .bicubic_sampling = lightmap.bicubic_sampling});
+        lightmaps.pending_lightmaps.emplace(slab_index, slot_index);
+    }
+
+    // Removals hand their slot back. A component removed and re-added in the same
+    // frame is still in the changed query, so it keeps the slot it just took.
+    for (const ecs::Entity entity : removed_lightmaps_query.read()) {
+        if (changed_lightmaps_query.get(entity).has_value()) continue;
+        const render::sync_world::MainEntity main_entity{entity};
+        const auto found = lightmaps.render_lightmaps.find(main_entity);
+        if (found == lightmaps.render_lightmaps.end()) continue;
+        const RenderLightmap removed = found->second;
+        lightmaps.render_lightmaps.erase(found);
+        lightmaps.remove(*fallback_images, removed.slab_index, removed.slot_index);
+        lightmaps.pending_lightmaps.erase({removed.slab_index, removed.slot_index});
+    }
+
+    // Slots still waiting for their image are retried as uploads land. A slot whose
+    // asset id is gone cannot be resolved at all and is reported rather than left
+    // pending for ever; one whose image is merely not uploaded yet stays pending.
+    std::erase_if(lightmaps.pending_lightmaps, [&](const auto& pending) {
+        const auto& [slab_index, slot_index] = pending;
+        LightmapSlab& slab = lightmaps.slabs[slab_index.index];
+        const std::optional<assets::AssetId<::epix::image::Image>>& asset_id =
+            slab.lightmaps[slot_index.index].asset_id;
+        if (!asset_id.has_value()) {
+            spdlog::error(
+                "[pbr] Allocated lightmap should have been removed from `pending_lightmaps` by now.");
+            return true;
+        }
+        const render::texture::GpuImage* gpu_image = images->get(*asset_id);
+        if (gpu_image == nullptr) return false;
+        slab.insert(slot_index, *gpu_image);
+        return true;
+    });
 }
 
 }  // namespace epix::pbr
