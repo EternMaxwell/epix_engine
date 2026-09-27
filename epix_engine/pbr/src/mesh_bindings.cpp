@@ -77,6 +77,16 @@ inline render::render_resource::BindGroupLayoutEntryBuilder lightmaps_sampler_ar
 
 namespace bind_group_entry {
 
+/** @brief A lightmap texture view (Bevy `bind_group_entry::lightmaps_texture_view`). */
+wgpu::BindGroupEntry lightmaps_texture_view(std::uint32_t binding, const wgpu::TextureView& texture) {
+    return wgpu::BindGroupEntry().setBinding(binding).setTextureView(texture);
+}
+
+/** @brief The lightmap sampler (Bevy `bind_group_entry::lightmaps_sampler`). */
+wgpu::BindGroupEntry lightmaps_sampler(std::uint32_t binding, const wgpu::Sampler& sampler) {
+    return wgpu::BindGroupEntry().setBinding(binding).setSampler(sampler);
+}
+
 // Bevy's `mod bind_group_entry` is `pub(super)`: these construct the entries the
 // mesh bind groups are created from and nothing outside this file uses them, so
 // they are file-local rather than header-inline.
@@ -235,6 +245,18 @@ render::BindGroupLayoutDescriptor MeshLayouts::lightmapped_layout(const wgpu::Li
 }
 
 
+wgpu::BindGroup MeshLayouts::create_lightmapped(const wgpu::Device& device,
+                                                const render::PipelineServer& pipeline_server, const wgpu::Buffer& model,
+                                                const wgpu::TextureView& lightmap_texture,
+                                                const wgpu::Sampler& lightmap_sampler) const {
+    return device.createBindGroup(
+        wgpu::BindGroupDescriptor()
+            .setLabel("lightmapped_mesh_bind_group")
+            .setLayout(pipeline_server.get_bind_group_layout(lightmapped))
+            .setEntries(std::vector<wgpu::BindGroupEntry>{
+                bind_group_entry::model(0u, model), bind_group_entry::lightmaps_texture_view(4u, lightmap_texture),
+                bind_group_entry::lightmaps_sampler(5u, lightmap_sampler)}));
+}
 wgpu::BindGroup MeshLayouts::create_model_only(const wgpu::Device& device,
                                                const render::PipelineServer& pipeline_server,
                                                const wgpu::Buffer& model) const {

@@ -99,4 +99,18 @@ TEST(MeshBindGroups, EveryVariantIsCreatedFromItsLayout) {
     EXPECT_TRUE(layouts.create_morphed_skinned(device, pipeline_server, uniform_skins, model, joints, weights, targets));
     EXPECT_TRUE(layouts.create_morphed_skinned_motion(device, pipeline_server, uniform_skins, model, joints, weights,
                                                       targets, joints, weights));
+
+    // The lightmapped layout without binding arrays: the slab's first slot is
+    // bound as an ordinary texture view and sampler.
+    const auto lightmap_texture = device.createTexture(wgpu::TextureDescriptor()
+                                                           .setLabel("lightmap")
+                                                           .setSize(wgpu::Extent3D{1, 1, 1})
+                                                           .setFormat(wgpu::TextureFormat::eRGBA8Unorm)
+                                                           .setUsage(wgpu::TextureUsage::eTextureBinding |
+                                                                     wgpu::TextureUsage::eCopyDst));
+    const wgpu::TextureViewDescriptor lightmap_view_descriptor{};
+    const wgpu::SamplerDescriptor lightmap_sampler_descriptor{};
+    EXPECT_TRUE(layouts.create_lightmapped(device, pipeline_server, model,
+                                           lightmap_texture.createView(lightmap_view_descriptor),
+                                           device.createSampler(lightmap_sampler_descriptor)));
 }

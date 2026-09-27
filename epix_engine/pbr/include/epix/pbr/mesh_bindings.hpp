@@ -105,6 +105,17 @@ EPIX_EXPORT struct EPIX_API MeshLayouts {
                                     bool skins_use_uniform_buffers, const wgpu::Buffer& model,
                                     const wgpu::Buffer& current_skin, const wgpu::Buffer& current_weights,
                                     const wgpu::TextureView& targets) const;
+    /** @brief The bind group for meshes carrying a lightmap (Bevy
+     *  `MeshLayouts::lightmapped`, `render/mesh_bindings.rs:385-416`), with the
+     *  slab's first slot bound.
+     *
+     *  Bevy branches here: with bindless lightmaps usable it binds the slab's
+     *  whole binding array, otherwise the first slot's texture view and sampler.
+     *  Only the latter is here - the array branch needs the binding-array entry
+     *  shape, which is `PBR-319`. */
+    wgpu::BindGroup create_lightmapped(const wgpu::Device& device, const render::PipelineServer& pipeline_server,
+                                       const wgpu::Buffer& model, const wgpu::TextureView& lightmap_texture,
+                                       const wgpu::Sampler& lightmap_sampler) const;
     wgpu::BindGroup create_morphed_skinned_motion(const wgpu::Device& device, const render::PipelineServer& pipeline_server,
                                            bool skins_use_uniform_buffers, const wgpu::Buffer& model,
                                            const wgpu::Buffer& current_skin, const wgpu::Buffer& current_weights,
