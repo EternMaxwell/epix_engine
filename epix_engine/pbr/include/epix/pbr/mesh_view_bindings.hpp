@@ -282,4 +282,21 @@ EPIX_EXPORT struct MeshPipelineViewLayouts {
     }
 };
 
+/** @brief The three view bind groups a view renders with (Bevy
+ *  `MeshViewBindGroup`, `render/mesh_view_bindings.rs:556-561`).
+ *
+ *  Which one a draw uses depends on the pipeline's binding mode, which is why all
+ *  three exist up front: `main` binds the view's own resources, `binding_array`
+ *  binds the same ones as arrays where the platform allows them, and `empty`
+ *  exists so a pass that needs no view bindings still has a group of the right
+ *  layout to bind rather than a hole.
+ *
+ *  It holds created `BindGroup`s, so it is built where the device and the pipeline
+ *  cache are - `prepare_mesh_view_bind_groups` (`PBR-302`) - and not before. */
+EPIX_EXPORT struct MeshViewBindGroup {
+    wgpu::BindGroup main;
+    wgpu::BindGroup binding_array;
+    wgpu::BindGroup empty;
+};
+
 }  // namespace epix::pbr

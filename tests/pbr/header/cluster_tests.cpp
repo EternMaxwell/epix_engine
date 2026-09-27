@@ -6529,3 +6529,22 @@ TEST(LightProbe, GatherEnvironmentMapUniformCoversEveryCamera3dView) {
 }
 
 }  // namespace
+
+/** @brief The three view bind groups a view renders with (Bevy `MeshViewBindGroup`,
+ *  `render/mesh_view_bindings.rs:556-561`).
+ *
+ *  Only the shape is checkable without a device: the groups are created where the
+ *  device and the pipeline cache are (`PBR-302`), and two of the three need the
+ *  full view-bindings resource set. What matters here is that all three are carried
+ *  together, because which one a draw uses is a property of the binding mode rather
+ *  than of the view. */
+TEST(Cluster, MeshViewBindGroupCarriesTheThreeGroups) {
+    using epix::pbr::MeshViewBindGroup;
+
+    static_assert(std::is_same_v<decltype(MeshViewBindGroup::main), wgpu::BindGroup>);
+    static_assert(std::is_same_v<decltype(MeshViewBindGroup::binding_array), wgpu::BindGroup>);
+    static_assert(std::is_same_v<decltype(MeshViewBindGroup::empty), wgpu::BindGroup>);
+
+    const MeshViewBindGroup group{};
+    EXPECT_EQ(group.main, group.empty) << "an unset group compares equal to another unset group";
+}
