@@ -9,6 +9,8 @@
 #include <epix/render/bind_group_layout_entries.hpp>
 #include <epix/render/render_resource.hpp>
 #include <glm/glm.hpp>
+#include <limits>
+#include <optional>
 #include <webgpu/webgpu.hpp>
 #endif
 
@@ -270,5 +272,68 @@ inline render::BindGroupLayoutDescriptor MeshLayouts::lightmapped_layout(const w
                                        std::pair{5u, mesh_layout_entry::lightmaps_sampler()})
                                        .entries());
 }
+
+/** @brief The entries the mesh bind groups are created from (Bevy's
+ *  `mod bind_group_entry`, `render/mesh_bindings.rs:86-160`).
+ *
+ *  Each one names the binding it fills; what varies between them is the
+ *  resource and, for the joint buffer, the size the layout declares: Bevy binds
+ *  a fixed slice when skins are uniforms and the whole buffer when they are
+ *  storage. Bevy's `BindingResource` is not a type here - the port builds
+ *  `wgpu::BindGroupEntry` directly, as its material bind groups already do - so
+ *  the functions below take the resource they bind rather than a variant. */
+namespace bind_group_entry {
+
+/** @brief A buffer entry covering the whole buffer when `size` is empty (Bevy
+ *  `bind_group_entry::entry`). */
+inline wgpu::BindGroupEntry entry(std::uint32_t binding, std::optional<std::uint64_t> size,
+                                  const wgpu::Buffer& buffer) {
+    return wgpu::BindGroupEntry()
+        .setBinding(binding)
+        .setBuffer(buffer)
+        .setOffset(0)
+        .setSize(size ? *size : std::numeric_limits<std::uint64_t>::max());
+}
+
+/** @brief The mesh model buffer (Bevy `bind_group_entry::model`, which takes a
+ *  `BindingResource` because the bindless path binds a texture view array to the
+ *  same binding; the two paths are separate overloads here). */
+inline wgpu::BindGroupEntry model(std::uint32_t binding, const wgpu::Buffer& buffer) {
+    return entry(binding, std::nullopt, buffer);
+}
+
+/** @brief The joint matrices, bound as a fixed-size slice when they are uniforms
+ *  (Bevy `bind_group_entry::skinning`). Bevy reads the device's limits here; the
+ *  port takes the fact itself, as its other capability-dependent helpers do. */
+inline wgpu::BindGroupEntry skinning(bool skins_use_uniform_buffers, std::uint32_t binding,
+                                     const wgpu::Buffer& buffer) {
+    const std::optional<std::uint64_t> size =
+        skins_use_uniform_buffers ? std::optional<std::uint64_t>(JOINT_BUFFER_SIZE) : std::nullopt;
+    return entry(binding, size, buffer);
+}
+
+/** @brief The morph weights, whose layout declares a fixed size (Bevy
+ *  `bind_group_entry::weights`). */
+inline wgpu::BindGroupEntry weights(std::uint32_t binding, const wgpu::Buffer& buffer) {
+    return entry(binding, MORPH_BUFFER_SIZE, buffer);
+}
+
+/** @brief The morph target texture (Bevy `bind_group_entry::targets`). */
+inline wgpu::BindGroupEntry targets(std::uint32_t binding, const wgpu::TextureView& texture) {
+    return wgpu::BindGroupEntry().setBinding(binding).setTextureView(texture);
+}
+
+/** @brief A lightmap texture view (Bevy
+ *  `bind_group_entry::lightmaps_texture_view`). */
+inline wgpu::BindGroupEntry lightmaps_texture_view(std::uint32_t binding, const wgpu::TextureView& texture) {
+    return wgpu::BindGroupEntry().setBinding(binding).setTextureView(texture);
+}
+
+/** @brief The lightmap sampler (Bevy `bind_group_entry::lightmaps_sampler`). */
+inline wgpu::BindGroupEntry lightmaps_sampler(std::uint32_t binding, const wgpu::Sampler& sampler) {
+    return wgpu::BindGroupEntry().setBinding(binding).setSampler(sampler);
+}
+
+}  // namespace bind_group_entry
 
 }  // namespace epix::pbr
