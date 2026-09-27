@@ -81,3 +81,27 @@ TEST(Lightmap, BindlessSlabHoldsFourSlots) {
     EXPECT_EQ(lightmaps.slabs.size(), 2u);
     EXPECT_EQ(lightmaps.slabs[0].lightmaps.size(), pbr::LIGHTMAPS_PER_SLAB);
 }
+
+/** @brief The slab hands the bind group its texture views and samplers: all of
+ *  them in slot order for the binding array the bindless layout declares, and
+ *  the first slot's for the layout that binds a single lightmap (Bevy
+ *  `LightmapSlab::{build_binding_arrays, bindings_for_first_lightmap}`,
+ *  `bevy_pbr/src/lightmap/mod.rs:452-474`). */
+TEST(Lightmap, SlabHandsOutItsTextureViewsAndSamplers) {
+    const render::texture::FallbackImage fallback{};
+    const auto slab = pbr::LightmapSlab::make(fallback, /*bindless_supported=*/true);
+    ASSERT_EQ(slab.lightmaps.size(), pbr::LIGHTMAPS_PER_SLAB);
+
+    const auto [texture_views, samplers] = slab.build_binding_arrays();
+    ASSERT_EQ(texture_views.size(), pbr::LIGHTMAPS_PER_SLAB);
+    ASSERT_EQ(samplers.size(), pbr::LIGHTMAPS_PER_SLAB);
+    for (std::size_t slot = 0; slot < pbr::LIGHTMAPS_PER_SLAB; ++slot) {
+        EXPECT_EQ(texture_views[slot], &slab.lightmaps[slot].gpu_image.texture_view)
+            << "the binding array follows slot order";
+        EXPECT_EQ(samplers[slot], &slab.lightmaps[slot].gpu_image.sampler);
+    }
+
+    const auto [first_view, first_sampler] = slab.bindings_for_first_lightmap();
+    EXPECT_EQ(first_view, &slab.lightmaps[0].gpu_image.texture_view);
+    EXPECT_EQ(first_sampler, &slab.lightmaps[0].gpu_image.sampler);
+}

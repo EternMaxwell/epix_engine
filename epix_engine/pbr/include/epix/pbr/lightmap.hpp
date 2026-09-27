@@ -151,6 +151,30 @@ EPIX_EXPORT struct LightmapSlab {
         lightmaps[index.index] = AllocatedLightmap{.gpu_image = fallback_images.d2, .asset_id = std::nullopt};
         free_slots_bitmask |= 1u << index.index;
     }
+
+    /** @brief Every slot's texture view and sampler, in slot order: what the
+     *  lightmapped layout's binding array binds when binding arrays are usable
+     *  (Bevy `LightmapSlab::build_binding_arrays`,
+     *  `lightmap/mod.rs:452-467`). */
+    std::pair<std::vector<const wgpu::TextureView*>, std::vector<const wgpu::Sampler*>> build_binding_arrays() const {
+        std::vector<const wgpu::TextureView*> texture_views;
+        std::vector<const wgpu::Sampler*> samplers;
+        texture_views.reserve(lightmaps.size());
+        samplers.reserve(lightmaps.size());
+        for (const AllocatedLightmap& allocated : lightmaps) {
+            texture_views.push_back(&allocated.gpu_image.texture_view);
+            samplers.push_back(&allocated.gpu_image.sampler);
+        }
+        return {std::move(texture_views), std::move(samplers)};
+    }
+
+    /** @brief The first slot's texture view and sampler, which is what the
+     *  layout without binding arrays binds (Bevy
+     *  `LightmapSlab::bindings_for_first_lightmap`,
+     *  `lightmap/mod.rs:469-474`). */
+    std::pair<const wgpu::TextureView*, const wgpu::Sampler*> bindings_for_first_lightmap() const {
+        return {&lightmaps[0].gpu_image.texture_view, &lightmaps[0].gpu_image.sampler};
+    }
 };
 
 /** @brief All lightmaps in the render world (Bevy `RenderLightmaps`,
