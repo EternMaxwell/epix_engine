@@ -7,8 +7,14 @@
 #include <epix/camera/visibility.hpp>
 #include <epix/common.hpp>
 #include <epix/mesh.hpp>
+#include <epix/pbr/lightmap.hpp>
+#include <epix/pbr/material.hpp>
+#include <epix/pbr/mesh_uniform.hpp>
+#include <epix/pbr/skin.hpp>
 #include <epix/render/batching.hpp>
 #include <epix/render/binned_phase.hpp>
+#include <epix/render/globals.hpp>
+#include <epix/render/mesh_allocator.hpp>
 #include <glm/glm.hpp>
 #include <limits>
 #include <optional>
@@ -78,6 +84,13 @@ EPIX_EXPORT struct RenderMeshInstanceFlags {
  *  AABB, used as a spatial proxy for view-dependent sorting rather than a true
  *  centre; `render_layers` is absent when the instance carries no layer component,
  *  which is not the same as belonging to none. */
+/** @brief The set of entities to re-extract next frame (Bevy
+ *  ``MeshesToReextractNextFrame``, `render/mesh.rs`).
+ *
+ *  Declared rather than included: it lives in ``mesh_extraction.hpp``, which
+ *  includes this header, and the builder only needs it by reference. */
+struct MeshesToReextractNextFrame;
+
 EPIX_EXPORT struct RenderMeshInstanceShared {
     assets::AssetId<mesh::Mesh> mesh_asset_id;
     MaterialBindingId material_bindings_index{};
@@ -297,6 +310,30 @@ EPIX_EXPORT struct RenderMeshInstanceGpuBuilder {
     glm::uvec2 lightmap_uv_rect{0u, 0u};
     std::optional<std::uint32_t> previous_input_index;
     MeshFlags mesh_flags{};
+
+    /** @brief Flush this instance to the `RenderMeshInstanceGpu` and
+     *  `MeshInputUniform` tables, replacing what was there (Bevy
+     *  `RenderMeshInstanceGpuBuilder::update`, `render/mesh.rs:1128-1262`).
+     *
+     *  The instance's vertex and index slices, skin offset, material binding and
+     *  lightmap are all resolved here, because this is the one point where the
+     *  render world knows the mesh is being drawn. A material that has not been
+     *  prepared is not guessed at: the entity is queued for re-extraction next
+     *  frame and nothing is written, which is Bevy's bail-out.
+     *
+     *  An entity that was already present keeps its uniform slot and hands the
+     *  previous uniform to `previous_input_buffer`, which is what the
+     *  preprocessing shader reads for motion vectors; a new one takes a slot. The
+     *  returned index is the slot, so callers can key their own buffers by it. */
+    std::optional<std::uint32_t> update(
+        render::sync_world::MainEntity entity,
+        render::sync_world::MainEntityHashMap<RenderMeshInstanceGpu>& render_mesh_instances,
+        render::batching::InstanceInputUniformBuffer<MeshInputUniform>& current_input_buffer,
+        render::batching::InstanceInputUniformBuffer<MeshInputUniform>& previous_input_buffer,
+        const render::mesh::MeshAllocator& mesh_allocator, const RenderMaterialInstances& mesh_material_ids,
+        const RenderMaterialBindings& render_material_bindings, const RenderLightmaps& render_lightmaps,
+        const SkinUniforms& skin_uniforms, render::FrameCount timestamp,
+        MeshesToReextractNextFrame& meshes_to_reextract_next_frame);
 };
 
 /** @brief The per-thread queue of GPU-built mesh instances filled during extraction
