@@ -283,13 +283,13 @@ struct MaterialPlugin {
                 "extract mesh materials"));
         render_app->get().add_systems(
             app::ScheduleInfo(render::ExtractSchedule),
-            // Bevy also writes `.before(late_sweep_material_instances)` here. This
-            // port's `before`/`after` take set labels rather than systems, so that
-            // half of the ordering is not expressible; the recorded divergence is
-            // PBR-869, and it is the reason the two sweeps are added in their
-            // intended order.
+            // A system function is a valid ordering label here - `add_systems` takes
+            // it as `SystemSetLabel` - so Bevy's `.before(late_sweep_material_instances)`
+            // is expressible after all, and the early sweep really does run before the
+            // late one that advances the tick.
             ecs::into(early_sweep_material_instances<M>)
                 .after(MaterialExtractionSystems::Extract)
+                .before(late_sweep_material_instances)
                 .set_name("early sweep material instances"));
         render_app->get().add_systems(app::ScheduleInfo(render::ExtractSchedule),
                                       ecs::into(late_sweep_material_instances).set_name("late sweep material instances"));

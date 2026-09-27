@@ -152,6 +152,13 @@ void LightmapPlugin::attach(app::App& app) {
     auto render_app = app.get_sub_app_mut(render::Render);
     if (!render_app) return;
 
+    // The set must be in the schedule for the ordering below to apply at all: the
+    // port warns and *ignores* a hierarchy whose set is absent, so without this the
+    // extraction would not actually be ordered after mesh extraction. Bevy registers
+    // `MeshExtractionSystems` inside `MeshRenderPlugin`, which is unported, so its
+    // first user does it here - the same silent-gap fix as `MaterialPlugin`'s.
+    render_app->get().configure_sets(app::ScheduleInfo(render::ExtractSchedule),
+                                     ecs::sets(MeshExtractionSystems::Extract));
     render_app->get().add_systems(app::ScheduleInfo(render::RenderStartup),
                                   ecs::into(init_render_lightmaps).set_name("init render lightmaps"));
     render_app->get().add_systems(
