@@ -7,6 +7,8 @@
 #include <epix/camera/visibility.hpp>
 #include <epix/common.hpp>
 #include <epix/mesh.hpp>
+#include <epix/render/batching.hpp>
+#include <epix/render/binned_phase.hpp>
 #include <glm/glm.hpp>
 #include <limits>
 #include <optional>
@@ -232,6 +234,17 @@ namespace epix::render::render_resource {
  *  the same shape `batching.hpp` uses for its work items. */
 template <>
 struct RawBufferElementInfo<::epix::pbr::MeshCullingData> {
+    static constexpr bool has_no_uninit = true;
+};
+
+/** @brief `MeshInputUniform` is the data buffer's element, and every byte of it is
+ *  initialised when it is built, so the concept's escape hatch applies here too.
+ *
+ *  This is what lets `InstanceInputUniformBuffer<MeshInputUniform>` be
+ *  instantiated at all - the buffer the GPU instance builder adds to and
+ *  `remove_mesh_input_uniform` frees a slot in. */
+template <>
+struct RawBufferElementInfo<::epix::pbr::MeshInputUniform> {
     static constexpr bool has_no_uninit = true;
 };
 
@@ -496,5 +509,20 @@ EPIX_EXPORT struct RenderMeshInstances {
         found->second.shared.flags.insert(static_cast<RenderMeshInstanceFlags::Bits>(flags.bits));
     }
 };
+
+/** @brief Drop a mesh's input uniform and forget its instance (Bevy
+ *  `remove_mesh_input_uniform`, `render/mesh.rs:1267-1278`).
+ *
+ *  The three steps are one operation: the instance record is removed, the slot it
+ *  occupied is released back to the input buffer, and the slot index is handed
+ *  back so the caller can do the same for the buffers keyed by it. An entity with
+ *  no instance is a no-op returning nothing, which is Bevy's `?` on the removal.
+ *
+ *  The buffer's `remove` only records the slot as free - the data stays until
+ *  something reuses it - so this needs no device and can be checked directly. */
+EPIX_EXPORT EPIX_API std::optional<std::uint32_t> remove_mesh_input_uniform(
+    render::sync_world::MainEntity entity,
+    render::sync_world::MainEntityHashMap<RenderMeshInstanceGpu>& render_mesh_instances,
+    render::batching::InstanceInputUniformBuffer<MeshInputUniform>& current_input_buffer);
 
 }  // namespace epix::pbr
