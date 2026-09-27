@@ -49,12 +49,8 @@ EPIX_EXPORT inline constexpr std::size_t MAX_JOINTS_LEGACY = 256;
  *  Storage buffers are the fast path; a device without them falls back to
  *  uniforms, which is why the mesh layouts' joint entry and the bind group's
  *  buffer size both consult this. Bevy memoises the answer in a `OnceLock`, so
- *  the first device decides for the process; the function-local static below has
- *  the same property. */
-EPIX_EXPORT inline bool skins_use_uniform_buffers(const wgpu::Limits& limits) {
-    static const bool use_uniform_buffers = limits.maxStorageBuffersPerShaderStage == 0;
-    return use_uniform_buffers;
-}
+ *  the first device decides for the process. */
+EPIX_EXPORT EPIX_API bool skins_use_uniform_buffers(const wgpu::Limits& limits);
 
 /** @brief The location of the first joint matrix in the skin uniform buffer
  *  (Bevy `SkinByteOffset`, `render/skin.rs:55-76`). */
@@ -96,7 +92,7 @@ EPIX_EXPORT struct SkinUniformInfo {
  *  are not ported yet, so this is the allocation bookkeeping and the accessors
  *  the batching adapter and the mesh bind groups read. Bevy's `SmallVec` of the
  *  one-skin-common case is a plain vector here. */
-EPIX_EXPORT struct SkinUniforms {
+EPIX_EXPORT struct EPIX_API SkinUniforms {
     /** @brief The joint matrices for this frame, on the CPU. */
     std::vector<glm::mat4> current_staging_buffer;
     /** @brief The joint matrices for this frame, on the GPU. */
@@ -118,50 +114,19 @@ EPIX_EXPORT struct SkinUniforms {
     /** @brief Build the joint buffers for a device (Bevy `impl FromWorld for
      *  SkinUniforms`, `render/skin.rs:119-154`), which Bevy also uses to decide
      *  the buffers' usage from `skins_use_uniform_buffers`. */
-    static SkinUniforms make(const wgpu::Device& render_device, const wgpu::Limits& limits) {
-        const wgpu::BufferUsage usage = (::epix::pbr::skins_use_uniform_buffers(limits) ? wgpu::BufferUsage::eUniform
-                                                                                        : wgpu::BufferUsage::eStorage) |
-                                        wgpu::BufferUsage::eCopyDst;
-        const std::uint64_t size      = static_cast<std::uint64_t>(MAX_JOINTS) * sizeof(glm::mat4);
-        // Aggregate initialization: the allocator has no default constructor, so
-        // every member is named.
-        return SkinUniforms{
-            .current_staging_buffer = {},
-            .current_buffer         = render_device.createBuffer(
-                wgpu::BufferDescriptor().setLabel("skin uniform buffer").setSize(size).setUsage(usage)),
-            .prev_buffer = render_device.createBuffer(
-                wgpu::BufferDescriptor().setLabel("skin uniform buffer").setSize(size).setUsage(usage)),
-            .allocator         = render::mesh::offset_allocator::Allocator(MAX_TOTAL_JOINTS),
-            .skin_uniform_info = {},
-            .joint_to_skins    = {},
-            .total_joints      = 0,
-        };
-    }
+    static SkinUniforms make(const wgpu::Device& render_device, const wgpu::Limits& limits);
 
     /** @brief The current offset in joints of a skin (Bevy
      *  `SkinUniforms::skin_index`, `skin.rs:158-162`). */
-    std::optional<std::uint32_t> skin_index(render::sync_world::MainEntity skin) const {
-        const auto it = skin_uniform_info.find(skin);
-        if (it == skin_uniform_info.end()) return std::nullopt;
-        return it->second.offset();
-    }
+    std::optional<std::uint32_t> skin_index(render::sync_world::MainEntity skin) const;
 
     /** @brief The current offset in bytes of a skin (Bevy
      *  `SkinUniforms::skin_byte_offset`, `skin.rs:165-169`). */
-    std::optional<SkinByteOffset> skin_byte_offset(render::sync_world::MainEntity skin) const {
-        const auto index = skin_index(skin);
-        if (!index) return std::nullopt;
-        return SkinByteOffset::from_index(*index);
-    }
+    std::optional<SkinByteOffset> skin_byte_offset(render::sync_world::MainEntity skin) const;
 
     /** @brief Every skin in the scene (Bevy `SkinUniforms::all_skins`,
      *  `skin.rs:172-174`). */
-    std::vector<render::sync_world::MainEntity> all_skins() const {
-        std::vector<render::sync_world::MainEntity> skins;
-        skins.reserve(skin_uniform_info.size());
-        for (const auto& [entity, info] : skin_uniform_info) skins.push_back(entity);
-        return skins;
-    }
+    std::vector<render::sync_world::MainEntity> all_skins() const;
 };
 
 }  // namespace epix::pbr

@@ -80,12 +80,7 @@ EPIX_EXPORT struct LightmapSlotIndex {
  *  `lightmap_uv_rect` documents. No rect packs to zero, which is how the shader
  *  reads "no lightmap". Bevy takes `bevy_math::Rect`; Epix's counterpart is the
  *  float `Rect` the image module already owns for atlas coordinates. */
-EPIX_EXPORT inline glm::uvec2 pack_lightmap_uv_rect(const std::optional<::epix::image::Rect>& maybe_rect) {
-    if (!maybe_rect) return glm::uvec2{0u, 0u};
-    const glm::uvec4 rect = glm::uvec4(
-        glm::round(glm::vec4(maybe_rect->min.x, maybe_rect->min.y, maybe_rect->max.x, maybe_rect->max.y) * 65535.0f));
-    return glm::uvec2(rect.x | (rect.y << 16), rect.z | (rect.w << 16));
-}
+EPIX_EXPORT EPIX_API glm::uvec2 pack_lightmap_uv_rect(const std::optional<::epix::image::Rect>& maybe_rect);
 
 /** @brief One visible lightmapped mesh instance's lightmap data in the render
  *  world (Bevy `RenderLightmap`, `bevy_pbr/src/lightmap/mod.rs:110-134`).
@@ -110,71 +105,39 @@ EPIX_EXPORT struct AllocatedLightmap {
 /** @brief A binding array containing lightmaps (Bevy `LightmapSlab`,
  *  `bevy_pbr/src/lightmap/mod.rs:159-166,396-455`). It holds a single binding
  *  when bindless lightmaps are unavailable. */
-EPIX_EXPORT struct LightmapSlab {
+EPIX_EXPORT struct EPIX_API LightmapSlab {
     std::vector<AllocatedLightmap> lightmaps;
     std::uint32_t free_slots_bitmask = 0;
 
     /** @brief A slab of fallback images, one slot per lightmap it can hold
      *  (Bevy `LightmapSlab::new`, `lightmap/mod.rs:397-413`). */
-    static LightmapSlab make(const render::texture::FallbackImage& fallback_images, bool bindless_supported) {
-        const std::size_t count = bindless_supported ? LIGHTMAPS_PER_SLAB : 1;
-        LightmapSlab slab;
-        slab.lightmaps.reserve(count);
-        for (std::size_t i = 0; i < count; ++i) {
-            slab.lightmaps.push_back(AllocatedLightmap{.gpu_image = fallback_images.d2, .asset_id = std::nullopt});
-        }
-        slab.free_slots_bitmask = (1u << count) - 1u;
-        return slab;
-    }
+    static LightmapSlab make(const render::texture::FallbackImage& fallback_images, bool bindless_supported);
 
     bool is_full() const noexcept { return free_slots_bitmask == 0u; }
 
     /** @brief Allocate the first free slot for an image (Bevy
      *  `LightmapSlab::allocate`, `lightmap/mod.rs:419-428`). */
-    LightmapSlotIndex allocate(assets::AssetId<::epix::image::Image> image_id) {
-        assert(!is_full() && "Attempting to allocate on a full lightmap slab");
-        const std::uint32_t slot = std::countr_zero(free_slots_bitmask);
-        free_slots_bitmask &= ~(1u << slot);
-        lightmaps[slot].asset_id = image_id;
-        return LightmapSlotIndex{.index = static_cast<std::uint16_t>(slot)};
-    }
+    LightmapSlotIndex allocate(assets::AssetId<::epix::image::Image> image_id);
 
     /** @brief Fill a slot once its image has been uploaded (Bevy
      *  `LightmapSlab::insert`, `lightmap/mod.rs:430-435`). */
-    void insert(LightmapSlotIndex index, render::texture::GpuImage gpu_image) {
-        lightmaps[index.index] = AllocatedLightmap{.gpu_image = std::move(gpu_image), .asset_id = std::nullopt};
-    }
+    void insert(LightmapSlotIndex index, render::texture::GpuImage gpu_image);
 
     /** @brief Free a slot back to the fallback image (Bevy
      *  `LightmapSlab::remove`, `lightmap/mod.rs:437-446`). */
-    void remove(const render::texture::FallbackImage& fallback_images, LightmapSlotIndex index) {
-        lightmaps[index.index] = AllocatedLightmap{.gpu_image = fallback_images.d2, .asset_id = std::nullopt};
-        free_slots_bitmask |= 1u << index.index;
-    }
+    void remove(const render::texture::FallbackImage& fallback_images, LightmapSlotIndex index);
 
     /** @brief Every slot's texture view and sampler, in slot order: what the
      *  lightmapped layout's binding array binds when binding arrays are usable
      *  (Bevy `LightmapSlab::build_binding_arrays`,
      *  `lightmap/mod.rs:452-467`). */
-    std::pair<std::vector<const wgpu::TextureView*>, std::vector<const wgpu::Sampler*>> build_binding_arrays() const {
-        std::vector<const wgpu::TextureView*> texture_views;
-        std::vector<const wgpu::Sampler*> samplers;
-        texture_views.reserve(lightmaps.size());
-        samplers.reserve(lightmaps.size());
-        for (const AllocatedLightmap& allocated : lightmaps) {
-            texture_views.push_back(&allocated.gpu_image.texture_view);
-            samplers.push_back(&allocated.gpu_image.sampler);
-        }
-        return {std::move(texture_views), std::move(samplers)};
-    }
+    std::pair<std::vector<const wgpu::TextureView*>, std::vector<const wgpu::Sampler*>> build_binding_arrays() const;
 
     /** @brief The first slot's texture view and sampler, which is what the
      *  layout without binding arrays binds (Bevy
      *  `LightmapSlab::bindings_for_first_lightmap`,
      *  `lightmap/mod.rs:469-474`). */
-    std::pair<const wgpu::TextureView*, const wgpu::Sampler*> bindings_for_first_lightmap() const {
-        return {&lightmaps[0].gpu_image.texture_view, &lightmaps[0].gpu_image.sampler};
-    }
+    std::pair<const wgpu::TextureView*, const wgpu::Sampler*> bindings_for_first_lightmap() const;
 };
 
 /** @brief All lightmaps in the render world (Bevy `RenderLightmaps`,
@@ -184,7 +147,7 @@ EPIX_EXPORT struct LightmapSlab {
  *  ported yet; the bookkeeping an adapter needs is. Bevy's `FixedBitSet` has no
  *  counterpart in the port, so the free slabs are an ordered set - its first
  *  element is Bevy's `FixedBitSet::minimum`. */
-EPIX_EXPORT struct RenderLightmaps {
+EPIX_EXPORT struct EPIX_API RenderLightmaps {
     render::sync_world::MainEntityHashMap<RenderLightmap> render_lightmaps;
     std::vector<LightmapSlab> slabs;
     /** Bevy's `free_slabs`, private there. */
@@ -196,35 +159,17 @@ EPIX_EXPORT struct RenderLightmaps {
 
     /** @brief Create a slab with the given fallback images and return its index
      *  (Bevy `RenderLightmaps::create_slab`, `lightmap/mod.rs:353-361`). */
-    LightmapSlabIndex create_slab(const render::texture::FallbackImage& fallback_images) {
-        const auto slab_index = LightmapSlabIndex{.index = static_cast<std::uint32_t>(slabs.size())};
-        free_slabs.insert(slab_index.index);
-        slabs.push_back(LightmapSlab::make(fallback_images, bindless_supported));
-        return slab_index;
-    }
+    LightmapSlabIndex create_slab(const render::texture::FallbackImage& fallback_images);
 
     /** @brief Allocate a slot for an image, creating a slab when none has room
      *  (Bevy `RenderLightmaps::allocate`, `lightmap/mod.rs:363-380`). */
     std::pair<LightmapSlabIndex, LightmapSlotIndex> allocate(const render::texture::FallbackImage& fallback_images,
-                                                             assets::AssetId<::epix::image::Image> image_id) {
-        const LightmapSlabIndex slab_index =
-            free_slabs.empty() ? create_slab(fallback_images)
-                               : LightmapSlabIndex{.index = static_cast<std::uint32_t>(*free_slabs.begin())};
-        LightmapSlab& slab                 = slabs[slab_index.index];
-        const LightmapSlotIndex slot_index = slab.allocate(image_id);
-        if (slab.is_full()) free_slabs.erase(slab_index.index);
-        return {slab_index, slot_index};
-    }
+                                                             assets::AssetId<::epix::image::Image> image_id);
 
     /** @brief Free a slot, and the slab with it when it becomes free (Bevy
      *  `RenderLightmaps::remove`, `lightmap/mod.rs:382-393`). */
-    void remove(const render::texture::FallbackImage& fallback_images,
-                LightmapSlabIndex slab_index,
-                LightmapSlotIndex slot_index) {
-        LightmapSlab& slab = slabs[slab_index.index];
-        slab.remove(fallback_images, slot_index);
-        if (!slab.is_full()) free_slabs.insert(slab_index.index);
-    }
+    void remove(const render::texture::FallbackImage& fallback_images, LightmapSlabIndex slab_index,
+                LightmapSlotIndex slot_index);
 };
 
 }  // namespace epix::pbr
