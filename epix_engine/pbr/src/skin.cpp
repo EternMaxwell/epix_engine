@@ -103,4 +103,28 @@ void prepare_skins(ecs::Res<wgpu::Device> render_device, ecs::Res<wgpu::Queue> r
     // frame's joints and that data is still on the GPU.
 }
 
+void remove_skin(SkinUniforms& skin_uniforms, render::sync_world::MainEntity skinned_mesh_entity) {
+    const auto found = skin_uniforms.skin_uniform_info.find(skinned_mesh_entity);
+    if (found == skin_uniforms.skin_uniform_info.end()) return;
+    const SkinUniformInfo old_skin_uniform_info = found->second;
+    skin_uniforms.skin_uniform_info.erase(found);
+
+    // Free the allocation.
+    skin_uniforms.allocator.free(old_skin_uniform_info.allocation);
+
+    // Remove the inverse mapping from each joint back to the skin, dropping the
+    // joint's entry once no skin refers to it: the fine-grained extraction reads
+    // this map, and a stale entry would make it re-extract skins that are gone.
+    for (const render::sync_world::MainEntity joint : old_skin_uniform_info.joints) {
+        const auto joint_entry = skin_uniforms.joint_to_skins.find(joint);
+        if (joint_entry == skin_uniforms.joint_to_skins.end()) continue;
+        std::vector<render::sync_world::MainEntity>& skins = joint_entry->second;
+        std::erase(skins, skinned_mesh_entity);
+        if (skins.empty()) skin_uniforms.joint_to_skins.erase(joint_entry);
+    }
+
+    // Update the total number of joints.
+    skin_uniforms.total_joints -= old_skin_uniform_info.joints.size();
+}
+
 }  // namespace epix::pbr

@@ -85,3 +85,42 @@ TEST(SkinPrepare, UploadsTheJointMatrices) {
         << "the buffer grows to hold the staging data plus the MAX_JOINTS margin";
     EXPECT_GT(uploaded_size, initial_size) << "which is larger than what it started at";
 }
+
+/** @brief Removing a skin frees its allocation, prunes the reverse joint mapping
+ *  and lowers the joint count (Bevy `remove_skin`, `render/skin.rs:583-607`).
+ *
+ *  No device is involved: the allocator and both maps are plain values, so this
+ *  half of the skin pipeline is checkable directly rather than through a frame. */
+TEST(SkinPrepare, RemoveSkinFreesAndForgets) {
+    pbr::SkinUniforms uniforms{
+        .current_staging_buffer = {},
+        .current_buffer         = {},
+        .prev_buffer            = {},
+        .allocator              = render::mesh::offset_allocator::Allocator(pbr::MAX_TOTAL_JOINTS),
+        .skin_uniform_info      = {},
+        .joint_to_skins         = {},
+        .total_joints           = 0,
+    };
+
+    const auto skin    = render::sync_world::MainEntity{epix::ecs::Entity{11}};
+    const auto joint_a = render::sync_world::MainEntity{epix::ecs::Entity{21}};
+    const auto joint_b = render::sync_world::MainEntity{epix::ecs::Entity{22}};
+
+    const auto allocation = uniforms.allocator.allocate(1);
+    ASSERT_TRUE(allocation.has_value());
+    uniforms.skin_uniform_info.emplace(
+        skin, pbr::SkinUniformInfo{.allocation = *allocation, .joints = {joint_a, joint_b}});
+    uniforms.joint_to_skins[joint_a].push_back(skin);
+    uniforms.joint_to_skins[joint_b].push_back(skin);
+    uniforms.total_joints = 2;
+
+    pbr::remove_skin(uniforms, skin);
+
+    EXPECT_TRUE(uniforms.skin_uniform_info.empty()) << "the skin is forgotten";
+    EXPECT_TRUE(uniforms.joint_to_skins.empty()) << "and so is every joint that referred only to it";
+    EXPECT_EQ(uniforms.total_joints, 0u) << "the joint count falls by the skin's joint count";
+
+    // A skin that was never registered is a no-op rather than an error.
+    pbr::remove_skin(uniforms, skin);
+    EXPECT_EQ(uniforms.total_joints, 0u);
+}

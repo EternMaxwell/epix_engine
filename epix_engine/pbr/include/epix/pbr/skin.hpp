@@ -143,4 +143,17 @@ EPIX_EXPORT struct EPIX_API SkinUniforms {
 EPIX_EXPORT EPIX_API void prepare_skins(ecs::Res<wgpu::Device> render_device, ecs::Res<wgpu::Queue> render_queue,
                                         ecs::ResMut<SkinUniforms> uniform);
 
+/** @brief Release a skin's allocation and forget it (Bevy `remove_skin`,
+ *  `render/skin.rs:583-607`).
+ *
+ *  Bevy keeps this private to `skin.rs`; it is a function here for the same
+ *  reason `prepare_view_cluster_bindings` is - the behaviour can then be checked
+ *  without a device, and the systems that call it are thin. Three things happen
+ *  together and each has to: the allocation is freed, the reverse mapping from
+ *  each of the skin's joints is pruned (and the entry dropped when it empties,
+ *  which is what keeps `total_joints`'s fine-grained heuristic honest), and
+ *  `total_joints` falls by the skin's joint count. A skin that was never
+ *  registered is a no-op. */
+EPIX_EXPORT EPIX_API void remove_skin(SkinUniforms& skin_uniforms, render::sync_world::MainEntity skinned_mesh_entity);
+
 }  // namespace epix::pbr
