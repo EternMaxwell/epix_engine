@@ -988,7 +988,10 @@ EPIX_EXPORT class EPIX_API Image {
     std::uint32_t width() const noexcept { return texture_descriptor.size.width; }
     /** @brief Get the image height in pixels (Bevy `Image::height`). */
     std::uint32_t height() const noexcept { return texture_descriptor.size.height; }
-    /** @brief Get the raw depth-or-layers value (Bevy `Image::depth_or_array_layers`). */
+    /** @brief Get the raw depth-or-layers value.
+     *
+     * Epix names this for the `Extent3d` field it reads; Bevy 0.18 has the field but
+     * no accessor of its own, so there is no Bevy method to attribute it to. */
     std::uint32_t depth_or_layers() const noexcept { return texture_descriptor.size.depthOrArrayLayers; }
     /** @brief Get the depth (1 if not a 3D image). */
     std::uint32_t depth() const noexcept {
