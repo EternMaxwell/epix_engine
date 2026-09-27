@@ -296,4 +296,41 @@ struct MaterialPlugin {
     }
 };
 
+
+/** @brief Entities whose material changed and that need re-specialization (Bevy
+ *  `EntitiesNeedingSpecialization<M>`, `material.rs:596-610`), the 3D counterpart
+ *  of the 2D resource of the same name. */
+EPIX_EXPORT template <typename M>
+struct EntitiesNeedingSpecialization {
+    std::vector<ecs::Entity> entities;
+};
+
+/** @brief The last specialization tick of each entity needing it (Bevy
+ *  `EntitySpecializationTickPair<M>`, `material.rs:612-628`). */
+EPIX_EXPORT template <typename M>
+struct EntitySpecializationTickPair {
+    render::sync_world::MainEntityHashMap<ecs::Tick> entities;
+};
+
+/** @brief Marks a mesh as changed when the material it renders with changed (Bevy
+ *  `mark_meshes_as_changed_if_their_materials_changed<M>`, `material.rs:679-691`).
+ *
+ *  A material swap has to reach `Mesh3d`'s change tick, because that is what the
+ *  extraction queries watch; `AssetChanged` is what catches the common case where
+ *  the component is untouched and only the asset's contents changed. Both terms are
+ *  needed - the component for a swap, the asset for an edit. */
+EPIX_EXPORT template <typename M>
+void mark_meshes_as_changed_if_their_materials_changed(
+    ecs::Query<ecs::Item<ecs::Entity, ecs::Mut<mesh::Mesh3d>>,
+               ecs::Filter<ecs::Or<ecs::Added<MeshMaterial3d<M>>, ecs::Modified<MeshMaterial3d<M>>,
+                                                 assets::AssetChanged<MeshMaterial3d<M>>>>> changed_meshes) {
+    for (auto&& [entity, mesh] : changed_meshes.iter()) {
+        (void)entity;
+        // Bevy writes `mesh.set_changed()`. This port's `Mut` marks modified on
+        // mutable access and has no `set_changed`, so `ptr_mut()` is the accessor
+        // that marks without a semantic write - the same effect.
+        (void)mesh.ptr_mut();
+    }
+}
+
 }  // namespace epix::pbr
