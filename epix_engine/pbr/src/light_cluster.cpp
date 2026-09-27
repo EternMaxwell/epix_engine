@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <limits>
 #include <optional>
+#include <stdexcept>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -373,6 +375,313 @@ void insert_object_into_cluster_row(std::vector<VisibleClusterableObjects>& clus
         insert_object_into_cluster(clusters[index], entity, object_type);
         index += dimensions.z;
     }
+}
+
+ClusterAssignmentBounds cluster_assignment_bounds(const camera::Sphere& object_sphere,
+                                                  const glm::mat4& view_from_world,
+                                                  float view_from_world_scale_max,
+                                                  const glm::mat4& clip_from_view,
+                                                  glm::vec2 cluster_factors,
+                                                  glm::uvec3 cluster_dimensions,
+                                                  bool is_orthographic,
+                                                  glm::vec3 bounds_ndc_min,
+                                                  glm::vec3 bounds_ndc_max) {
+    ClusterAssignmentBounds bounds;
+
+    const glm::uvec3 corner_min =
+        ndc_position_to_cluster(cluster_dimensions, cluster_factors, is_orthographic, bounds_ndc_min, bounds_ndc_min.z);
+    const glm::uvec3 corner_max =
+        ndc_position_to_cluster(cluster_dimensions, cluster_factors, is_orthographic, bounds_ndc_max, bounds_ndc_max.z);
+    bounds.min_cluster = glm::min(corner_min, corner_max);
+    bounds.max_cluster = glm::max(corner_min, corner_max);
+
+    bounds.view_sphere = camera::Sphere{.center = glm::vec3(view_from_world * glm::vec4(object_sphere.center, 1.0f)),
+                                        .radius = object_sphere.radius * view_from_world_scale_max};
+
+    const glm::vec4 center_clip     = clip_from_view * glm::vec4(bounds.view_sphere.center, 1.0f);
+    const glm::vec3 center_ndc      = glm::vec3(center_clip) / center_clip.w;
+    const glm::uvec3 center_cluster = ndc_position_to_cluster(cluster_dimensions, cluster_factors, is_orthographic,
+                                                              center_ndc, bounds.view_sphere.center.z);
+
+    if (center_ndc.z <= 1.0f) bounds.z_center = center_cluster.z;
+    if (center_ndc.y > 1.0f) {
+        bounds.y_center = std::nullopt;
+    } else if (center_ndc.y < -1.0f) {
+        bounds.y_center = cluster_dimensions.y + 1;  // the sentinel past the last row
+    } else {
+        bounds.y_center = center_cluster.y;
+    }
+    return bounds;
+}
+
+void insert_object_into_cluster(VisibleClusterableObjects& cluster,
+                                ecs::Entity entity,
+                                const ClusterableObjectType& object_type) {
+    cluster.entities.push_back(entity);
+    switch (object_type.kind) {
+        case ClusterableObjectType::Kind::PointLight:
+            cluster.counts.point_lights += 1;
+            break;
+        case ClusterableObjectType::Kind::SpotLight:
+            cluster.counts.spot_lights += 1;
+            break;
+        case ClusterableObjectType::Kind::ReflectionProbe:
+            cluster.counts.reflection_probes += 1;
+            break;
+        case ClusterableObjectType::Kind::IrradianceVolume:
+            cluster.counts.irradiance_volumes += 1;
+            break;
+        case ClusterableObjectType::Kind::Decal:
+            cluster.counts.decals += 1;
+            break;
+    }
+}
+
+SpotLightClusterCull spot_light_cluster_cull(glm::vec3 light_center,
+                                             float light_range_scaled,
+                                             glm::vec3 light_direction,
+                                             float angle_sin,
+                                             float angle_cos,
+                                             glm::vec3 cluster_center,
+                                             float cluster_radius) {
+    const glm::vec3 offset  = light_center - cluster_center;
+    const float distance_sq = glm::dot(offset, offset);
+    const float v1_len      = glm::dot(offset, light_direction);
+
+    SpotLightClusterCull cull;
+    const float distance_closest_point = angle_cos * std::sqrt(distance_sq - v1_len * v1_len) - v1_len * angle_sin;
+    cull.angle_cull                    = distance_closest_point > cluster_radius;
+    cull.front_cull                    = v1_len > cluster_radius + light_range_scaled;
+    cull.back_cull                     = v1_len < -cluster_radius;
+    return cull;
+}
+
+float view_far_z(const ClusterFarZMode& mode,
+                 const std::vector<ClusterableObjectAssignmentData>& clusterable_objects,
+                 const glm::mat4& view_from_world,
+                 glm::vec3 view_from_world_scale) {
+    if (mode.kind == ClusterFarZMode::Kind::Constant) return mode.constant;
+
+    const glm::vec4 row{view_from_world[0][2], view_from_world[1][2], view_from_world[2][2], view_from_world[3][2]};
+    float far_z = 0.0f;
+    for (const ClusterableObjectAssignmentData& object : clusterable_objects) {
+        const glm::vec3 translation = glm::vec3(object.transform[3]);
+        const float depth = -glm::dot(row, glm::vec4(translation, 1.0f)) + object.range * view_from_world_scale.z;
+        far_z             = std::max(far_z, depth);
+    }
+    return far_z;
+}
+
+float first_slice_depth(const ClusterConfig& config,
+                        bool is_orthographic,
+                        std::uint32_t cluster_dimensions_z,
+                        const glm::mat4& clip_from_view,
+                        glm::vec3 view_from_world_scale,
+                        float far_z) {
+    float depth = 0.0f;
+    if (is_orthographic) {
+        depth = orthographic_first_slice_depth(clip_from_view);
+    } else if (cluster_dimensions_z == 1) {
+        depth = std::max(config.first_slice_depth(), far_z);
+    } else {
+        depth = config.first_slice_depth();
+    }
+    return depth * view_from_world_scale.z;
+}
+
+ClusterableObjectAssignmentData point_light_assignment_data(ecs::Entity entity,
+                                                            glm::vec3 translation,
+                                                            float range,
+                                                            bool shadows_enabled,
+                                                            bool volumetric,
+                                                            const camera::RenderLayers& render_layers) {
+    ClusterableObjectAssignmentData data;
+    data.entity      = entity;
+    data.transform   = glm::translate(glm::mat4(1.0f), translation);
+    data.range       = range;
+    data.object_type = ClusterableObjectType{
+        .kind = ClusterableObjectType::Kind::PointLight, .shadows_enabled = shadows_enabled, .volumetric = volumetric};
+    data.render_layers = render_layers;
+    return data;
+}
+
+ClusterableObjectAssignmentData spot_light_assignment_data(ecs::Entity entity,
+                                                           const glm::mat4& world_from_light,
+                                                           float range,
+                                                           float outer_angle,
+                                                           bool shadows_enabled,
+                                                           bool volumetric,
+                                                           const camera::RenderLayers& render_layers) {
+    ClusterableObjectAssignmentData data;
+    data.entity        = entity;
+    data.transform     = world_from_light;
+    data.range         = range;
+    data.object_type   = ClusterableObjectType{.kind            = ClusterableObjectType::Kind::SpotLight,
+                                               .shadows_enabled = shadows_enabled,
+                                               .volumetric      = volumetric,
+                                               .outer_angle     = outer_angle};
+    data.render_layers = render_layers;
+    return data;
+}
+
+std::pair<std::optional<std::uint32_t>, std::optional<std::uint32_t>> ndc_position_to_cluster(
+    glm::uvec3 cluster_coordinates, glm::vec3 object_center_ndc, glm::uvec3 dimensions) {
+    const std::optional<std::uint32_t> z_center =
+        object_center_ndc.z <= 1.0f ? std::optional<std::uint32_t>{cluster_coordinates.z} : std::nullopt;
+
+    std::optional<std::uint32_t> y_center;
+    if (object_center_ndc.y > 1.0f) {
+        y_center = std::nullopt;
+    } else if (object_center_ndc.y < -1.0f) {
+        y_center = dimensions.y + 1;
+    } else {
+        y_center = cluster_coordinates.y;
+    }
+    return {z_center, y_center};
+}
+
+ClusterableObjectAssignmentData light_probe_assignment_data(ecs::Entity entity,
+                                                           const glm::mat4& world_from_probe,
+                                                           bool is_reflection_probe) {
+    ClusterableObjectAssignmentData data;
+    data.entity    = entity;
+    data.transform = world_from_probe;
+    data.range     = transform_scale_length(world_from_probe);
+    data.object_type =
+        ClusterableObjectType{.kind = is_reflection_probe ? ClusterableObjectType::Kind::ReflectionProbe
+                                                          : ClusterableObjectType::Kind::IrradianceVolume};
+    return data;
+}
+
+ClusterableObjectAssignmentData decal_assignment_data(ecs::Entity entity, const glm::mat4& world_from_decal) {
+    ClusterableObjectAssignmentData data;
+    data.entity      = entity;
+    data.transform   = world_from_decal;
+    data.range       = transform_scale_length(world_from_decal);
+    data.object_type = ClusterableObjectType{.kind = ClusterableObjectType::Kind::Decal};
+    return data;
+}
+
+ClusterFarZMode ClusterFarZMode::constant_far(float far_z_value) noexcept {
+    ClusterFarZMode mode;
+    mode.kind     = Kind::Constant;
+    mode.constant = far_z_value;
+    return mode;
+}
+
+glm::uvec3 ClusterConfig::dimensions_for_screen_size(glm::uvec2 screen_size) const {
+    switch (kind) {
+        case Kind::None:
+            return glm::uvec3(0u);
+        case Kind::Single:
+            return glm::uvec3(1u);
+        case Kind::XYZ:
+            return dimensions;
+        case Kind::FixedZ:
+            break;
+    }
+    if (screen_size.x == 0 || screen_size.y == 0) {
+        throw std::invalid_argument(
+            "Failed to calculate aspect ratio for Cluster: screen dimensions must be "
+            "positive, non-zero values");
+    }
+    const float aspect_ratio = static_cast<float>(screen_size.x) / static_cast<float>(screen_size.y);
+    std::uint32_t slices     = z_slices;
+    if (total < slices) {
+        // Bevy warns before clamping (cluster/mod.rs:257-260).
+        spdlog::warn("[pbr] ClusterConfig has more z-slices than total clusters!");
+        slices = total;
+    }
+    const float per_layer = static_cast<float>(total) / static_cast<float>(slices);
+
+    const float y_float = std::sqrt(per_layer / aspect_ratio);
+    std::uint32_t x     = static_cast<std::uint32_t>(y_float * aspect_ratio);
+    std::uint32_t y     = static_cast<std::uint32_t>(y_float);
+
+    // Check the extremes, where truncation would leave no clusters at all.
+    if (x == 0) {
+        x = 1;
+        y = static_cast<std::uint32_t>(per_layer);
+    }
+    if (y == 0) {
+        x = static_cast<std::uint32_t>(per_layer);
+        y = 1;
+    }
+    return glm::uvec3(x, y, slices);
+}
+
+float ClusterConfig::first_slice_depth() const noexcept {
+    switch (kind) {
+        case Kind::None:
+        case Kind::Single:
+            return 0.0f;
+        case Kind::XYZ:
+        case Kind::FixedZ:
+            return z_config.first_slice_depth;
+    }
+    return 0.0f;
+}
+
+ClusterFarZMode ClusterConfig::far_z_mode() const noexcept {
+    switch (kind) {
+        case Kind::None:
+            return ClusterFarZMode::constant_far(0.0f);
+        case Kind::Single:
+            return ClusterFarZMode{};
+        case Kind::XYZ:
+        case Kind::FixedZ:
+            return z_config.far_z_mode;
+    }
+    return ClusterFarZMode{};
+}
+
+bool ClusterConfig::may_resize_dynamically() const noexcept {
+    switch (kind) {
+        case Kind::None:
+        case Kind::Single:
+            return false;
+        case Kind::XYZ:
+        case Kind::FixedZ:
+            return dynamic_resizing;
+    }
+    return false;
+}
+
+void Clusters::update(glm::uvec2 screen_size, glm::uvec3 requested_dimensions) {
+    const glm::vec2 requested_xy{requested_dimensions.x, requested_dimensions.y};
+    const glm::vec2 screen{screen_size};
+    tile_size = glm::max(glm::uvec2(glm::ceil(screen / requested_xy)), glm::uvec2(1u));
+
+    const glm::uvec3 derived{glm::ceil(screen / glm::vec2(tile_size)), requested_dimensions.z};
+    dimensions = glm::max(derived, glm::uvec3(1u));
+
+    // Maximum 4096 clusters, because that is what the uniform buffer holds
+    // (Bevy's `debug_assert!`, `cluster/mod.rs:331-332`).
+    assert(dimensions.x * dimensions.y * dimensions.z <= 4096);
+}
+
+void Clusters::clear() {
+    tile_size  = glm::uvec2(1u);
+    dimensions = glm::uvec3(0u);
+    near_plane = 0.0f;
+    far_plane  = 0.0f;
+    clusterable_objects.clear();
+}
+
+std::tuple<std::uint8_t, bool, bool> ClusterableObjectType::ordering() const noexcept {
+    switch (kind) {
+        case Kind::PointLight:
+            return {0u, !shadows_enabled, !volumetric};
+        case Kind::SpotLight:
+            return {1u, !shadows_enabled, !volumetric};
+        case Kind::ReflectionProbe:
+            return {2u, false, false};
+        case Kind::IrradianceVolume:
+            return {3u, false, false};
+        case Kind::Decal:
+            return {4u, false, false};
+    }
+    return {0u, false, false};
 }
 
 }  // namespace epix::pbr

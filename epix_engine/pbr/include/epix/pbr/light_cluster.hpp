@@ -51,7 +51,7 @@ EPIX_EXPORT struct GlobalClusterSettings {
  *  Bevy's `Constant` variant carries its value, which a C++ enum cannot, so the
  *  value lives beside the kind here rather than in `ClusterZConfig`; setting
  *  `kind` to `Constant` without `constant` leaves a zero far plane. */
-EPIX_EXPORT struct ClusterFarZMode {
+EPIX_EXPORT struct EPIX_API ClusterFarZMode {
     enum class Kind {
         /** @brief Derive it from the currently visible objects, which uses
          *  clusters better but costs CPU time and more indices. */
@@ -64,12 +64,7 @@ EPIX_EXPORT struct ClusterFarZMode {
     float constant = 0.0f;
 
     /** @brief Bevy's `ClusterFarZMode::Constant(far)`. */
-    static ClusterFarZMode constant_far(float far_z_value) noexcept {
-        ClusterFarZMode mode;
-        mode.kind     = Kind::Constant;
-        mode.constant = far_z_value;
-        return mode;
-    }
+    static ClusterFarZMode constant_far(float far_z_value) noexcept;
 };
 
 /** @brief The depth-slicing configuration (Bevy `ClusterZConfig`,
@@ -90,7 +85,7 @@ EPIX_EXPORT struct ClusterZConfig {
  *  square clusters and at most 4096 clusters, using the maximum light distance as
  *  the far depth and a first slice reaching 5.0 (`cluster/mod.rs:230-241`) - and
  *  those are the defaults here. */
-EPIX_EXPORT struct ClusterConfig {
+EPIX_EXPORT struct EPIX_API ClusterConfig {
     /** @brief Which strategy the view uses. */
     enum class Kind {
         /** @brief No cluster calculation for this view. */
@@ -125,93 +120,23 @@ EPIX_EXPORT struct ClusterConfig {
      *  If either truncates to zero the layer is forced into a single row or
      *  column, which is how a tiny total still yields a valid configuration. A
      *  total below the slice count is clamped to it first, with Bevy warning. */
-    glm::uvec3 dimensions_for_screen_size(glm::uvec2 screen_size) const {
-        switch (kind) {
-            case Kind::None:
-                return glm::uvec3(0u);
-            case Kind::Single:
-                return glm::uvec3(1u);
-            case Kind::XYZ:
-                return dimensions;
-            case Kind::FixedZ:
-                break;
-        }
-        if (screen_size.x == 0 || screen_size.y == 0) {
-            throw std::invalid_argument(
-                "Failed to calculate aspect ratio for Cluster: screen dimensions must be "
-                "positive, non-zero values");
-        }
-        const float aspect_ratio = static_cast<float>(screen_size.x) / static_cast<float>(screen_size.y);
-        std::uint32_t slices     = z_slices;
-        if (total < slices) {
-            // Bevy warns before clamping (cluster/mod.rs:257-260).
-            spdlog::warn("[pbr] ClusterConfig has more z-slices than total clusters!");
-            slices = total;
-        }
-        const float per_layer = static_cast<float>(total) / static_cast<float>(slices);
-
-        const float y_float = std::sqrt(per_layer / aspect_ratio);
-        std::uint32_t x     = static_cast<std::uint32_t>(y_float * aspect_ratio);
-        std::uint32_t y     = static_cast<std::uint32_t>(y_float);
-
-        // Check the extremes, where truncation would leave no clusters at all.
-        if (x == 0) {
-            x = 1;
-            y = static_cast<std::uint32_t>(per_layer);
-        }
-        if (y == 0) {
-            x = static_cast<std::uint32_t>(per_layer);
-            y = 1;
-        }
-        return glm::uvec3(x, y, slices);
-    }
+    glm::uvec3 dimensions_for_screen_size(glm::uvec2 screen_size) const;
 
     /** @brief The depth of the first slice, in view space (Bevy
      *  `ClusterConfig::first_slice_depth`, `cluster/mod.rs:282-289`): zero for
      *  the strategies that have no z configuration. */
-    float first_slice_depth() const noexcept {
-        switch (kind) {
-            case Kind::None:
-            case Kind::Single:
-                return 0.0f;
-            case Kind::XYZ:
-            case Kind::FixedZ:
-                return z_config.first_slice_depth;
-        }
-        return 0.0f;
-    }
+    float first_slice_depth() const noexcept;
 
     /** @brief How the furthest slice's far Z is chosen (Bevy
      *  `ClusterConfig::far_z_mode`, `cluster/mod.rs:291-299`): a constant zero
      *  when clustering is off, the visible range for a single cluster, otherwise
      *  the view's own configuration. */
-    ClusterFarZMode far_z_mode() const noexcept {
-        switch (kind) {
-            case Kind::None:
-                return ClusterFarZMode::constant_far(0.0f);
-            case Kind::Single:
-                return ClusterFarZMode{};
-            case Kind::XYZ:
-            case Kind::FixedZ:
-                return z_config.far_z_mode;
-        }
-        return ClusterFarZMode{};
-    }
+    ClusterFarZMode far_z_mode() const noexcept;
 
     /** @brief Whether the view resizes its X/Y clusters to stay inside the index
      *  limit (Bevy `ClusterConfig::dynamic_resizing`, `cluster/mod.rs:301-311`);
      *  false for the strategies that have no such setting. */
-    bool may_resize_dynamically() const noexcept {
-        switch (kind) {
-            case Kind::None:
-            case Kind::Single:
-                return false;
-            case Kind::XYZ:
-            case Kind::FixedZ:
-                return dynamic_resizing;
-        }
-        return false;
-    }
+    bool may_resize_dynamically() const noexcept;
 };
 
 /** @brief The number of each kind of clusterable object in one cluster (Bevy
@@ -235,7 +160,7 @@ EPIX_EXPORT struct VisibleClusterableObjects {
 
 /** @brief A view's cluster layout and the objects it must assign (Bevy
  *  `Clusters`, `cluster/mod.rs:101-112`). */
-EPIX_EXPORT struct Clusters {
+EPIX_EXPORT struct EPIX_API Clusters {
     /** @brief Tile size in pixels. */
     glm::uvec2 tile_size{0, 0};
     /** @brief Number of clusters in X / Y / Z in the view frustum. */
@@ -257,29 +182,12 @@ EPIX_EXPORT struct Clusters {
      *  than kept - so a screen that does not divide evenly yields fewer clusters
      *  than requested, never fractional ones. Both are floored at one, and the z
      *  count is the requested one. */
-    void update(glm::uvec2 screen_size, glm::uvec3 requested_dimensions) {
-        const glm::vec2 requested_xy{requested_dimensions.x, requested_dimensions.y};
-        const glm::vec2 screen{screen_size};
-        tile_size = glm::max(glm::uvec2(glm::ceil(screen / requested_xy)), glm::uvec2(1u));
-
-        const glm::uvec3 derived{glm::ceil(screen / glm::vec2(tile_size)), requested_dimensions.z};
-        dimensions = glm::max(derived, glm::uvec3(1u));
-
-        // Maximum 4096 clusters, because that is what the uniform buffer holds
-        // (Bevy's `debug_assert!`, `cluster/mod.rs:331-332`).
-        assert(dimensions.x * dimensions.y * dimensions.z <= 4096);
-    }
+    void update(glm::uvec2 screen_size, glm::uvec3 requested_dimensions);
 
     /** @brief Reset to a state with no clusters (Bevy `Clusters::clear`,
      *  `cluster/mod.rs:334-340`). Note the dimensions become zero, where
      *  `update` would floor them at one. */
-    void clear() {
-        tile_size  = glm::uvec2(1u);
-        dimensions = glm::uvec3(0u);
-        near_plane = 0.0f;
-        far_plane  = 0.0f;
-        clusterable_objects.clear();
-    }
+    void clear();
 };
 
 /** @brief A clustered decal: a 1×1×1 cube centred on its origin that projects
@@ -462,7 +370,7 @@ EPIX_EXPORT EPIX_API std::pair<glm::vec3, glm::vec3> cluster_space_clusterable_o
 /** @brief What kind of clusterable object this is, with the type-specific data
  *  the assignment needs (Bevy `ClusterableObjectType`,
  *  `bevy_light/src/cluster/assign.rs:57-95`). */
-EPIX_EXPORT struct ClusterableObjectType {
+EPIX_EXPORT struct EPIX_API ClusterableObjectType {
     enum class Kind {
         PointLight,
         SpotLight,
@@ -491,21 +399,7 @@ EPIX_EXPORT struct ClusterableObjectType {
      *  `false` first, so `!shadows_enabled` is what makes a shadow-casting light
      *  sort before one that does not cast. Inverting either negation reverses
      *  the light list. */
-    std::tuple<std::uint8_t, bool, bool> ordering() const noexcept {
-        switch (kind) {
-            case Kind::PointLight:
-                return {0u, !shadows_enabled, !volumetric};
-            case Kind::SpotLight:
-                return {1u, !shadows_enabled, !volumetric};
-            case Kind::ReflectionProbe:
-                return {2u, false, false};
-            case Kind::IrradianceVolume:
-                return {3u, false, false};
-            case Kind::Decal:
-                return {4u, false, false};
-        }
-        return {0u, false, false};
-    }
+    std::tuple<std::uint8_t, bool, bool> ordering() const noexcept;
 };
 
 /** @brief One clusterable object, ready to be assigned to clusters (Bevy
@@ -674,42 +568,15 @@ EPIX_EXPORT struct ClusterAssignmentBounds {
  *  The range comes from `ndc_position_to_cluster` applied to both corners of the
  *  object's bounds, then ordered so the minimum is the smaller of the two - the
  *  projection can invert them. */
-EPIX_EXPORT inline ClusterAssignmentBounds cluster_assignment_bounds(const camera::Sphere& object_sphere,
-                                                                     const glm::mat4& view_from_world,
-                                                                     float view_from_world_scale_max,
-                                                                     const glm::mat4& clip_from_view,
-                                                                     glm::vec2 cluster_factors,
-                                                                     glm::uvec3 cluster_dimensions,
-                                                                     bool is_orthographic,
-                                                                     glm::vec3 bounds_ndc_min,
-                                                                     glm::vec3 bounds_ndc_max) {
-    ClusterAssignmentBounds bounds;
-
-    const glm::uvec3 corner_min =
-        ndc_position_to_cluster(cluster_dimensions, cluster_factors, is_orthographic, bounds_ndc_min, bounds_ndc_min.z);
-    const glm::uvec3 corner_max =
-        ndc_position_to_cluster(cluster_dimensions, cluster_factors, is_orthographic, bounds_ndc_max, bounds_ndc_max.z);
-    bounds.min_cluster = glm::min(corner_min, corner_max);
-    bounds.max_cluster = glm::max(corner_min, corner_max);
-
-    bounds.view_sphere = camera::Sphere{.center = glm::vec3(view_from_world * glm::vec4(object_sphere.center, 1.0f)),
-                                        .radius = object_sphere.radius * view_from_world_scale_max};
-
-    const glm::vec4 center_clip     = clip_from_view * glm::vec4(bounds.view_sphere.center, 1.0f);
-    const glm::vec3 center_ndc      = glm::vec3(center_clip) / center_clip.w;
-    const glm::uvec3 center_cluster = ndc_position_to_cluster(cluster_dimensions, cluster_factors, is_orthographic,
-                                                              center_ndc, bounds.view_sphere.center.z);
-
-    if (center_ndc.z <= 1.0f) bounds.z_center = center_cluster.z;
-    if (center_ndc.y > 1.0f) {
-        bounds.y_center = std::nullopt;
-    } else if (center_ndc.y < -1.0f) {
-        bounds.y_center = cluster_dimensions.y + 1;  // the sentinel past the last row
-    } else {
-        bounds.y_center = center_cluster.y;
-    }
-    return bounds;
-}
+EPIX_EXPORT EPIX_API ClusterAssignmentBounds cluster_assignment_bounds(const camera::Sphere& object_sphere,
+                                                                      const glm::mat4& view_from_world,
+                                                                      float view_from_world_scale_max,
+                                                                      const glm::mat4& clip_from_view,
+                                                                      glm::vec2 cluster_factors,
+                                                                      glm::uvec3 cluster_dimensions,
+                                                                      bool is_orthographic,
+                                                                      glm::vec3 bounds_ndc_min,
+                                                                      glm::vec3 bounds_ndc_max);
 
 /** @brief The cluster index a (x, y, z) coordinate maps to (Bevy's
  *  `(y * dimensions.x + min_x) * dimensions.z + z`, `assign.rs:712-714`): y
@@ -793,24 +660,13 @@ EPIX_EXPORT struct SpotLightClusterCull {
  *  direction: past the range is a front cull, and behind the light is a back
  *  cull. The range passed in is already scaled by the view's largest axis scale,
  *  as Bevy scales it. */
-EPIX_EXPORT inline SpotLightClusterCull spot_light_cluster_cull(glm::vec3 light_center,
-                                                                float light_range_scaled,
-                                                                glm::vec3 light_direction,
-                                                                float angle_sin,
-                                                                float angle_cos,
-                                                                glm::vec3 cluster_center,
-                                                                float cluster_radius) {
-    const glm::vec3 offset  = light_center - cluster_center;
-    const float distance_sq = glm::dot(offset, offset);
-    const float v1_len      = glm::dot(offset, light_direction);
-
-    SpotLightClusterCull cull;
-    const float distance_closest_point = angle_cos * std::sqrt(distance_sq - v1_len * v1_len) - v1_len * angle_sin;
-    cull.angle_cull                    = distance_closest_point > cluster_radius;
-    cull.front_cull                    = v1_len > cluster_radius + light_range_scaled;
-    cull.back_cull                     = v1_len < -cluster_radius;
-    return cull;
-}
+EPIX_EXPORT EPIX_API SpotLightClusterCull spot_light_cluster_cull(glm::vec3 light_center,
+                                                                 float light_range_scaled,
+                                                                 glm::vec3 light_direction,
+                                                                 float angle_sin,
+                                                                 float angle_cos,
+                                                                 glm::vec3 cluster_center,
+                                                                 float cluster_radius);
 
 /** @brief Record that an object affects a cluster: push its entity and bump the
  *  counter for its kind (Bevy `assign.rs:766-838`).
@@ -820,28 +676,9 @@ EPIX_EXPORT inline SpotLightClusterCull spot_light_cluster_cull(glm::vec3 light_
  *  `spot_lights`, and the probes, volumes and decals their own. The counts are
  *  what `prepare_lights` writes into the offsets and counts buffer, so a missing
  *  or doubled increment here shifts every later cluster's indices. */
-EPIX_EXPORT inline void insert_object_into_cluster(VisibleClusterableObjects& cluster,
-                                                   ecs::Entity entity,
-                                                   const ClusterableObjectType& object_type) {
-    cluster.entities.push_back(entity);
-    switch (object_type.kind) {
-        case ClusterableObjectType::Kind::PointLight:
-            cluster.counts.point_lights += 1;
-            break;
-        case ClusterableObjectType::Kind::SpotLight:
-            cluster.counts.spot_lights += 1;
-            break;
-        case ClusterableObjectType::Kind::ReflectionProbe:
-            cluster.counts.reflection_probes += 1;
-            break;
-        case ClusterableObjectType::Kind::IrradianceVolume:
-            cluster.counts.irradiance_volumes += 1;
-            break;
-        case ClusterableObjectType::Kind::Decal:
-            cluster.counts.decals += 1;
-            break;
-    }
-}
+EPIX_EXPORT EPIX_API void insert_object_into_cluster(VisibleClusterableObjects& cluster,
+                                                    ecs::Entity entity,
+                                                    const ClusterableObjectType& object_type);
 
 /** @brief Record an object across a row of x clusters at one (y, z) (Bevy
  *  `assign.rs:780-789` and the other insertion arms).
@@ -929,21 +766,10 @@ UniformClusterableObjectLimit limit_clusterable_objects_for_uniform_buffer(
  *  Note the row: glam's `Mat4::row(2)` is the third *row*, while a glm matrix is
  *  column-major, so the row is assembled from the fourth element of each column
  *  here. Reading `view_from_world[2]` would silently use a column instead. */
-EPIX_EXPORT inline float view_far_z(const ClusterFarZMode& mode,
-                                    const std::vector<ClusterableObjectAssignmentData>& clusterable_objects,
-                                    const glm::mat4& view_from_world,
-                                    glm::vec3 view_from_world_scale) {
-    if (mode.kind == ClusterFarZMode::Kind::Constant) return mode.constant;
-
-    const glm::vec4 row{view_from_world[0][2], view_from_world[1][2], view_from_world[2][2], view_from_world[3][2]};
-    float far_z = 0.0f;
-    for (const ClusterableObjectAssignmentData& object : clusterable_objects) {
-        const glm::vec3 translation = glm::vec3(object.transform[3]);
-        const float depth = -glm::dot(row, glm::vec4(translation, 1.0f)) + object.range * view_from_world_scale.z;
-        far_z             = std::max(far_z, depth);
-    }
-    return far_z;
-}
+EPIX_EXPORT EPIX_API float view_far_z(const ClusterFarZMode& mode,
+                                      const std::vector<ClusterableObjectAssignmentData>& clusterable_objects,
+                                      const glm::mat4& view_from_world,
+                                      glm::vec3 view_from_world_scale);
 
 /** @brief The depth of the first cluster slice (Bevy `assign_objects_to_clusters`,
  *  `assign.rs:351-369`).
@@ -954,22 +780,12 @@ EPIX_EXPORT inline float view_far_z(const ClusterFarZMode& mode,
  *  depth and the far plane; with more slices the configured depth stands. The
  *  result is then scaled by the view's z scale - and the far plane is raised to
  *  meet it, so the first slice can never be beyond the far plane. */
-EPIX_EXPORT inline float first_slice_depth(const ClusterConfig& config,
-                                           bool is_orthographic,
-                                           std::uint32_t cluster_dimensions_z,
-                                           const glm::mat4& clip_from_view,
-                                           glm::vec3 view_from_world_scale,
-                                           float far_z) {
-    float depth = 0.0f;
-    if (is_orthographic) {
-        depth = orthographic_first_slice_depth(clip_from_view);
-    } else if (cluster_dimensions_z == 1) {
-        depth = std::max(config.first_slice_depth(), far_z);
-    } else {
-        depth = config.first_slice_depth();
-    }
-    return depth * view_from_world_scale.z;
-}
+EPIX_EXPORT EPIX_API float first_slice_depth(const ClusterConfig& config,
+                                            bool is_orthographic,
+                                            std::uint32_t cluster_dimensions_z,
+                                            const glm::mat4& clip_from_view,
+                                            glm::vec3 view_from_world_scale,
+                                            float far_z);
 
 /** @brief The far plane a view's clusters actually use, which is at least as far
  *  as the first slice (Bevy `assign.rs:369`): clustering misbehaves if the first
@@ -993,45 +809,25 @@ EPIX_EXPORT struct GlobalVisibleClusterableObjects {
  *  own comment calls the ignored scale a TODO. A spot light cannot do the same,
  *  which is the asymmetry between the two: its cone direction lives in the
  *  transform, so flattening it would leave every spot light pointing the same way. */
-EPIX_EXPORT inline ClusterableObjectAssignmentData point_light_assignment_data(
+EPIX_EXPORT EPIX_API ClusterableObjectAssignmentData point_light_assignment_data(
     ecs::Entity entity,
     glm::vec3 translation,
     float range,
     bool shadows_enabled,
     bool volumetric,
-    const camera::RenderLayers& render_layers) {
-    ClusterableObjectAssignmentData data;
-    data.entity      = entity;
-    data.transform   = glm::translate(glm::mat4(1.0f), translation);
-    data.range       = range;
-    data.object_type = ClusterableObjectType{
-        .kind = ClusterableObjectType::Kind::PointLight, .shadows_enabled = shadows_enabled, .volumetric = volumetric};
-    data.render_layers = render_layers;
-    return data;
-}
+    const camera::RenderLayers& render_layers);
 
 /** @brief Assignment data for a spot light (Bevy `assign_objects_to_clusters`,
  *  `assign.rs:189-215`), which keeps the entity's full transform so the cone's
  *  direction survives, and carries the outer angle the cone test needs. */
-EPIX_EXPORT inline ClusterableObjectAssignmentData spot_light_assignment_data(
+EPIX_EXPORT EPIX_API ClusterableObjectAssignmentData spot_light_assignment_data(
     ecs::Entity entity,
     const glm::mat4& world_from_light,
     float range,
     float outer_angle,
     bool shadows_enabled,
     bool volumetric,
-    const camera::RenderLayers& render_layers) {
-    ClusterableObjectAssignmentData data;
-    data.entity        = entity;
-    data.transform     = world_from_light;
-    data.range         = range;
-    data.object_type   = ClusterableObjectType{.kind            = ClusterableObjectType::Kind::SpotLight,
-                                               .shadows_enabled = shadows_enabled,
-                                               .volumetric      = volumetric,
-                                               .outer_angle     = outer_angle};
-    data.render_layers = render_layers;
-    return data;
-}
+    const camera::RenderLayers& render_layers);
 
 /** @brief The bounding sphere of one cluster, computed on first use and cached
  *  (Bevy `assign_objects_to_clusters`, `assign.rs:475-477,722-745`).
@@ -1070,21 +866,8 @@ inline const camera::Sphere& cached_cluster_sphere(std::vector<std::optional<cam
  *  rather than a distinction. It is reproduced as written: choosing which form was
  *  intended would be a divergence, and this is the kind of thing that looks like a
  *  bug to "fix". */
-EPIX_EXPORT inline std::pair<std::optional<std::uint32_t>, std::optional<std::uint32_t>> ndc_position_to_cluster(
-    glm::uvec3 cluster_coordinates, glm::vec3 object_center_ndc, glm::uvec3 dimensions) {
-    const std::optional<std::uint32_t> z_center =
-        object_center_ndc.z <= 1.0f ? std::optional<std::uint32_t>{cluster_coordinates.z} : std::nullopt;
-
-    std::optional<std::uint32_t> y_center;
-    if (object_center_ndc.y > 1.0f) {
-        y_center = std::nullopt;
-    } else if (object_center_ndc.y < -1.0f) {
-        y_center = dimensions.y + 1;
-    } else {
-        y_center = cluster_coordinates.y;
-    }
-    return {z_center, y_center};
-}
+EPIX_EXPORT EPIX_API std::pair<std::optional<std::uint32_t>, std::optional<std::uint32_t>> ndc_position_to_cluster(
+    glm::uvec3 cluster_coordinates, glm::vec3 object_center_ndc, glm::uvec3 dimensions);
 
 /** @brief An object's sphere in view space (Bevy `assign_objects_to_clusters`,
  *  `assign.rs:594-599`).
@@ -1190,30 +973,14 @@ EPIX_EXPORT inline float transform_scale_length(const glm::mat4& world_from_loca
  *  bindless textures probes need anyway. A probe carrying an environment map is a
  *  reflection probe; otherwise it is an irradiance volume. Its range is its scale
  *  length, and its layers are the default. */
-EPIX_EXPORT inline ClusterableObjectAssignmentData light_probe_assignment_data(ecs::Entity entity,
-                                                                               const glm::mat4& world_from_probe,
-                                                                               bool is_reflection_probe) {
-    ClusterableObjectAssignmentData data;
-    data.entity    = entity;
-    data.transform = world_from_probe;
-    data.range     = transform_scale_length(world_from_probe);
-    data.object_type =
-        ClusterableObjectType{.kind = is_reflection_probe ? ClusterableObjectType::Kind::ReflectionProbe
-                                                          : ClusterableObjectType::Kind::IrradianceVolume};
-    return data;
-}
+EPIX_EXPORT EPIX_API ClusterableObjectAssignmentData light_probe_assignment_data(ecs::Entity entity,
+                                                                                const glm::mat4& world_from_probe,
+                                                                                bool is_reflection_probe);
 
 /** @brief Assignment data for a clustered decal (Bevy `assign_objects_to_clusters`,
  *  `assign.rs:232-243`). Only gathered when the platform supports clustered decals,
  *  and its range is its scale length like a probe's. */
-EPIX_EXPORT inline ClusterableObjectAssignmentData decal_assignment_data(ecs::Entity entity,
-                                                                         const glm::mat4& world_from_decal) {
-    ClusterableObjectAssignmentData data;
-    data.entity      = entity;
-    data.transform   = world_from_decal;
-    data.range       = transform_scale_length(world_from_decal);
-    data.object_type = ClusterableObjectType{.kind = ClusterableObjectType::Kind::Decal};
-    return data;
-}
+EPIX_EXPORT EPIX_API ClusterableObjectAssignmentData decal_assignment_data(ecs::Entity entity,
+                                                                          const glm::mat4& world_from_decal);
 
 }  // namespace epix::pbr
