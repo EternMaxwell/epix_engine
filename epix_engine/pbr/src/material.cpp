@@ -16,4 +16,19 @@ std::optional<MaterialBindingId> RenderMaterialBindings::get(const assets::Untyp
     return found->second;
 }
 
+void late_sweep_material_instances(ecs::ResMut<RenderMaterialInstances> material_instances,
+                                   app::Extract<ecs::RemovedComponents<mesh::Mesh3d>> removed_meshes_query) {
+    const ecs::Tick last_change_tick = material_instances->current_change_tick;
+
+    for (const ecs::Entity entity : removed_meshes_query.read()) {
+        const render::sync_world::MainEntity main_entity{entity};
+        const auto found = material_instances->instances.find(main_entity);
+        if (found != material_instances->instances.end() && found->second.last_change_tick != last_change_tick) {
+            material_instances->instances.erase(found);
+        }
+    }
+
+    material_instances->current_change_tick = ecs::Tick{last_change_tick.get() + 1};
+}
+
 }  // namespace epix::pbr

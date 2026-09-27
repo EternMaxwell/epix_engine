@@ -1,6 +1,9 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <epix/camera.hpp>
+#include <epix/mesh.hpp>
+#include <epix/pbr/mesh_material.hpp>
 #include <cstdint>
 #include <epix/assets/id.hpp>
 #include <epix/common.hpp>
@@ -67,5 +70,74 @@ EPIX_EXPORT struct EPIX_API RenderMaterialBindings {
      *  (Bevy's `RenderMaterialBindings::get`). */
     [[nodiscard]] std::optional<MaterialBindingId> get(const assets::UntypedAssetId& asset_id) const;
 };
+
+
+/** @brief The meshes whose material or visibility changed (Bevy
+ *  `Or<(Changed<ViewVisibility>, Changed<MeshMaterial3d<M>>)>`). */
+template <typename M>
+using ChangedMeshMaterialFilter =
+    ecs::Or<ecs::Added<camera::ViewVisibility>, ecs::Modified<camera::ViewVisibility>,
+            ecs::Added<MeshMaterial3d<M>>, ecs::Modified<MeshMaterial3d<M>>>;
+
+/** @brief Fills @ref RenderMaterialInstances from the scene's meshes (Bevy
+ *  `extract_mesh_materials`, `bevy_pbr/src/material.rs:698-718`).
+ *
+ *  A **visible** mesh records which material it uses and the tick it changed at;
+ *  an invisible one has its record removed here rather than in the sweep, because
+ *  becoming invisible is exactly what this query observes. */
+template <typename M>
+void extract_mesh_materials(ecs::ResMut<RenderMaterialInstances> material_instances,
+                            app::Extract<ecs::Query<ecs::Item<ecs::Entity, const camera::ViewVisibility&,
+                                                                 const MeshMaterial3d<M>&>,
+                                                    ChangedMeshMaterialFilter<M>>> changed_meshes_query) {
+    const ecs::Tick last_change_tick = material_instances->current_change_tick;
+
+    for (auto&& [entity, view_visibility, material] : changed_meshes_query.iter()) {
+        const render::sync_world::MainEntity main_entity{entity};
+        if (view_visibility.get()) {
+            // `insert_or_assign` rather than `operator[]`: the record's untyped asset
+            // id has no default, so the map cannot default-construct one.
+            material_instances->instances.insert_or_assign(
+                main_entity, RenderMaterialInstance{.asset_id = assets::UntypedAssetId{material.id()},
+                                                    .last_change_tick = last_change_tick});
+        } else {
+            material_instances->instances.erase(main_entity);
+        }
+    }
+}
+
+/** @brief The first of two sweep phases: drops the records of meshes whose
+ *  `MeshMaterial3d<M>` was removed (Bevy `early_sweep_material_instances`,
+ *  `material.rs:743-763`).
+ *
+ *  A material of one type replaced by a material of another in the same frame is
+ *  common, and the removed-component event still fires for the old type - so an
+ *  entry updated *this* frame is left alone, which is what the tick comparison
+ *  checks. Running once per material type is why the tick is bumped by the second
+ *  phase instead. */
+template <typename M>
+void early_sweep_material_instances(ecs::ResMut<RenderMaterialInstances> material_instances,
+                                    app::Extract<ecs::RemovedComponents<MeshMaterial3d<M>>> removed_materials_query) {
+    const ecs::Tick last_change_tick = material_instances->current_change_tick;
+
+    for (const ecs::Entity entity : removed_materials_query.read()) {
+        const render::sync_world::MainEntity main_entity{entity};
+        const auto found = material_instances->instances.find(main_entity);
+        if (found != material_instances->instances.end() && found->second.last_change_tick != last_change_tick) {
+            material_instances->instances.erase(found);
+        }
+    }
+}
+
+
+/** @brief The second sweep phase: drops the records of meshes whose `Mesh3d` was
+ *  removed, then advances the registry's change tick for the next frame (Bevy
+ *  `late_sweep_material_instances`, `material.rs:772-800`).
+ *
+ *  It runs after every `early_sweep_material_instances`, which is what lets the
+ *  tick be bumped exactly once per frame. */
+EPIX_EXPORT EPIX_API void late_sweep_material_instances(
+    ecs::ResMut<RenderMaterialInstances> material_instances,
+    app::Extract<ecs::RemovedComponents<mesh::Mesh3d>> removed_meshes_query);
 
 }  // namespace epix::pbr
