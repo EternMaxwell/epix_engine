@@ -581,6 +581,8 @@ struct RingMeshBuilder {
 
     /** @brief Apply `func` to both the inner and the outer builder (Bevy `with_inner`). */
     template <typename Func>
+        requires std::invocable<Func&, const ShapeMeshBuilder&> &&
+                 std::convertible_to<std::invoke_result_t<Func&, const ShapeMeshBuilder&>, ShapeMeshBuilder>
     RingMeshBuilder with_inner(Func func) const {
         return RingMeshBuilder{func(outer_shape_builder), func(inner_shape_builder)};
     }
@@ -2042,6 +2044,8 @@ struct ExtrusionBuilder {
     /** @brief Apply `func` to the inner 2D builder (Bevy `ExtrusionBuilder::with_inner`). Unlike
      * `RingMeshBuilder::with_inner`, this touches `base_builder` only, as in Bevy. */
     template <typename Func>
+        requires std::invocable<Func&, const ShapeMeshBuilder&> &&
+                 std::convertible_to<std::invoke_result_t<Func&, const ShapeMeshBuilder&>, ShapeMeshBuilder>
     ExtrusionBuilder with_inner(Func func) const {
         return ExtrusionBuilder{func(base_builder), half_depth, segments};
     }
