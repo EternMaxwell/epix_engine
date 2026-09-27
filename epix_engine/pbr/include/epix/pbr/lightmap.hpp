@@ -207,4 +207,13 @@ EPIX_EXPORT EPIX_API void extract_lightmaps(
     ecs::Res<render::RenderAssets<render::texture::GpuImage>> images,
     ecs::Res<render::texture::FallbackImage> fallback_images);
 
+/** @brief Create the render-world lightmap resource for this device (Bevy
+ *  `init_render_lightmaps`, `lightmap/mod.rs:334-350`).
+ *
+ *  The resource starts empty: slabs are created on demand by `RenderLightmaps::allocate`, 
+ *  which is why the only thing the initialiser decides is whether binding arrays are 
+ *  usable on this device. */
+EPIX_EXPORT EPIX_API void init_render_lightmaps(ecs::Commands commands, ecs::Res<wgpu::Device> render_device,
+                                               ecs::Res<wgpu::Adapter> render_adapter);
+
 }  // namespace epix::pbr

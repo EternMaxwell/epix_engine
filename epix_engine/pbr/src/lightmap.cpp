@@ -131,4 +131,20 @@ void extract_lightmaps(ecs::ResMut<RenderLightmaps> render_lightmaps,
     });
 }
 
+void init_render_lightmaps(ecs::Commands commands, ecs::Res<wgpu::Device> render_device,
+                           ecs::Res<wgpu::Adapter> render_adapter) {
+    (void)render_adapter;
+    // Bevy asks `binding_arrays_are_usable(render_device, render_adapter)`, which is a
+    // feature check plus a downlevel flag; the port's bindings expose the feature half
+    // (`hasFeature`) but not the adapter's downlevel flags, and the binding-array limit
+    // is not reachable either (see `mesh_layout_entry`'s notes). The feature check is
+    // therefore what this can ask, and the slab falls back to a single binding where it
+    // says no - which is the same shape Bevy takes when the answer is false.
+    const bool bindless_supported = render_device->hasFeature(wgpu::FeatureName::eTextureBindingArray);
+
+    RenderLightmaps lightmaps;
+    lightmaps.bindless_supported = bindless_supported;
+    commands.insert_resource(std::move(lightmaps));
+}
+
 }  // namespace epix::pbr
