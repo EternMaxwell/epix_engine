@@ -1,6 +1,8 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <epix/pbr/mesh_pipeline_key.hpp>
+#include <epix/render/alpha.hpp>
 #include <epix/camera.hpp>
 #include <epix/mesh.hpp>
 #include <epix/pbr/mesh_material.hpp>
@@ -139,5 +141,99 @@ void early_sweep_material_instances(ecs::ResMut<RenderMaterialInstances> materia
 EPIX_EXPORT EPIX_API void late_sweep_material_instances(
     ecs::ResMut<RenderMaterialInstances> material_instances,
     app::Extract<ecs::RemovedComponents<mesh::Mesh3d>> removed_meshes_query);
+
+
+/** @brief A material's own bind-group data type, or `std::monostate` when it has
+ *  none (Bevy's `Material` associated default). */
+template <typename M, typename = void>
+struct MaterialData {
+    using type = std::monostate;
+};
+template <typename M>
+struct MaterialData<M, std::void_t<typename M::Data>> {
+    using type = typename M::Data;
+};
+
+/** @brief The bind group a 3D material is bound at (Bevy `MATERIAL_BIND_GROUP`,
+ *  `material.rs:136`). */
+inline constexpr std::uint32_t MATERIAL_BIND_GROUP_INDEX = 2;
+
+/** @brief Whether an opaque or mask material goes through the forward or the
+ *  deferred renderer (Bevy `OpaqueRendererMethod`, `material.rs:157-163`).
+ *
+ *  `Auto` defers to the `DefaultOpaqueRendererMethod` resource, which is part of
+ *  the material plugin and therefore lands with it. */
+EPIX_EXPORT enum class OpaqueRendererMethod {
+    Forward,  /**< Draw it in the forward pass. */
+    Deferred, /**< Draw it in the deferred pass. */
+    Auto,     /**< Follow the `DefaultOpaqueRendererMethod` resource. */
+};
+
+/** @brief The specialization key of one 3D material (Bevy `MaterialPipelineKey`,
+ *  `material.rs:269`).
+ *
+ *  Bevy's key also carries the prepared material pipeline; the port's 2D
+ *  counterpart drops that parameter and this follows it. */
+EPIX_EXPORT template <typename M>
+struct MaterialPipelineKey {
+    /** @brief The mesh half of the key. */
+    MeshPipelineKey mesh_key{};
+    /** @brief The material's own bind-group data (Bevy `M::Data`). */
+    typename MaterialData<M>::type bind_group_data{};
+
+    bool operator==(const MaterialPipelineKey&) const noexcept = default;
+};
+
+/** @brief A 3D material (Bevy `Material`, `bevy_pbr/src/material.rs:138-273`).  A
+ *  material type derives from this and overrides only what it needs; the pipeline
+ *  calls the derived members through static dispatch.
+ *
+ *  Bevy's `ShaderRef` (default, handle or path) translates to an optional
+ *  source-relative shader path loaded under `embedded://`, as the 2D counterpart
+ *  does: `nullopt` means the default mesh shader, which is `ShaderRef::Default`.
+ *
+ *  The meshlet shaders (`meshlet_mesh_fragment_shader` and its two siblings) are
+ *  absent: meshlets are a Bevy subsystem this port does not have. */
+EPIX_EXPORT template <typename M>
+struct Material {
+    /** @brief This material's vertex shader path, or nothing for the default mesh
+     *  vertex shader. */
+    static std::optional<std::string_view> vertex_shader() { return std::nullopt; }
+    /** @brief This material's fragment shader path, or nothing for the default mesh
+     *  fragment shader. */
+    static std::optional<std::string_view> fragment_shader() { return std::nullopt; }
+    /** @brief This material's alpha mode (Bevy `alpha_mode`, which defaults to
+     *  `AlphaMode::Opaque`). */
+    render::AlphaMode alpha_mode() const { return render::AlphaMode::opaque(); }
+    /** @brief Which renderer draws this material (Bevy `opaque_render_method`,
+     *  which defaults to `Forward`). */
+    OpaqueRendererMethod opaque_render_method() const { return OpaqueRendererMethod::Forward; }
+    /** @brief A view-depth bias forcing a specific render order (Bevy
+     *  `depth_bias`). */
+    float depth_bias() const { return 0.0f; }
+    /** @brief Whether this material reads the view transmission texture (Bevy
+     *  `reads_view_transmission_texture`). */
+    bool reads_view_transmission_texture() const { return false; }
+    /** @brief Whether the prepass is enabled for this material. Bevy's default is
+     *  `true`, which is easy to get wrong in either direction. */
+    static bool enable_prepass() { return true; }
+    /** @brief Whether shadows are enabled for this material (Bevy `enable_shadows`,
+     *  default `true`). */
+    static bool enable_shadows() { return true; }
+    /** @brief This material's prepass vertex shader path. */
+    static std::optional<std::string_view> prepass_vertex_shader() { return std::nullopt; }
+    /** @brief This material's prepass fragment shader path. */
+    static std::optional<std::string_view> prepass_fragment_shader() { return std::nullopt; }
+    /** @brief This material's deferred vertex shader path. */
+    static std::optional<std::string_view> deferred_vertex_shader() { return std::nullopt; }
+    /** @brief This material's deferred fragment shader path. */
+    static std::optional<std::string_view> deferred_fragment_shader() { return std::nullopt; }
+    /** @brief Customize the specialized pipeline (Bevy `Material::specialize`,
+     *  `material.rs:265-272`, whose prepared pipeline parameter the port's 2D
+     *  counterpart also drops). */
+    static void specialize(render::RenderPipelineDescriptor&,
+                           const mesh::MeshVertexBufferLayoutRef&,
+                           const MaterialPipelineKey<M>&) {}
+};
 
 }  // namespace epix::pbr
