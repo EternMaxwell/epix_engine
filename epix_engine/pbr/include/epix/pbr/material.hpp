@@ -236,4 +236,63 @@ struct Material {
                            const MaterialPipelineKey<M>&) {}
 };
 
+
+/** @brief The extraction systems of one material type, which the sweeps order
+ *  around (Bevy `MaterialExtractionSystems`, `material.rs:396`). */
+EPIX_EXPORT enum class MaterialExtractionSystems {
+    Extract, /**< The per-material extraction pass this ordering set marks. */
+};
+
+/** @brief Registers one 3D material type (Bevy `MaterialPlugin<M>`,
+ *  `bevy_pbr/src/material.rs:339-404`).
+ *
+ *  What is here is the half the port has: the material asset is registered, and
+ *  the registry plus the three extraction and sweep systems are wired in Bevy's
+ *  order - extraction inside `MaterialExtractionSystems`, the early sweep after it
+ *  and before the late sweep, which is what lets a material of one type be replaced
+ *  by another in the same frame.
+ *
+ *  What is **not** here, and lands with its prerequisites: `EntitiesNeedingSpecialization`
+ *  and its three systems, `add_material_bind_group_allocator`, the erased
+ *  render-asset plugin, the PostUpdate mesh-change systems, and the whole
+ *  `finish` half (`PreparedMaterial`, `MaterialPipeline`, the specialized-pipeline
+ *  caches). The registry resource is inserted here rather than by Bevy's
+ *  `MaterialsPlugin`, which is global and unported. */
+EPIX_EXPORT template <typename M>
+struct MaterialPlugin {
+    void attach(app::App& app) {
+        app_register_asset<M>(app);
+
+        auto render_app = app.get_sub_app_mut(render::Render);
+        if (!render_app) return;
+
+        // `init_resource` rather than `insert_resource`: one registry serves every
+        // material type, so a second material plugin must not wipe the first's
+        // contents.
+        render_app->get().world_mut().init_resource<RenderMaterialInstances>();
+
+        // `MaterialExtractionSystems` is **not** registered in the schedule, because
+        // this port has no exercised way to register a set: `SetConfig` exposes no
+        // public way to set its label, and no plugin in the engine does it. The port
+        // warns and ignores ordering constraints whose set is absent, so the two
+        // orderings below are declared but not enforced. Recorded as PBR-869.
+        render_app->get().add_systems(
+            app::ScheduleInfo(render::ExtractSchedule),
+            ecs::into(extract_mesh_materials<M>).in_set(MaterialExtractionSystems::Extract).set_name(
+                "extract mesh materials"));
+        render_app->get().add_systems(
+            app::ScheduleInfo(render::ExtractSchedule),
+            // Bevy also writes `.before(late_sweep_material_instances)` here. This
+            // port's `before`/`after` take set labels rather than systems, so that
+            // half of the ordering is not expressible; the recorded divergence is
+            // PBR-869, and it is the reason the two sweeps are added in their
+            // intended order.
+            ecs::into(early_sweep_material_instances<M>)
+                .after(MaterialExtractionSystems::Extract)
+                .set_name("early sweep material instances"));
+        render_app->get().add_systems(app::ScheduleInfo(render::ExtractSchedule),
+                                      ecs::into(late_sweep_material_instances).set_name("late sweep material instances"));
+    }
+};
+
 }  // namespace epix::pbr

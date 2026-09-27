@@ -80,21 +80,14 @@ TEST(MaterialExtract, VisibilityDecidesRecordsAndTheSweepsAdvanceTheTick) {
         application.world_mut().spawn(pbr::MeshMaterial3d<Material>{handle}, epix::camera::ViewVisibility::hidden(),
                               epix::mesh::Mesh3d{}).id();
 
-    render_app->get().add_systems(
-        app::ScheduleInfo(ExtractSchedule),
-        ecs::into(pbr::extract_mesh_materials<Material>).set_name("extract mesh materials"));
-    render_app->get().add_systems(
-        app::ScheduleInfo(ExtractSchedule),
-        ecs::into(pbr::early_sweep_material_instances<Material>).set_name("early sweep material instances"));
-    render_app->get().add_systems(app::ScheduleInfo(ExtractSchedule),
-                                  ecs::into(pbr::late_sweep_material_instances).set_name("late sweep material instances"));
+    // The plugin registers the systems and creates the registry, so this covers both
+    // its asset registration and the ordering it installs.
+    application.add_plugins(pbr::MaterialPlugin<Material>{});
 
     auto render_sub = application.take_sub_app(Render);
     ASSERT_TRUE(render_sub);
-    // `RenderMaterialInstances` is inserted by `MaterialPlugin` in Bevy, which is not
-    // ported yet, so the test supplies it - which is also the statement that these
-    // systems depend on that plugin for their resource.
-    render_sub->world_mut().insert_resource(pbr::RenderMaterialInstances{});
+    // The registry is created by the plugin, which is what this checks: nothing here
+    // inserts it by hand.
     render_sub->extract(application);
     render_sub->resource_scope([](epix::ecs::Schedules& schedules, epix::ecs::World& world) {
         schedules.schedule_mut(ExtractSchedule).apply_deferred(world);
