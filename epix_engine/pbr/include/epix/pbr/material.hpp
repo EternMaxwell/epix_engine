@@ -1,6 +1,7 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <epix/pbr/light_markers.hpp>
 #include <epix/pbr/mesh_pipeline_key.hpp>
 #include <epix/render/alpha.hpp>
 #include <epix/camera.hpp>
@@ -243,6 +244,68 @@ EPIX_EXPORT enum class MaterialExtractionSystems {
     Extract, /**< The per-material extraction pass this ordering set marks. */
 };
 
+/** @brief Entities whose material changed and that need re-specialization (Bevy
+ *  `EntitiesNeedingSpecialization<M>`, `material.rs:596-610`), the 3D counterpart
+ *  of the 2D resource of the same name. */
+EPIX_EXPORT template <typename M>
+struct EntitiesNeedingSpecialization {
+    std::vector<ecs::Entity> entities;
+};
+
+/** @brief The last specialization tick of each entity needing it (Bevy
+ *  `EntitySpecializationTickPair<M>`, `material.rs:612-628`). */
+EPIX_EXPORT template <typename M>
+struct EntitySpecializationTickPair {
+    render::sync_world::MainEntityHashMap<ecs::Tick> entities;
+};
+
+/** @brief Queues the entities whose mesh or material changed so they are
+ *  re-specialized (Bevy `check_entities_needing_specialization<M>`,
+ *  `bevy_pbr/src/material.rs:969-990`), the 3D counterpart of the 2D system of the
+ *  same name. Bevy fills its list from a parallel local; the result is the same
+ *  collection. */
+EPIX_EXPORT template <typename M>
+void check_entities_needing_specialization(
+    ecs::Query<ecs::Item<ecs::Entity>,
+               ecs::Filter<ecs::Or<ecs::Added<mesh::Mesh3d>, ecs::Modified<mesh::Mesh3d>,
+                                   assets::AssetChanged<mesh::Mesh3d>, ecs::Added<MeshMaterial3d<M>>,
+                                   ecs::Modified<MeshMaterial3d<M>>, assets::AssetChanged<MeshMaterial3d<M>>>,
+                           ecs::With<MeshMaterial3d<M>>>>
+        needs_specialization,
+    ecs::ResMut<EntitiesNeedingSpecialization<M>> entities_needing_specialization) {
+    entities_needing_specialization->entities.clear();
+    for (auto&& [entity] : needs_specialization.iter()) {
+        entities_needing_specialization->entities.push_back(entity);
+    }
+}
+
+/** @brief Queues the light entities whose `NotShadowCaster` changed (Bevy
+ *  `check_light_entities_needing_specialization<M>`,
+ *  `bevy_pbr/src/render/light.rs:1686-1705`).
+ *
+ *  Bevy defines it beside the lights rather than beside the materials; the port
+ *  keeps it here, next to the resource it fills. Only a removed `NotShadowCaster`
+ *  whose entity still exists needs re-specialization - a removal whose entity is
+ *  gone has nothing left to specialize. */
+EPIX_EXPORT template <typename M>
+void check_light_entities_needing_specialization(
+    ecs::Query<ecs::Item<ecs::Entity>,
+               ecs::Filter<ecs::With<MeshMaterial3d<M>>, ecs::Modified<NotShadowCaster>>>
+        needs_specialization,
+    ecs::Query<ecs::Item<ecs::Entity>, ecs::Filter<ecs::With<MeshMaterial3d<M>>>> mesh_materials,
+    ecs::ResMut<EntitiesNeedingSpecialization<M>> entities_needing_specialization,
+    ecs::RemovedComponents<NotShadowCaster> removed_components) {
+    for (auto&& [entity] : needs_specialization.iter()) {
+        entities_needing_specialization->entities.push_back(entity);
+    }
+    for (const ecs::Entity removed : removed_components.read()) {
+        if (mesh_materials.get(removed).has_value()) {
+            entities_needing_specialization->entities.push_back(removed);
+        }
+    }
+}
+
+
 /** @brief Registers one 3D material type (Bevy `MaterialPlugin<M>`,
  *  `bevy_pbr/src/material.rs:339-404`).
  *
@@ -294,23 +357,22 @@ struct MaterialPlugin {
         render_app->get().add_systems(app::ScheduleInfo(render::ExtractSchedule),
                                       ecs::into(late_sweep_material_instances).set_name("late sweep material instances"));
     }
+
+    void attach_post_update(app::App& app) {
+        app.add_systems(app::ScheduleInfo(app::PostUpdate),
+                        ecs::into(check_entities_needing_specialization<M>)
+                            .after(assets::AssetSystems::WriteEvents)
+                            .set_name("check entities needing material specialization"));
+        // Bevy adds the light half only when the material enables shadows.
+        if (M::enable_shadows()) {
+            app.add_systems(app::ScheduleInfo(app::PostUpdate),
+                            ecs::into(check_light_entities_needing_specialization<M>)
+                                .after(assets::AssetSystems::WriteEvents)
+                                .set_name("check light entities needing material specialization"));
+        }
+    }
 };
 
-
-/** @brief Entities whose material changed and that need re-specialization (Bevy
- *  `EntitiesNeedingSpecialization<M>`, `material.rs:596-610`), the 3D counterpart
- *  of the 2D resource of the same name. */
-EPIX_EXPORT template <typename M>
-struct EntitiesNeedingSpecialization {
-    std::vector<ecs::Entity> entities;
-};
-
-/** @brief The last specialization tick of each entity needing it (Bevy
- *  `EntitySpecializationTickPair<M>`, `material.rs:612-628`). */
-EPIX_EXPORT template <typename M>
-struct EntitySpecializationTickPair {
-    render::sync_world::MainEntityHashMap<ecs::Tick> entities;
-};
 
 /** @brief Marks a mesh as changed when the material it renders with changed (Bevy
  *  `mark_meshes_as_changed_if_their_materials_changed<M>`, `material.rs:679-691`).
@@ -332,5 +394,6 @@ void mark_meshes_as_changed_if_their_materials_changed(
         (void)mesh.ptr_mut();
     }
 }
+
 
 }  // namespace epix::pbr
