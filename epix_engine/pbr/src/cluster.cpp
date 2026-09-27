@@ -1,4 +1,4 @@
-#include <epix/pbr/cluster.hpp>
+#include <epix/pbr/cluster_prepare.hpp>
 #include <utility>
 
 namespace epix::pbr {
@@ -74,6 +74,25 @@ ViewClusterBindings prepare_view_cluster_bindings(
         bindings.push_index(found->second);
     }
     return bindings;
+}
+
+void prepare_clusters(ecs::Commands commands, ecs::Res<wgpu::Device> render_device,
+                      ecs::Res<wgpu::Queue> render_queue, ecs::Res<MeshPipeline> mesh_pipeline,
+                      ecs::Res<GlobalClusterableObjectMeta> global_clusterable_object_meta,
+                      ecs::Query<ecs::Item<ecs::Entity, const ExtractedClusterableObjects&>> views) {
+    // Whether the index lists may grow past `MAX_INDICES` is a property of the
+    // pipeline's binding type, which is why Bevy reads it from `MeshPipeline`
+    // rather than from the view.
+    const wgpu::BufferBindingType binding_type = mesh_pipeline->clustered_forward_buffer_binding_type;
+    const bool supports_storage_buffers        = binding_type == wgpu::BufferBindingType::eStorage;
+
+    for (auto&& [entity, extracted_clusters] : views.iter()) {
+        ViewClusterBindings view_clusters_bindings =
+            prepare_view_cluster_bindings(extracted_clusters.data, global_clusterable_object_meta->entity_to_index,
+                                          binding_type, supports_storage_buffers);
+        view_clusters_bindings.write_buffers(*render_device, *render_queue);
+        commands.entity(entity).insert(std::move(view_clusters_bindings));
+    }
 }
 
 }  // namespace epix::pbr
