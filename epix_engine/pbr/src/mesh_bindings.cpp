@@ -87,6 +87,34 @@ wgpu::BindGroupEntry lightmaps_sampler(std::uint32_t binding, const wgpu::Sample
     return wgpu::BindGroupEntry().setBinding(binding).setSampler(sampler);
 }
 
+/** @brief A lightmap binding array's texture views (Bevy
+ *  `bind_group_entry::lightmaps_texture_view_array`).
+ *
+ *  wgpu-native spells a binding array as the entry's chained extras carrying the
+ *  views and their count, not as the slice Bevy passes; the extras are the
+ *  caller's (`extras`) so they outlive the bind group's creation. */
+wgpu::BindGroupEntry lightmaps_texture_view_array(std::uint32_t binding,
+                                                  const std::vector<const wgpu::TextureView*>& texture_views,
+                                                  wgpu::BindGroupEntryExtras& extras) {
+    std::vector<wgpu::TextureView> views;
+    views.reserve(texture_views.size());
+    for (const wgpu::TextureView* view : texture_views) views.push_back(*view);
+    extras.setTextureViews(std::move(views));
+    return wgpu::BindGroupEntry().setBinding(binding).setNextInChain(extras);
+}
+
+/** @brief A lightmap binding array's samplers, laid out as the views above
+ *  (Bevy `bind_group_entry::lightmaps_sampler_array`). */
+wgpu::BindGroupEntry lightmaps_sampler_array(std::uint32_t binding,
+                                             const std::vector<const wgpu::Sampler*>& samplers,
+                                             wgpu::BindGroupEntryExtras& extras) {
+    std::vector<wgpu::Sampler> values;
+    values.reserve(samplers.size());
+    for (const wgpu::Sampler* sampler : samplers) values.push_back(*sampler);
+    extras.setSamplers(std::move(values));
+    return wgpu::BindGroupEntry().setBinding(binding).setNextInChain(extras);
+}
+
 // Bevy's `mod bind_group_entry` is `pub(super)`: these construct the entries the
 // mesh bind groups are created from and nothing outside this file uses them, so
 // they are file-local rather than header-inline.
@@ -247,15 +275,28 @@ render::BindGroupLayoutDescriptor MeshLayouts::lightmapped_layout(const wgpu::Li
 
 wgpu::BindGroup MeshLayouts::create_lightmapped(const wgpu::Device& device,
                                                 const render::PipelineServer& pipeline_server, const wgpu::Buffer& model,
-                                                const wgpu::TextureView& lightmap_texture,
-                                                const wgpu::Sampler& lightmap_sampler) const {
-    return device.createBindGroup(
-        wgpu::BindGroupDescriptor()
-            .setLabel("lightmapped_mesh_bind_group")
-            .setLayout(pipeline_server.get_bind_group_layout(lightmapped))
-            .setEntries(std::vector<wgpu::BindGroupEntry>{
-                bind_group_entry::model(0u, model), bind_group_entry::lightmaps_texture_view(4u, lightmap_texture),
-                bind_group_entry::lightmaps_sampler(5u, lightmap_sampler)}));
+                                                const LightmapSlab& lightmap_slab, bool bindless_lightmaps) const {
+    std::vector<wgpu::BindGroupEntry> entries;
+    // wgpu-native carries a binding array in the entry's chained extras, which
+    // have to outlive the bind group's creation - hence locals here rather than
+    // temporaries. Bevy has no counterpart: its entries borrow the slab's slice.
+    wgpu::BindGroupEntryExtras texture_extras;
+    wgpu::BindGroupEntryExtras sampler_extras;
+    if (bindless_lightmaps) {
+        const auto [texture_views, samplers] = lightmap_slab.build_binding_arrays();
+        entries                              = {bind_group_entry::model(0u, model),
+                                                bind_group_entry::lightmaps_texture_view_array(4u, texture_views, texture_extras),
+                                                bind_group_entry::lightmaps_sampler_array(5u, samplers, sampler_extras)};
+    } else {
+        const auto [texture_view, sampler] = lightmap_slab.bindings_for_first_lightmap();
+        entries                            = {bind_group_entry::model(0u, model),
+                                              bind_group_entry::lightmaps_texture_view(4u, *texture_view),
+                                              bind_group_entry::lightmaps_sampler(5u, *sampler)};
+    }
+    return device.createBindGroup(wgpu::BindGroupDescriptor()
+                                      .setLabel("lightmapped_mesh_bind_group")
+                                      .setLayout(pipeline_server.get_bind_group_layout(lightmapped))
+                                      .setEntries(entries));
 }
 wgpu::BindGroup MeshLayouts::create_model_only(const wgpu::Device& device,
                                                const render::PipelineServer& pipeline_server,

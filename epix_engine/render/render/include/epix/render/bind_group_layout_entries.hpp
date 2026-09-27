@@ -50,6 +50,13 @@ EPIX_EXPORT class BindGroupLayoutEntryBuilder {
         auto entry = m_entry;
         entry.setBinding(binding).setVisibility(m_visibility.value_or(default_visibility));
         entry.setBindingArraySize(m_count.value_or(0));
+        // The array size is declared both ways on purpose: the field is what the
+        // generated wrapper knows, and the chained extras are what wgpu-native
+        // reads when it decides whether a layout entry is an array (it reports
+        // "declared as a single item" from the extras alone).
+        if (m_count.has_value() && *m_count > 0) {
+            entry.setNextInChain(wgpu::BindGroupLayoutEntryExtras().setCount(*m_count));
+        }
         return entry;
     }
 

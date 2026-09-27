@@ -72,8 +72,12 @@ TEST(MeshBindGroups, EveryVariantIsCreatedFromItsLayout) {
     const auto& device          = world.resource<wgpu::Device>();
     const auto& pipeline_server = world.resource<render::PipelineServer>();
 
-    const wgpu::Limits limits{};
-    const auto layouts = pbr::MeshLayouts::make(limits, /*binding_arrays_are_usable=*/false);
+    // The layouts are built from the device's real limits: the binding-array
+    // entries depend on them, so a zeroed Limits would describe single-item
+    // bindings while the bindless group binds an array.
+    wgpu::Limits limits{};
+    ASSERT_EQ(device.getLimits(&limits), wgpu::Status::eSuccess);
+    const auto layouts       = pbr::MeshLayouts::make(limits, /*binding_arrays_are_usable=*/false);
     const bool uniform_skins = pbr::skins_use_uniform_buffers(limits);
 
     const auto model = make_binding_buffer(device, "model", sizeof(pbr::MeshUniform) * 2);
@@ -100,17 +104,26 @@ TEST(MeshBindGroups, EveryVariantIsCreatedFromItsLayout) {
     EXPECT_TRUE(layouts.create_morphed_skinned_motion(device, pipeline_server, uniform_skins, model, joints, weights,
                                                       targets, joints, weights));
 
-    // The lightmapped layout without binding arrays: the slab's first slot is
-    // bound as an ordinary texture view and sampler.
-    const auto lightmap_texture = device.createTexture(wgpu::TextureDescriptor()
-                                                           .setLabel("lightmap")
-                                                           .setSize(wgpu::Extent3D{1, 1, 1})
-                                                           .setFormat(wgpu::TextureFormat::eRGBA8Unorm)
-                                                           .setUsage(wgpu::TextureUsage::eTextureBinding |
-                                                                     wgpu::TextureUsage::eCopyDst));
-    const wgpu::TextureViewDescriptor lightmap_view_descriptor{};
-    const wgpu::SamplerDescriptor lightmap_sampler_descriptor{};
-    EXPECT_TRUE(layouts.create_lightmapped(device, pipeline_server, model,
-                                           lightmap_texture.createView(lightmap_view_descriptor),
-                                           device.createSampler(lightmap_sampler_descriptor)));
+    // The lightmapped layout, both branches of Bevy's method: the slab's first
+    // slot as an ordinary view and sampler, and the slab's whole binding array.
+    // The slab takes the render world's fallback images, which RenderPlugin has
+    // already uploaded, so its slots hold real views and samplers.
+    const auto& fallback_images = world.resource<render::texture::FallbackImage>();
+    const auto lightmap_slab    = pbr::LightmapSlab::make(fallback_images, /*bindless_supported=*/true);
+
+    // What the two layouts declare, before any interning or bind group is
+    // involved: the array size is the difference between them.
+    ASSERT_EQ(layouts.lightmapped.entries[1].bindingArraySize, 0u);
+    const auto bindless_layouts = pbr::MeshLayouts::make(limits, /*binding_arrays_are_usable=*/true);
+    ASSERT_EQ(bindless_layouts.lightmapped.entries[1].bindingArraySize, 4u);
+
+    // Only the single-item group is created here. The bindless layout needs the
+    // device's binding-array limit, which wgpu-native keeps in its native limits
+    // struct: this adapter reports the texture-binding-array feature but a limit
+    // of zero, and creating the layout then fails with "limit is 0, count was 8".
+    // The array entries themselves are covered by Lightmap.* and by the layout
+    // assertions above; the group creation is exercised on a device that can
+    // express arrays.
+    EXPECT_TRUE(layouts.create_lightmapped(device, pipeline_server, model, lightmap_slab,
+                                           /*bindless_lightmaps=*/false));
 }

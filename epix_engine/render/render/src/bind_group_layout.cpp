@@ -12,7 +12,9 @@ bool operator==(const BindGroupLayoutDescriptor& lhs, const BindGroupLayoutDescr
     for (std::size_t index = 0; index < lhs.entries.size(); ++index) {
         const auto& a = lhs.entries[index];
         const auto& b = rhs.entries[index];
-        if (a.binding != b.binding || a.visibility != b.visibility) return false;
+        if (a.binding != b.binding || a.visibility != b.visibility || a.bindingArraySize != b.bindingArraySize) {
+            return false;
+        }
         if (a.buffer.type != b.buffer.type || bool(a.buffer.hasDynamicOffset) != bool(b.buffer.hasDynamicOffset) ||
             a.buffer.minBindingSize != b.buffer.minBindingSize) {
             return false;
@@ -36,6 +38,7 @@ std::size_t BindGroupLayoutDescriptor::hash() const noexcept {
     for (const auto& entry : entries) {
         hash_combine(seed, entry.binding);
         hash_combine(seed, static_cast<std::size_t>(entry.visibility));
+        hash_combine(seed, static_cast<std::size_t>(entry.bindingArraySize));
         hash_combine(seed, static_cast<std::size_t>(entry.buffer.type));
         hash_combine(seed, static_cast<std::size_t>(bool(entry.buffer.hasDynamicOffset)));
         hash_combine(seed, static_cast<std::size_t>(entry.buffer.minBindingSize));
