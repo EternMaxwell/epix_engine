@@ -42,13 +42,6 @@ EPIX_EXPORT struct MeshVertexAttributePresence {
  *  Epix asks the same six questions here, so the presence the specialization step
  *  reads is derived from the mesh rather than assembled by the caller. Epix's
  *  `contains` takes the attribute id that `MeshVertexAttribute` converts to. */
-/** @brief Read a mesh's attribute presence off its vertex buffer layout (Bevy
- *  `MeshPipeline::specialize`, `render/mesh.rs:2388-2418`).
- *
- *  Bevy asks the layout `contains(..)` once per attribute as it builds the defs;
- *  Epix asks the same six questions here, so the presence the specialization step
- *  reads is derived from the mesh rather than assembled by the caller. Epix's
- *  `contains` takes the attribute id that `MeshVertexAttribute` converts to. */
 EPIX_EXPORT EPIX_API MeshVertexAttributePresence mesh_vertex_attribute_presence(
     const mesh::MeshVertexBufferLayoutRef& layout);
 
@@ -83,8 +76,6 @@ EPIX_EXPORT struct MeshPipelineVertexSpecialization {
 
 /** @brief The shader defs and vertex attribute locations a mesh's attributes produce
  *  (Bevy `MeshPipeline::specialize`, `render/mesh.rs:2380-2441`). */
-/** @brief The shader defs and vertex attribute locations a mesh's attributes produce
- *  (Bevy `MeshPipeline::specialize`, `render/mesh.rs:2380-2441`). */
 EPIX_EXPORT EPIX_API MeshPipelineVertexSpecialization specialize_mesh_vertex_layout(
     const mesh::MeshVertexBufferLayoutRef& layout, std::uint32_t msaa_samples);
 
@@ -115,8 +106,6 @@ EPIX_EXPORT struct MeshPassState {
     std::vector<std::string> shader_defs;
 };
 
-/** @brief The pass a key selects (Bevy `MeshPipeline::specialize`,
- *  `render/mesh.rs:2459-2519`). */
 /** @brief The pass a key selects (Bevy `MeshPipeline::specialize`,
  *  `render/mesh.rs:2459-2519`). */
 EPIX_EXPORT EPIX_API MeshPassState specialize_mesh_pass(const MeshPipelineKey& key);
@@ -150,39 +139,9 @@ EPIX_EXPORT inline constexpr bool IRRADIANCE_VOLUMES_ARE_USABLE = true;
  *  dropped: the WebGL2 and PCSS defs are cargo/feature-gated. The irradiance-volume
  *  def is *not* in that group - it is gated on the key bit and a platform constant,
  *  which this port has as `IRRADIANCE_VOLUMES_ARE_USABLE`. */
-/** @brief The shader defs a key adds besides the pass and vertex ones (Bevy
- *  `MeshPipeline::specialize`, `render/mesh.rs:2453-2618`).
- *
- *  `is_opaque` is the pass's, not the arm's, because one def depends on it:
- *  `LOAD_PREPASS_NORMALS` is only pushed when the mesh reads prepass normals, which
- *  needs a normal prepass, no multisampling and an opaque pass - with anything else
- *  the prepass texture cannot be loaded. The view projection def is one of three, and
- *  `VIEW_PROJECTION_NONSTANDARD` is tested first so a key carrying it wins over the
- *  orthographic default - a key with *no* projection bits is nonstandard as well,
- *  because that constant is zero in Bevy too, though a real key always carries one.
- *  Tonemapping carries its two LUT binding indices as *valued*
- *  defs rather than bare names, and debanding is nested inside it because the shader
- *  cannot deband without tonemapping.
- *
- *  One Bevy condition has no counterpart here and is noted rather than silently
- *  dropped: the WebGL2 and PCSS defs are cargo/feature-gated. The irradiance-volume
- *  def is *not* in that group - it is gated on the key bit and a platform constant,
- *  which this port has as `IRRADIANCE_VOLUMES_ARE_USABLE`. */
 EPIX_EXPORT EPIX_API std::vector<::epix::shader::ShaderDefVal> specialize_mesh_key_shader_defs(const MeshPipelineKey& key,
                                                                                              bool is_opaque);
 
-/** @brief The defs a mesh pipeline adds from what the device and the platform allow
- *  (Bevy `MeshPipeline::specialize`, `render/mesh.rs:2660-2690`).
- *
- *  These depend on the pipeline's own capabilities rather than on the key: binding
- *  arrays decide whether light probes and lightmaps can live in arrays, the
- *  irradiance-volume constant whether volumes exist at all, and clustered decals
- *  whether decals do. The per-object batch size is a *valued* def, and its absence is
- *  meaningful - no def means storage buffers are in use, so the shader declares an
- *  unbounded array.
- *
- *  Bevy's `pbr_light_textures` feature defs inside the clustered-decal branch are
- *  feature-gated and so have no counterpart here. */
 /** @brief The defs a mesh pipeline adds from what the device and the platform allow
  *  (Bevy `MeshPipeline::specialize`, `render/mesh.rs:2660-2690`).
  *
@@ -204,19 +163,8 @@ EPIX_EXPORT EPIX_API std::vector<::epix::shader::ShaderDefVal> specialize_mesh_c
 /** @brief The mesh pipeline's primitive state (Bevy `MeshPipeline::specialize`,
  *  `render/mesh.rs:2710-2715`): back-face culling and no depth clipping, with the
  *  topology from the key so a mesh's primitive topology reaches the pipeline. */
-/** @brief The mesh pipeline's primitive state (Bevy `MeshPipeline::specialize`,
- *  `render/mesh.rs:2710-2715`): back-face culling and no depth clipping, with the
- *  topology from the key so a mesh's primitive topology reaches the pipeline. */
 EPIX_EXPORT EPIX_API wgpu::PrimitiveState mesh_pipeline_primitive_state(wgpu::PrimitiveTopology topology);
 
-/** @brief The mesh pipeline's depth state (Bevy `MeshPipeline::specialize`,
- *  `render/mesh.rs:2716-2731`).
- *
- *  The compare is `GreaterEqual` because the engine renders with an infinite
- *  reverse-Z projection: near is depth 1 and far is 0, so a fragment passes when it
- *  is nearer than what is stored, which is the *opposite* of a conventional
- *  `Less`-compare pipeline. Stencil is ignored with zero masks, and the depth bias is
- *  zero - per-light bias is applied in the vertex transform, not here. */
 /** @brief The mesh pipeline's depth state (Bevy `MeshPipeline::specialize`,
  *  `render/mesh.rs:2716-2731`).
  *
@@ -228,9 +176,6 @@ EPIX_EXPORT EPIX_API wgpu::PrimitiveState mesh_pipeline_primitive_state(wgpu::Pr
 EPIX_EXPORT EPIX_API wgpu::DepthStencilState mesh_pipeline_depth_state(wgpu::TextureFormat format,
                                                                      bool depth_write_enabled);
 
-/** @brief The mesh pipeline's multisample state (Bevy `MeshPipeline::specialize`,
- *  `render/mesh.rs:2732-2736`): the sample count from the key, the full sample mask,
- *  and alpha-to-coverage only for the pass that asked for it. */
 /** @brief The mesh pipeline's multisample state (Bevy `MeshPipeline::specialize`,
  *  `render/mesh.rs:2732-2736`): the sample count from the key, the full sample mask,
  *  and alpha-to-coverage only for the pass that asked for it. */
@@ -271,31 +216,8 @@ EPIX_EXPORT struct MeshMorphSkinningSetup {
  *  `setup_morph_and_skinning_defs` takes the layout rather than a pre-computed
  *  flag. Bevy reads `layout.0.contains(..)`; the reference's `value` is where
  *  Epix's interned layout lives. */
-/** @brief Whether a mesh's vertex layout provides both joint attributes (Bevy
- *  `is_skinned`, `bevy_pbr/src/render/mesh.rs:2308-2311`).
- *
- *  This is the only thing that decides whether a mesh is skinned, which is why
- *  `setup_morph_and_skinning_defs` takes the layout rather than a pre-computed
- *  flag. Bevy reads `layout.0.contains(..)`; the reference's `value` is where
- *  Epix's interned layout lives. */
 EPIX_EXPORT EPIX_API bool is_skinned(const mesh::MeshVertexBufferLayoutRef& layout);
 
-/** @brief The defs and vertex attributes a mesh's morph and skinning state adds
- *  (Bevy `setup_morph_and_skinning_defs`, `render/mesh.rs:2312-2370`).
- *
- *  `offset` is the shader location the mesh's own attributes ended at, so the joint
- *  index and weight land immediately after them. Bevy's one call site passes the
- *  literal `6` (`render/mesh.rs:2443-2451`) and so do Epix's callers; the parameter
- *  exists because the offset has to follow whatever attributes the caller placed.
- *
- *  The eight cases are a precedence, not a cross product. Two rules matter: the
- *  **lightmapped layout is only used when the mesh is neither skinned nor morphed**,
- *  so a skinned lightmapped mesh takes the skinned layout - there is no skinned
- *  lightmapped layout; and among the skinned and morphed families **motion vectors
- *  choose which variant**, so a morphed motion-vector mesh takes the morphed motion
- *  layout. Lightmapping is checked *after* motion only because it is the last family,
- *  not because motion outranks it. A version that treated the four flags as
- *  independent would produce a layout that does not exist. */
 /** @brief The defs and vertex attributes a mesh's morph and skinning state adds
  *  (Bevy `setup_morph_and_skinning_defs`, `render/mesh.rs:2312-2370`).
  *
