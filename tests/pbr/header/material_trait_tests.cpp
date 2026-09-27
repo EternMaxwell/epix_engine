@@ -1,6 +1,7 @@
 #include <epix/pbr/material.hpp>
 #include <epix/render/alpha.hpp>
 #include <gtest/gtest.h>
+#include <memory>
 
 #include <string_view>
 #include <type_traits>
@@ -76,4 +77,28 @@ TEST(MaterialTrait, DefaultsMatchBevyAndOverridesWin) {
     const pbr::MaterialPipelineKey<CustomMaterial> same{.mesh_key = {}, .bind_group_data = 7};
     EXPECT_TRUE(key == same);
     EXPECT_EQ(pbr::MATERIAL_BIND_GROUP_INDEX, 2u) << "Bevy's MATERIAL_BIND_GROUP";
+}
+
+/** @brief The prepared-material properties default the way Bevy's do (Bevy
+ *  `MaterialProperties`, `bevy_pbr/src/material.rs:1510-1585`).
+ *
+ *  These are the values the pipeline reads for every material that overrides
+ *  nothing, so a wrong default here changes how an entire class of materials is
+ *  drawn - the same reason the trait's own defaults are pinned one test above. */
+TEST(MaterialTrait, PreparedPropertiesDefaultToForwardOpaque) {
+    const pbr::MaterialProperties properties;
+    EXPECT_EQ(properties.render_method, pbr::OpaqueRendererMethod::Forward);
+    EXPECT_EQ(properties.alpha_mode, render::AlphaMode::opaque());
+    EXPECT_EQ(properties.render_phase_type, pbr::RenderPhaseType::Opaque);
+    EXPECT_FLOAT_EQ(properties.depth_bias, 0.0f);
+    EXPECT_FALSE(properties.reads_view_transmission_texture) << "a field on the properties, not the trait's accessor";
+    EXPECT_FALSE(properties.bindless) << "bindless is decided from platform support, not assumed";
+    EXPECT_TRUE(properties.draw_functions.empty());
+    EXPECT_TRUE(properties.shaders.empty());
+
+    // The prepared material ties a binding to those properties.
+    auto shared = std::make_shared<pbr::MaterialProperties>();
+    const pbr::PreparedMaterial prepared{.binding = pbr::MaterialBindingId{}, .properties = shared};
+    ASSERT_TRUE(prepared.properties != nullptr);
+    EXPECT_EQ(prepared.properties.get(), shared.get()) << "the properties are shared, as Bevy shares them in an Arc";
 }

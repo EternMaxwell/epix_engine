@@ -448,4 +448,61 @@ void mark_meshes_as_changed_if_their_materials_changed(
 }
 
 
+
+/** @brief Which render phase a material is drawn in (Bevy `RenderPhaseType`,
+ *  `bevy_pbr/src/material.rs:1588-1600`). Not to be confused with the render
+ *  module's `BinnedRenderPhaseType`, which is a different enum of the same family. */
+EPIX_EXPORT enum class RenderPhaseType {
+    Opaque,       /**< Drawn in the opaque phase. */
+    AlphaMask,    /**< Drawn in the alpha-mask phase. */
+    Transmissive, /**< Drawn in the transmissive phase. */
+    Transparent,  /**< Drawn in the transparent phase. */
+};
+
+/** @brief Everything the pipeline needs to know about a prepared material (Bevy
+ *  `MaterialProperties`, `material.rs:1510-1585`).
+ *
+ *  Bevy's `shaders` and `draw_functions` are `SmallVec`s sized for
+ *  `StandardMaterial`'s most common cases; the port uses vectors, since the size
+ *  is a performance detail rather than a behaviour.
+ *
+ *  **One member is absent:** Bevy's `specialize` is an erased function pointer
+ *  taking a `MaterialPipeline` and an `ErasedMaterialPipelineKey`, neither of which
+ *  is ported - they belong to the pipeline half (`PBR-868`), and this struct gains
+ *  the member with them. */
+EPIX_EXPORT struct MaterialProperties {
+    /** @brief Which renderer draws this material. */
+    OpaqueRendererMethod render_method = OpaqueRendererMethod::Forward;
+    /** @brief The material's alpha mode. */
+    render::AlphaMode alpha_mode = render::AlphaMode::opaque();
+    /** @brief The mesh pipeline key bits for this material, precalculated so the
+     *  queue can simply or them together. */
+    MeshPipelineKey mesh_pipeline_key_bits{};
+    /** @brief A view-depth bias forcing a specific render order. */
+    float depth_bias = 0.0f;
+    /** @brief Whether the material reads the view transmission texture. */
+    bool reads_view_transmission_texture = false;
+    /** @brief The phase this material is drawn in. */
+    RenderPhaseType render_phase_type = RenderPhaseType::Opaque;
+    /** @brief The material's bind-group layout, when it has one of its own. */
+    std::optional<render::BindGroupLayoutDescriptor> material_layout;
+    /** @brief The draw functions this material's phases use. */
+    std::vector<std::pair<render::phase::InternedDrawFunctionLabel, render::phase::DrawFunctionId>> draw_functions;
+    /** @brief The custom shaders this material supplies. */
+    std::vector<std::pair<render::phase::InternedShaderLabel, assets::Handle<shader::Shader>>> shaders;
+    /** @brief Whether this material actually uses bindless resources, once platform
+     *  support is taken into account. */
+    bool bindless = false;
+};
+
+/** @brief A material whose GPU data is ready (Bevy `PreparedMaterial`,
+ *  `material.rs:1605-1610`): where its data lives, and what the pipeline needs to
+ *  know. Bevy holds the properties in an `Arc`; this is a `shared_ptr`. */
+EPIX_EXPORT struct PreparedMaterial {
+    /** @brief The bind group and slot the material's data lives in. */
+    MaterialBindingId binding{};
+    /** @brief What the pipeline needs to know about it. */
+    std::shared_ptr<MaterialProperties> properties;
+};
+
 }  // namespace epix::pbr
