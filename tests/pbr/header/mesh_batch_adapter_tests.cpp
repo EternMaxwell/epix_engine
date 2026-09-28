@@ -60,3 +60,24 @@ TEST(MeshBatchAdapter, ReportsWhichPhaseKeyIsNotHashable) {
 
     SUCCEED();
 }
+
+/** @brief Which of the two instance-buffer resource types is a valid system
+ *  parameter.
+ *
+ *  `write_batched_instance_buffers<MeshPipeline>` cannot be bound by `ecs::into`
+ *  while `clear_batched_cpu_instance_buffers<MeshPipeline>` can, and the two differ
+ *  in the buffer type they take: `BatchedInstanceBuffers<..>` against
+ *  `BatchedInstanceBuffer<..>`. Asking the concept directly distinguishes "this
+ *  resource type is not a system parameter" from "the template arguments are not
+ *  deducible", which are very different problems with very different fixes. */
+TEST(MeshBatchAdapter, ReportsWhichInstanceBufferIsASystemParam) {
+    using PbrBuffers = epix::render::batching::BatchedInstanceBuffers<epix::pbr::MeshUniform, epix::pbr::MeshInputUniform>;
+    using CpuBuffer  = epix::render::batching::BatchedInstanceBuffer<epix::pbr::MeshUniform>;
+
+    static_assert(epix::ecs::system_param<epix::ecs::ResMut<CpuBuffer>>,
+                  "MISSING SYSTEM PARAM: ResMut<BatchedInstanceBuffer<MeshUniform>> - the one that works");
+    static_assert(epix::ecs::system_param<epix::ecs::ResMut<PbrBuffers>>,
+                  "MISSING SYSTEM PARAM: ResMut<BatchedInstanceBuffers<MeshUniform, MeshInputUniform>>");
+
+    SUCCEED();
+}

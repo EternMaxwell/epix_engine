@@ -1373,6 +1373,14 @@ void register_mesh_shaders(ecs::World& world) {
     });
 }
 
+// The adapter must satisfy the full batch-data concept for any of the GPU
+// preprocessing systems to be registrable through `into`. Asserted here, in the
+// translation unit that registers them, because the concept has to be *visible*
+// here - a specialization in another header is not enough.
+static_assert(epix::render::batching::GetFullBatchDataImpl<MeshPipeline>,
+              "the mesh adapter must satisfy GetFullBatchDataImpl where it is used");
+static_assert(epix::render::batching::GetBatchDataImpl<MeshPipeline>,
+              "and its base concept");
 void MeshRenderPlugin::attach(epix::app::App& app) {
     // Bevy's `load_shader_library!` calls and `embedded_asset!` for the forward mesh
     // shader: the port publishes the same set from one function.
