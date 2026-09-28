@@ -462,6 +462,10 @@ struct MaterialPlugin {
             render_app->get().configure_sets(app::ScheduleInfo(render::ExtractSchedule),
                                              ecs::sets(MaterialExtractEntitiesNeedingSpecializationSystems::Extract));
             render_app->get().world_mut().init_resource<EntitySpecializationTicks>();
+            // The sweep clears this cache, so it has to exist for the sweep to run at
+            // all - without it the system fails parameter validation and the port logs
+            // the error, which is how this was found.
+            render_app->get().world_mut().init_resource<SpecializedMaterialPipelineCache>();
             render_app->get().add_systems(
                 app::ScheduleInfo(render::ExtractSchedule),
                 ecs::into(extract_entities_needs_specialization<M>)
