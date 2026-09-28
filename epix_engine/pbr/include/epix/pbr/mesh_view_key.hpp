@@ -94,4 +94,35 @@ EPIX_EXPORT struct MeshViewKeyInputs {
     return key;
 }
 
+/** @brief The view components the specialisation check reads (Bevy
+ *  `check_views_need_specialization` query, `bevy_pbr/src/render/mesh.rs:312-335`).
+ *
+ *  Thirteen items where Bevy has fifteen: the light-probe pair and the SSAO marker are
+ *  omitted because this port has no `RenderViewLightProbes` and no
+ *  `ScreenSpaceAmbientOcclusion` (`PBR-887`), and their bits are left clear. Bevy reads
+ *  one `Projection` enum; this port carries `PerspectiveProjection` and
+ *  `OrthographicProjection` as separate components, so both are asked for by presence. */
+using ViewSpecializationItem = ecs::Item<
+    const epix::render::view::ExtractedView&, const epix::render::view::Msaa&,
+    ecs::Opt<const epix::core_graph::Tonemapping&>, ecs::Opt<const epix::core_graph::DebandDither&>,
+    ecs::Opt<const ShadowFilteringMethod&>, ecs::Has<epix::core_graph::core_3d::NormalPrepass>,
+    ecs::Has<epix::core_graph::core_3d::DepthPrepass>,
+    ecs::Has<epix::core_graph::core_3d::MotionVectorPrepass>,
+    ecs::Has<epix::core_graph::core_3d::DeferredPrepass>, ecs::Opt<const epix::camera::Camera3d&>,
+    ecs::Has<epix::render::camera::TemporalJitter>, ecs::Has<epix::camera::PerspectiveProjection>,
+    ecs::Has<epix::camera::OrthographicProjection>, ecs::Has<DistanceFog>,
+    ecs::Has<epix::core_graph::OrderIndependentTransparencySettings>,
+    ecs::Has<ExtractedAtmosphere>>;
+
+/** @brief Record each view key and stamp a tick when it changed (Bevy
+ *  `check_views_need_specialization`, `bevy_pbr/src/render/mesh.rs:309-446`).
+ *
+ *  The caches are what the phase code reads later in the frame: a view whose key is
+ *  unchanged keeps its tick. Bevy compares with `is_some_and`, so a view missing from
+ *  the cache counts as changed rather than as equal. */
+EPIX_EXPORT EPIX_API void check_views_need_specialization(
+    ecs::ResMut<ViewKeyCache> view_key_cache,
+    ecs::ResMut<ViewSpecializationTicks> view_specialization_ticks,
+    ecs::Query<ViewSpecializationItem> views, ecs::SystemChangeTick ticks);
+
 }  // namespace epix::pbr

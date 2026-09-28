@@ -1,5 +1,6 @@
 #include <epix/pbr/mesh_batching.hpp>
 #include <epix/pbr/mesh_extraction.hpp>
+#include <epix/pbr/mesh_view_key.hpp>
 #include <epix/render.hpp>
 #include <epix/render/gpu_preprocessing_support.hpp>
 #include <epix/core_graph/core3d.hpp>
@@ -1556,6 +1557,14 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
             .in_set(epix::render::RenderSystems::PrepareMeshes)
             .set_name("set mesh motion vector flags"));
 
+    // Fills the view key cache and the specialisation ticks the phase code reads, so a
+    // view whose key is unchanged keeps its tick (Bevy registers this with the mesh
+    // plugin, in the same set the collect half sits in).
+    render_app->get().add_systems(
+        epix::app::ScheduleInfo(epix::render::Render),
+        epix::ecs::into(check_views_need_specialization)
+            .in_set(epix::render::RenderSystems::PrepareMeshes)
+            .set_name("check views need specialization"));
     // Kept as history - the deferral this replaces, and its reason:
     // `set_mesh_motion_vector_flags` is implemented but **originally not registered
     // yet**: it needs `RenderMeshInstances` and `SkinUniforms` in the render world,

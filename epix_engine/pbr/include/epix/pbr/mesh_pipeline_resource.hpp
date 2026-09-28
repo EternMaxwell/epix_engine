@@ -1,5 +1,7 @@
 #pragma once
 
+#include <unordered_map>
+
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
 #include <epix/assets.hpp>
@@ -102,13 +104,16 @@ EPIX_EXPORT struct EPIX_API MeshPipeline {
  *  `ViewKeyCache`, `render/mesh.rs:116-117`): the 3D counterpart of the 2D
  *  resource of the same name, which the port already has in `sprite_render`. */
 EPIX_EXPORT struct ViewKeyCache {
-    render::sync_world::MainEntityHashMap<MeshPipelineKey> keys;
+    // Keyed by `RetainedViewEntity`, as Bevy keys it (render/mesh.rs:118): the view
+    // a specialisation is recorded for is the render view, not its main-world entity,
+    // and batch 183 found the mismatch by trying to insert what the system reads.
+    std::unordered_map<render::view::RetainedViewEntity, MeshPipelineKey> keys;
 };
 
 /** @brief When each view last needed specialization (Bevy
  *  `ViewSpecializationTicks`, `render/mesh.rs:119-120`). */
 EPIX_EXPORT struct ViewSpecializationTicks {
-    render::sync_world::MainEntityHashMap<ecs::Tick> ticks;
+    std::unordered_map<render::view::RetainedViewEntity, ecs::Tick> ticks;
 };
 
 }  // namespace epix::pbr
