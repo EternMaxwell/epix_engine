@@ -103,4 +103,20 @@ std::optional<std::uint32_t> RenderMeshInstanceGpuBuilder::update(
     return current_uniform_index;
 }
 
+void set_mesh_motion_vector_flags(ecs::ResMut<RenderMeshInstances> render_mesh_instances,
+                                  ecs::Res<SkinUniforms> skin_uniforms,
+                                  ecs::Res<MorphIndices> morph_indices) {
+    // A mesh that had a skin last frame gets the flag so the shader can read its
+    // previous joints; one that had morph targets gets the other. `insert_...` is a
+    // no-op for an entity with no instance record, which is how Bevy's version
+    // behaves too.
+    for (const render::sync_world::MainEntity entity : skin_uniforms->all_skins()) {
+        render_mesh_instances->insert_mesh_instance_flags(entity, RenderMeshInstanceFlags{RenderMeshInstanceFlags::HAS_PREVIOUS_SKIN});
+    }
+    for (const auto& [entity, index] : morph_indices->prev) {
+        (void)index;
+        render_mesh_instances->insert_mesh_instance_flags(entity, RenderMeshInstanceFlags{RenderMeshInstanceFlags::HAS_PREVIOUS_MORPH});
+    }
+}
+
 }  // namespace epix::pbr

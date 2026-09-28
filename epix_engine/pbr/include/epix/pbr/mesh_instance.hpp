@@ -10,6 +10,8 @@
 #include <epix/pbr/lightmap.hpp>
 #include <epix/pbr/material.hpp>
 #include <epix/pbr/mesh_uniform.hpp>
+#include <epix/pbr/morph.hpp>
+#include <epix/pbr/skin.hpp>
 #include <epix/pbr/skin.hpp>
 #include <epix/render/batching.hpp>
 #include <epix/render/binned_phase.hpp>
@@ -28,6 +30,8 @@
 #include <epix/pbr/lightmap.hpp>
 #include <epix/pbr/material_bindings.hpp>
 #include <epix/pbr/mesh_uniform.hpp>
+#include <epix/pbr/morph.hpp>
+#include <epix/pbr/skin.hpp>
 #include <epix/pbr/prepass.hpp>
 
 namespace epix::pbr {
@@ -562,4 +566,14 @@ EPIX_EXPORT EPIX_API std::optional<std::uint32_t> remove_mesh_input_uniform(
     render::sync_world::MainEntityHashMap<RenderMeshInstanceGpu>& render_mesh_instances,
     render::batching::InstanceInputUniformBuffer<MeshInputUniform>& current_input_buffer);
 
+/** @brief Set the motion-vector flags on the meshes that had a skin or morph targets
+ *  last frame (Bevy `set_mesh_motion_vector_flags`, `render/mesh.rs:1721-1734`).
+ *
+ *  This is the only writer of `HAS_PREVIOUS_SKIN`/`HAS_PREVIOUS_MORPH`. The flags
+ *  cannot be set during extraction because the skin and morph tables are filled
+ *  later, and reading those tables in the queuing loop would be too slow - which is
+ *  why Bevy defers it to a `Render`-schedule system, as here. */
+EPIX_EXPORT EPIX_API void set_mesh_motion_vector_flags(ecs::ResMut<RenderMeshInstances> render_mesh_instances,
+                                                       ecs::Res<SkinUniforms> skin_uniforms,
+                                                       ecs::Res<MorphIndices> morph_indices);
 }  // namespace epix::pbr

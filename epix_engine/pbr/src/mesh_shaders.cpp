@@ -1475,6 +1475,14 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
     // (`set_mesh_motion_vector_flags`, `prepare_mesh_bind_groups`, and
     // `prepare_mesh_view_bind_groups`, which `PBR-302` records as gated) are named
     // against `PBR-109` rather than left to be noticed.
+    // `set_mesh_motion_vector_flags` is implemented but **deliberately not registered
+    // yet**: it needs `RenderMeshInstances` and `SkinUniforms` in the render world,
+    // and neither is created by anything in the port - that is Bevy's `finish` half
+    // (`RenderMeshInstances::new(...)` in `finish`, and the skin uniforms built from
+    // the device). Registering it now would add a system that fails parameter
+    // validation on the first `Render` run and is silently skipped, which is the
+    // inert-system failure this audit has found four times. It is recorded against
+    // PBR-181 and PBR-111.
     render_app->get().add_systems(
         epix::app::ScheduleInfo(epix::render::Render),
         epix::ecs::into(prepare_skins).in_set(epix::render::RenderSystems::PrepareResources).set_name("prepare skins"));
