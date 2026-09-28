@@ -3158,6 +3158,21 @@ verified; the fixing commit is recorded here.
 | Parent modules touched | none - the failing test is in one, and is reported rather than patched. |
 | Status | **committed with this record** |
 
+### Batch 173 - the hidden render failure: narrowed, not closed
+
+| Field | Value |
+| --- | --- |
+| The failure | `GpuArrayBuffer.SelectsBackingAndIndexes` in `tests/render/header/render_parity_tests.cpp:2132` throws `bad allocation` in the test body. It is a **render-module** test, untouched by this session, and it had been invisible for six rounds because the suite never got past 110/111. |
+| Eliminated by reading | Memory pressure (12 GB free, no jobs, reproducible alone); and the divisor in `BatchedUniformBuffer::batch_size` - `ShaderTypeInfo<view::ViewUniform>` **is** specialised through `RawShaderType`, so `shader_size` is `sizeof`, not zero. The test's uniform half is also bounded: with `maxUniformBufferBindingSize = sizeof(ViewUniform)` the batch size is 1. |
+| Also noted | `batch_size`'s doc comment says it divides by `T::min_size` while the code divides by `ShaderTypeInfo<T>::shader_size`. Harmless here - the specialisation makes them agree - but it is a doc/code disagreement in a function whose arithmetic matters, worth fixing when the render module is next audited. |
+| Where it stands | Not narrowed to a statement yet. The storage half constructs `BufferVec<T>{eStorage}` and pushes three elements; the uniform half pushes two. Both look bounded, so the next step is a **probe rather than a read**: split the test's two halves so the throwing statement is identified instead of inferred - the lesson this audit keeps relearning. |
+| What it is not | Not a regression from this session: the test file and the render module are untouched here, and the only changes this session made outside the audited modules are `cmake/utils.cmake` and `tests/CMakeLists.txt`. |
+| Status of the suite | **111 tests, 1 failure** - this one. The stall is fixed and the suite completes, which is what made the failure visible. |
+| Verification | Doc-only round; the build is green (0 errors) and the suite runs to completion with the one failure above. No capture taken - no library code changed. |
+| Counts | total **2342** rows - 1842 matching - 9 diverging - 249 intentional - 208 missing; open index 501 |
+| Parent modules touched | none - and the failing test is in one. |
+| Status | **committed with this record** |
+
 ### Next candidates
 
 Ranked by value from the sections merged so far:
