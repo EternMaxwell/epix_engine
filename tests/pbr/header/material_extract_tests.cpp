@@ -44,8 +44,18 @@ void add_render_prerequisites(App& app) {
         .add_plugins(epix::image::ImagePlugin{})
         .add_plugins(epix::shader::ShaderPlugin{})
         .add_plugins(FrameCountPlugin{})
-        .add_plugins(view::ViewPlugin{})
         .add_plugins(GlobalsPlugin{});
+}
+
+/** @brief The render-dependent plugins, which must follow `RenderPlugin`.
+ *
+ * `ViewPlugin` adds `RenderVisibilityRangePlugin` itself (`render/src/view.cpp:393`),
+ * and that plugin creates `RenderVisibilityRanges` in its `attach` - which returns early
+ * when no render sub-app exists yet. Added before `RenderPlugin` it therefore does nothing,
+ * and adding it again afterwards does not help either: the port drops the duplicate by type,
+ * so the early, empty registration is the one that counts (batch 157). */
+void add_render_dependent_prerequisites(App& app) {
+    app.add_plugins(view::ViewPlugin{});
 }
 
 /** @brief A stand-in material type: the registry is untyped, as Bevy's is, so the
@@ -75,6 +85,7 @@ TEST(MaterialExtract, VisibilityDecidesRecordsAndTheSweepsAdvanceTheTick) {
 
     auto render_app = application.get_sub_app_mut(Render);
     ASSERT_TRUE(render_app.has_value());
+    add_render_dependent_prerequisites(application);
 
     using Material = StandInMaterial;
     const auto handle = Handle<Material>{AssetId<Material>::invalid()};
@@ -193,4 +204,56 @@ TEST(MaterialExtract, VisibilityDecidesRecordsAndTheSweepsAdvanceTheTick) {
     EXPECT_FALSE(render_sub->world().resource<pbr::EntitySpecializationTicks>().entities.contains(
         sync_world::MainEntity{lost}))
         << "and the sweep clears it once the material is gone";
+}
+/** @brief The CPU branch's extraction builds the instance records (Bevy
+ *  `extract_meshes_for_cpu_building`, `render/mesh.rs:1346-1458`). */
+TEST(MaterialExtract, TheCpuExtractionBuildsTheInstanceRecords) {
+    App application = App::create();
+    application.add_events<epix::window::WindowClosed>();
+    add_render_prerequisites(application);
+    try {
+        application.add_plugins(RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+    auto render_app = application.get_sub_app_mut(Render);
+    ASSERT_TRUE(render_app.has_value());
+    add_render_dependent_prerequisites(application);
+
+    using Material = StandInMaterial;
+    application.add_plugins(pbr::MaterialPlugin<Material>{});
+    // The default flag means the CPU branch, which is what this test is about.
+    application.add_plugins(pbr::MeshRenderPlugin{});
+
+    // What `App::run` does before any schedule runs: several plugins create their
+    // render-world resources in `ready`.
+    application.resource_scope([&application](epix::app::internal::Plugins& plugins) {
+        plugins.ready_all(application);
+    });
+
+    const auto handle = Handle<Material>{AssetId<Material>::invalid()};
+    epix::camera::ViewVisibility visible;
+    visible.set_visible();
+    const ecs::Entity meshed = application.world_mut()
+                                   .spawn(epix::mesh::Mesh3d{}, pbr::MeshMaterial3d<Material>{handle}, visible,
+                                          epix::transform::GlobalTransform{})
+                                   .id();
+    const ecs::Entity hidden = application.world_mut()
+                                   .spawn(epix::mesh::Mesh3d{}, pbr::MeshMaterial3d<Material>{handle},
+                                          epix::camera::ViewVisibility::hidden(), epix::transform::GlobalTransform{})
+                                   .id();
+
+    auto render_sub = application.take_sub_app(Render);
+    ASSERT_TRUE(render_sub);
+    render_sub->extract(application);
+    render_sub->resource_scope([](epix::ecs::Schedules& schedules, epix::ecs::World& world) {
+        schedules.schedule_mut(ExtractSchedule).apply_deferred(world);
+    });
+
+    const auto& instances = render_sub->world().resource<pbr::RenderMeshInstances>();
+    EXPECT_TRUE(instances.is_cpu_building()) << "the flag is off, so the records are CPU-side";
+    EXPECT_TRUE(instances.cpu_instances.contains(sync_world::MainEntity{meshed}))
+        << "a visible mesh gets a record from the CPU extraction";
+    EXPECT_FALSE(instances.cpu_instances.contains(sync_world::MainEntity{hidden}))
+        << "and an invisible one is left out, since the set is rebuilt rather than updated";
 }
