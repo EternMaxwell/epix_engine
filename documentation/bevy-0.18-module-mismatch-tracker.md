@@ -3242,6 +3242,20 @@ verified; the fixing commit is recorded here.
 | Parent modules touched | none. |
 | Status | **committed with this record** |
 
+### Batch 179 - the atmosphere component written, reverted on a compiler ICE (PBR-886)
+
+| Field | Value |
+| --- | --- |
+| What was attempted | `Atmosphere` with Bevy fields and `earthlike` numbers verbatim (`6_360_000`, `6_460_000`, albedo `0.3`), `ExtractedAtmosphere` with the four fields and an id instead of a handle, and the `ExtractComponent<Atmosphere>` specialisation filtered to `Camera3d` - all read from `bevy_pbr/src/atmosphere/mod.rs:210-272` rather than guessed. |
+| What happened | The build failed with a **compiler internal error**, not a code error: zero `error C` lines and an MSVC ICE dump ending the log. Nothing was diagnosed from it, so nothing is claimed about the cause. |
+| What was done about it | Reverted. The tree builds green (0 errors) and the suite is **112 of 112**. |
+| Where the next attempt starts | By isolation: land the component and its numbers **without** the `ExtractComponent` specialisation, and add the specialisation separately. That says which construct the compiler cannot take, which no amount of reading the ICE dump would. |
+| A note on the earlier flake | `tests_header_pbr_material_extract_tests` passed this run, in the same suite and with the same code that failed it in batch 178 - which supports the contention reading over a defect, and leaves the remedy still awaiting your call. |
+| Verification | Whole tree built green (0 errors); full CTest **112 tests, 100% passed**. No capture: no library code landed. |
+| Counts | total **2343** rows - 1842 matching - 9 diverging - 250 intentional - 208 missing; open index 502 |
+| Parent modules touched | none. |
+| Status | **committed with this record** |
+
 ### Next candidates
 
 Ranked by value from the sections merged so far:
