@@ -118,7 +118,17 @@ bool wait_for_loaded(App& app, const AssetServer& server, const UntypedAssetId& 
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     });
-    bool loaded = server.wait_for_asset_id(id).has_value();
+    // A safety deadline, for the same reason its sibling below has one: a single
+    // `wait_for_asset_id` call blocks the calling thread until the load settles, so a
+    // load that never settles hangs the whole test - under `ctest -j` that showed up as
+    // the suite stalling at 110/111 with this binary alive (batches 134, 138, 141, 155,
+    // 160). Retrying against a deadline turns a hang into a failure.
+    bool loaded         = false;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(2);
+    while (!loaded && std::chrono::steady_clock::now() < deadline) {
+        loaded = server.wait_for_asset_id(id).has_value();
+        if (!loaded) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
     stop.store(true, std::memory_order_relaxed);
     pump.join();
     return loaded;
