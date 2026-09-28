@@ -463,6 +463,12 @@ struct MaterialPlugin {
             render_app->get().configure_sets(app::ScheduleInfo(render::ExtractSchedule),
                                              ecs::sets(MaterialExtractEntitiesNeedingSpecializationSystems::Extract));
             render_app->get().world_mut().init_resource<EntitySpecializationTicks>();
+            // The bindings map the extraction and the instance builder both read. It
+            // was created by nothing at all until batch 155 - the same omission as
+            // `EntitiesNeedingSpecialization` (batch 128) and
+            // `SpecializedMaterialPipelineCache` (batch 131), and this one made the
+            // mesh extraction skip itself on parameter validation in *both* branches.
+            render_app->get().world_mut().init_resource<RenderMaterialBindings>();
             // The sweep clears this cache, so it has to exist for the sweep to run at
             // all - without it the system fails parameter validation and the port logs
             // the error, which is how this was found.
