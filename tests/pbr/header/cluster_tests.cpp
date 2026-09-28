@@ -1,3 +1,4 @@
+#include <epix/pbr/mesh_view_key.hpp>
 #include <epix/pbr/shadow_filtering_method.hpp>
 #include <epix/pbr/ambient_light.hpp>
 #include <epix/pbr/atmosphere.hpp>
@@ -6547,6 +6548,63 @@ TEST(LightProbe, GatherEnvironmentMapUniformCoversEveryCamera3dView) {
     EXPECT_FALSE(uniform_of(camera2d).has_value()) << "a Camera2d is not a view of this system";
 }
 
+/** @brief The view key assembly (Bevy `check_views_need_specialization` key section,
+ *  `bevy_pbr/src/render/mesh.rs:355-437`).
+ *
+ *  The expected key is composed here from the same constants, so the test states the
+ *  composition rather than a literal: what it pins is that the helper ORs the arms
+ *  Bevy ORs, in any order, and only when their input is set. */
+TEST(Cluster, TheMeshViewKeyAssemblesBevysArms) {
+    using epix::pbr::MeshPipelineKey;
+    using epix::pbr::MeshViewKeyInputs;
+    using epix::pbr::make_mesh_view_key;
+
+    MeshViewKeyInputs plain;
+    const MeshPipelineKey plain_key = make_mesh_view_key(plain);
+    EXPECT_EQ(plain_key, MeshPipelineKey::from_msaa_samples(1) | MeshPipelineKey::from_hdr(false) |
+                             MeshPipelineKey::VIEW_PROJECTION_PERSPECTIVE |
+                             MeshPipelineKey::SHADOW_FILTER_METHOD_GAUSSIAN)
+        << "and the shadow-filter default is Gaussian rather than the field zero";
+
+    MeshViewKeyInputs loaded;
+    loaded.msaa_samples              = 4;
+    loaded.hdr                       = true;
+    loaded.normal_prepass            = true;
+    loaded.depth_prepass             = true;
+    loaded.motion_vector_prepass     = true;
+    loaded.deferred_prepass          = true;
+    loaded.temporal_jitter           = true;
+    loaded.environment_map           = true;
+    loaded.irradiance_volume         = true;
+    loaded.oit_enabled               = true;
+    loaded.atmosphere                = true;
+    loaded.invert_culling            = true;
+    loaded.projection                = MeshViewKeyInputs::ProjectionKind::Orthographic;
+    loaded.shadow_filtering_method   = epix::pbr::ShadowFilteringMethod::Temporal;
+    loaded.tonemap_in_shader         = true;
+    loaded.deband_dither             = true;
+    loaded.screen_space_ambient_occlusion = true;
+    loaded.distance_fog              = true;
+
+    const MeshPipelineKey expected =
+        MeshPipelineKey::from_msaa_samples(4) | MeshPipelineKey::from_hdr(true) |
+        MeshPipelineKey::NORMAL_PREPASS | MeshPipelineKey::DEPTH_PREPASS |
+        MeshPipelineKey::MOTION_VECTOR_PREPASS | MeshPipelineKey::DEFERRED_PREPASS |
+        MeshPipelineKey::TEMPORAL_JITTER | MeshPipelineKey::ENVIRONMENT_MAP |
+        MeshPipelineKey::IRRADIANCE_VOLUME | MeshPipelineKey::OIT_ENABLED |
+        MeshPipelineKey::ATMOSPHERE | MeshPipelineKey::INVERT_CULLING |
+        MeshPipelineKey::VIEW_PROJECTION_ORTHOGRAPHIC | MeshPipelineKey::SHADOW_FILTER_METHOD_TEMPORAL |
+        MeshPipelineKey::TONEMAP_IN_SHADER | MeshPipelineKey::DEBAND_DITHER |
+        MeshPipelineKey::SCREEN_SPACE_AMBIENT_OCCLUSION | MeshPipelineKey::DISTANCE_FOG;
+    EXPECT_EQ(make_mesh_view_key(loaded), expected);
+
+    // The projection arm is exclusive: one of the three, never two.
+    MeshViewKeyInputs custom;
+    custom.projection = MeshViewKeyInputs::ProjectionKind::Nonstandard;
+    const MeshPipelineKey custom_key = make_mesh_view_key(custom);
+    EXPECT_TRUE(custom_key.contains(MeshPipelineKey::VIEW_PROJECTION_NONSTANDARD));
+    EXPECT_FALSE(custom_key.contains(MeshPipelineKey::VIEW_PROJECTION_PERSPECTIVE));
+}
 }  // namespace
 
 /** @brief The three view bind groups a view renders with (Bevy `MeshViewBindGroup`,
