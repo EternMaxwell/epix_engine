@@ -34,3 +34,29 @@ TEST(MeshBatchAdapter, ReportsWhichClauseIsMissing) {
 
     SUCCEED();
 }
+
+/** @brief Which phase item's key types are not hashable.
+ *
+ *  The phase plugin registers resources keyed by the item's batch-set and bin keys,
+ *  so those types need `std::hash` as well as ordering. `std::hash<T>` is disabled
+ *  for unsupported `T`, so its default-constructibility is the test. Each is named,
+ *  so one build identifies every missing one. */
+template <typename T>
+constexpr bool hashable() {
+    return std::is_default_constructible_v<std::hash<T>>;
+}
+
+TEST(MeshBatchAdapter, ReportsWhichPhaseKeyIsNotHashable) {
+    using namespace epix::core_graph::core_3d;
+
+    static_assert(hashable<Opaque3d::BatchSetKey>(), "MISSING HASH: Opaque3d::BatchSetKey");
+    static_assert(hashable<Opaque3d::BinKey>(), "MISSING HASH: Opaque3d::BinKey");
+    static_assert(hashable<AlphaMask3d::BatchSetKey>(), "MISSING HASH: AlphaMask3d::BatchSetKey");
+    static_assert(hashable<AlphaMask3d::BinKey>(), "MISSING HASH: AlphaMask3d::BinKey");
+    static_assert(hashable<Opaque3dDeferred::BatchSetKey>(), "MISSING HASH: Opaque3dDeferred::BatchSetKey");
+    static_assert(hashable<AlphaMask3dDeferred::BatchSetKey>(), "MISSING HASH: AlphaMask3dDeferred::BatchSetKey");
+    static_assert(hashable<epix::pbr::Shadow::BatchSetKey>(), "MISSING HASH: Shadow::BatchSetKey");
+    static_assert(hashable<epix::pbr::Shadow::BinKey>(), "MISSING HASH: Shadow::BinKey");
+
+    SUCCEED();
+}

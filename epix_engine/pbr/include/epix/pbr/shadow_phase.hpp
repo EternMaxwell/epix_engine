@@ -294,3 +294,29 @@ EPIX_EXPORT inline bool should_update_directional_cascade_frusta(bool shadows_en
 EPIX_EXPORT EPIX_API void shrink_entities(std::vector<ecs::Entity>& visible_entities);
 
 }  // namespace epix::pbr
+
+/** @brief The shadow phase's keys need a hash as well as an order: the binned phase
+ *  plugin registers its resources keyed by them, and a key with only `operator<=>`
+ *  fails inside `xhash`. The combining constant and shape are the ones the core_3d
+ *  keys use. */
+template <>
+struct std::hash<epix::pbr::ShadowBatchSetKey> {
+    std::size_t operator()(const epix::pbr::ShadowBatchSetKey& key) const noexcept {
+        std::size_t hash = std::hash<epix::render::CachedPipelineId>{}(key.pipeline_id);
+        const auto combine = [&hash](std::size_t value) {
+            hash ^= value + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+        };
+        combine(std::hash<epix::render::phase::DrawFunctionId>{}(key.draw_func));
+        if (key.material_bind_group_index) combine(std::hash<std::uint32_t>{}(*key.material_bind_group_index));
+        combine(std::hash<epix::render::mesh::SlabId>{}(key.vertex_slab));
+        if (key.index_slab) combine(std::hash<epix::render::mesh::SlabId>{}(*key.index_slab));
+        return hash;
+    }
+};
+
+template <>
+struct std::hash<epix::pbr::ShadowBinKey> {
+    std::size_t operator()(const epix::pbr::ShadowBinKey& key) const noexcept {
+        return std::hash<epix::assets::UntypedAssetId>{}(key.asset_id);
+    }
+};

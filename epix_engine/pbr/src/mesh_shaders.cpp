@@ -1396,6 +1396,28 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
     // not include, so the plugin's assert saw an incomplete type rather than a
     // missing member. Measured one instantiation at a time rather than iterating all
     // seven.
+    using epix::render::phase::BinnedRenderPhasePlugin;
+    using epix::render::phase::SortedRenderPhasePlugin;
+    app.add_plugins(BinnedRenderPhasePlugin<epix::core_graph::core_3d::Opaque3d, MeshPipeline>{});
+    app.add_plugins(BinnedRenderPhasePlugin<epix::core_graph::core_3d::AlphaMask3d, MeshPipeline>{});
+    app.add_plugins(BinnedRenderPhasePlugin<Shadow, MeshPipeline>{});
+    app.add_plugins(BinnedRenderPhasePlugin<epix::core_graph::core_3d::Opaque3dDeferred, MeshPipeline>{});
+    app.add_plugins(BinnedRenderPhasePlugin<epix::core_graph::core_3d::AlphaMask3dDeferred, MeshPipeline>{});
+    app.add_plugins(SortedRenderPhasePlugin<epix::core_graph::core_3d::Transmissive3d, MeshPipeline>{});
+    app.add_plugins(SortedRenderPhasePlugin<epix::core_graph::core_3d::Transparent3d, MeshPipeline>{});
+
+    // The two blockers this took, kept as history:
+    //   1. FIXED: the adapter's `GetFullBatchData` specialization lives in
+    //      `pbr/mesh_batching.hpp`, which this file did not include, so the plugin's
+    //      assert saw an *incomplete* type and reported the concept as unsatisfied.
+    //   2. OPEN, and NOT in this module: with the include in place and all seven
+    //      plugins instantiated, the compiler fails in `xhash` - "term does not
+    //      evaluate to a function taking 1 arguments" - and the instantiation trace
+    //      runs through `render/graph/context.hpp:220`, the render graph's own
+    //      context. Probing every binned phase item's `BatchSetKey`/`BinKey` for
+    //      `std::hash` found them all hashable, so the missing hash is the render
+    //      graph's, not a phase key's. Per the audit's rule that is a **render-module**
+    //      finding and goes back to a render audit; recorded against PBR-106.
     // Still not registered, and the blocker is now two specific things rather than an
     // anonymous concept failure:
     //   1. FIXED: the adapter's `GetFullBatchData` specialization lives in
