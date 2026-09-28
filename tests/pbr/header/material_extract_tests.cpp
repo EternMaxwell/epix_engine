@@ -7,6 +7,7 @@
 #include <epix/pbr/material.hpp>
 #include <epix/pbr/mesh_shaders.hpp>
 #include <epix/pbr/mesh_instance.hpp>
+#include <epix/render/gpu_preprocessing_support.hpp>
 #include <epix/pbr/morph.hpp>
 #include <epix/render.hpp>
 #include <epix/shader.hpp>
@@ -97,6 +98,11 @@ TEST(MaterialExtract, VisibilityDecidesRecordsAndTheSweepsAdvanceTheTick) {
             << "the morph uniforms the extraction reads";
         EXPECT_TRUE(render_world.get_resource<pbr::MorphIndices>().has_value());
         EXPECT_TRUE(render_world.get_resource<pbr::RenderMaterialInstances>().has_value());
+        EXPECT_TRUE(render_world.get_resource<epix::render::batching::GpuPreprocessingSupport>().has_value())
+            << "the adapter capability summary the instance builder branch reads";
+        EXPECT_TRUE(render_world.get_resource<pbr::ViewKeyCache>().has_value())
+            << "and the per-view key cache the specialization check fills";
+        EXPECT_TRUE(render_world.get_resource<pbr::ViewSpecializationTicks>().has_value());
         EXPECT_TRUE(render_world.get_resource<pbr::MeshCullingDataBuffer>().has_value())
             << "the culling buffer, whose type the port already defined";
     }

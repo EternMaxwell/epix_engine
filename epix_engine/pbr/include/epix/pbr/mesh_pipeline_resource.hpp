@@ -97,4 +97,18 @@ EPIX_EXPORT struct EPIX_API MeshPipeline {
         const MeshPipelineKey& key, const mesh::MeshVertexBufferLayoutRef& layout) const;
 };
 
+
+/** @brief The mesh pipeline key of each view, refreshed when it changes (Bevy
+ *  `ViewKeyCache`, `render/mesh.rs:116-117`): the 3D counterpart of the 2D
+ *  resource of the same name, which the port already has in `sprite_render`. */
+EPIX_EXPORT struct ViewKeyCache {
+    render::sync_world::MainEntityHashMap<MeshPipelineKey> keys;
+};
+
+/** @brief When each view last needed specialization (Bevy
+ *  `ViewSpecializationTicks`, `render/mesh.rs:119-120`). */
+EPIX_EXPORT struct ViewSpecializationTicks {
+    render::sync_world::MainEntityHashMap<ecs::Tick> ticks;
+};
+
 }  // namespace epix::pbr

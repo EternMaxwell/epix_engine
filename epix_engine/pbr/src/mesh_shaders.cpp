@@ -1,6 +1,7 @@
 #include <epix/pbr/mesh_batching.hpp>
 #include <epix/pbr/mesh_extraction.hpp>
 #include <epix/render.hpp>
+#include <epix/render/gpu_preprocessing_support.hpp>
 #include <epix/core_graph/core3d.hpp>
 #include <epix/pbr/shadow_phase.hpp>
 #include <epix/render/batching.hpp>
@@ -1441,6 +1442,14 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
     // too, and one untyped registry serves every material type.
     render_app->get().world_mut().init_resource<RenderMaterialInstances>();
     render_app->get().world_mut().init_resource<MeshCullingDataBuffer>();
+    // Bevy's `finish` resources, as far as the port has the types. `MeshPipeline`
+    // and `MeshPipelineViewLayouts` are not among them: both are built from device
+    // facts (`FromWorld` in Bevy), so they need the device path rather than
+    // `init_resource`, and that is recorded against PBR-112. `SkinUniforms` has no
+    // counterpart at all and is named against PBR-110.
+    render_app->get().world_mut().init_resource<epix::render::batching::GpuPreprocessingSupport>();
+    render_app->get().world_mut().init_resource<ViewKeyCache>();
+    render_app->get().world_mut().init_resource<ViewSpecializationTicks>();
 
     // The extraction systems Bevy adds alongside: the skin and morph extraction,
     // which run before the mesh extraction itself. `clear_batched_gpu_instance_buffers`
