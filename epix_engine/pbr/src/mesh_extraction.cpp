@@ -170,3 +170,66 @@ void epix::pbr::extract_meshes_for_gpu_building(
         }
     }
 }
+void epix::pbr::extract_meshes_for_cpu_building(
+    ecs::ResMut<RenderMeshInstances> render_mesh_instances,
+    ecs::Res<RenderMaterialInstances> mesh_material_ids,
+    ecs::Res<RenderMaterialBindings> render_material_bindings,
+    ecs::Res<render::view::RenderVisibilityRanges> render_visibility_ranges,
+    ecs::Local<std::vector<std::pair<ecs::Entity, RenderMeshInstanceCpu>>> queue,
+    app::Extract<ecs::Query<CpuMeshExtractionItem>> meshes_query) {
+    queue->clear();
+
+    for (auto&& [entity, view_visibility, transform, previous_transform, mesh, tag, no_frustum_culling,
+                 not_shadow_receiver, transmitted_receiver, not_shadow_caster, no_automatic_batching,
+                 visibility_range, render_layers, aabb] : meshes_query.iter()) {
+        // An invisible mesh is simply left out: the set is cleared and rebuilt below,
+        // which is what makes this the CPU path's whole record-keeping.
+        if (!view_visibility.get()) continue;
+
+        const auto main_entity = render::sync_world::MainEntity{entity};
+
+        // The LOD index exists only for entities with a visibility range, and it comes
+        // from the range table rather than from the component.
+        std::optional<std::uint16_t> lod_index;
+        if (visibility_range) lod_index = render_visibility_ranges->lod_index_for_entity(main_entity);
+
+        const MeshFlags mesh_flags = MeshFlags::from_components(transform, lod_index, no_frustum_culling,
+                                                                not_shadow_receiver, transmitted_receiver);
+
+        const assets::UntypedAssetId mesh_material = mesh_material_ids->mesh_material(main_entity);
+        const MaterialBindingId material_bindings_index =
+            render_material_bindings->get(mesh_material).value_or(MaterialBindingId{});
+
+        const RenderMeshInstanceShared shared = RenderMeshInstanceShared::for_cpu_building(
+            previous_transform ? std::addressof(previous_transform->get()) : nullptr, mesh,
+            tag ? std::addressof(tag->get()) : nullptr, material_bindings_index, not_shadow_caster,
+            no_automatic_batching, render_layers ? std::addressof(render_layers->get()) : nullptr,
+            aabb ? std::addressof(aabb->get()) : nullptr);
+
+        const glm::mat4& world_from_local = transform.matrix;
+        const glm::mat4& previous_world_from_local =
+            previous_transform ? previous_transform->get().matrix : world_from_local;
+
+        queue->emplace_back(entity,
+                            RenderMeshInstanceCpu{
+                                .shared     = shared,
+                                .transforms = MeshTransforms{.world_from_local = world_from_local,
+                                                              .previous_world_from_local = previous_world_from_local,
+                                                              .flags = mesh_flags.bits},
+                            });
+    }
+
+    // Bevy panics here; the port reports and returns, the convention its declarations
+    // use for preconditions.
+    if (!render_mesh_instances->is_cpu_building()) {
+        spdlog::error(
+            "[pbr] extract_meshes_for_cpu_building should only be called if we are using CPU MeshUniform building");
+        return;
+    }
+
+    render_mesh_instances->cpu_instances.clear();
+    for (auto&& [entity, render_mesh_instance] : *queue) {
+        render_mesh_instances->cpu_instances.insert_or_assign(render::sync_world::MainEntity{entity},
+                                                              std::move(render_mesh_instance));
+    }
+}

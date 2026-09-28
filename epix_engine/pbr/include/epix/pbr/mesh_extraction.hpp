@@ -172,4 +172,43 @@ EPIX_EXPORT EPIX_API void extract_meshes_for_gpu_building(
     ecs::ResMut<MeshesToReextractNextFrame> meshes_to_reextract_next_frame,
     ecs::Local<GpuMeshExtractionReextractSet> reextract_entities);
 
+
+/** @brief The components the CPU extraction reads per mesh (Bevy
+ *  `extract_meshes_for_cpu_building`'s fourteen-element query,
+ *  `render/mesh.rs:1352-1370`): the transform and previous transform, the mesh and
+ *  its tag, six `Has<..>` capability flags, and the optional render layers and AABB.
+ *
+ *  Note what is *not* here: the lightmap is absent, because the CPU path packs its UV
+ *  rect into `MeshUniform` from the instance record rather than reading the component
+ *  during extraction - the GPU query carries it because its uniform is built here. */
+using CpuMeshExtractionItem = ecs::Item<ecs::Entity,
+                                        const camera::ViewVisibility&,
+                                        const transform::GlobalTransform&,
+                                        ecs::Opt<const PreviousGlobalTransform&>,
+                                        const mesh::Mesh3d&,
+                                        ecs::Opt<const mesh::MeshTag&>,
+                                        ecs::Has<camera::NoFrustumCulling>,
+                                        ecs::Has<NotShadowReceiver>,
+                                        ecs::Has<TransmittedShadowReceiver>,
+                                        ecs::Has<NotShadowCaster>,
+                                        ecs::Has<render::phase::NoAutomaticBatching>,
+                                        ecs::Has<camera::VisibilityRange>,
+                                        ecs::Opt<const camera::RenderLayers&>,
+                                        ecs::Opt<const ::epix::camera::Aabb&>>;
+
+/** @brief Build the `RenderMeshInstanceCpu` records for the frame (Bevy
+ *  `extract_meshes_for_cpu_building`, `render/mesh.rs:1346-1458`).
+ *
+ *  The CPU counterpart of `extract_meshes_for_gpu_building`: it clears the record set
+ *  and refills it from the visible meshes, where the GPU path queues builders for a
+ *  compute pass instead. Bevy collects through a parallel local; the port collects
+ *  through one local vector, the same collection with a different shape. */
+EPIX_EXPORT EPIX_API void extract_meshes_for_cpu_building(
+    ecs::ResMut<RenderMeshInstances> render_mesh_instances,
+    ecs::Res<RenderMaterialInstances> mesh_material_ids,
+    ecs::Res<RenderMaterialBindings> render_material_bindings,
+    ecs::Res<render::view::RenderVisibilityRanges> render_visibility_ranges,
+    ecs::Local<std::vector<std::pair<ecs::Entity, RenderMeshInstanceCpu>>> queue,
+    app::Extract<ecs::Query<CpuMeshExtractionItem>> meshes_query);
+
 }  // namespace epix::pbr

@@ -1506,10 +1506,16 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
         // counterpart to register: the name appears in the port only inside a comment
         // (`mesh_extraction.cpp`). That is `PBR-182`/`PBR-183`, both open.
     } else {
-        // Bevy's CPU branch is not ported: it needs `extract_meshes_for_cpu_building`,
-        // which has no counterpart (`PBR-174`), and a `BatchedInstanceBuffer` built
-        // from the device's limits - device facts, so `ready` rather than `attach`.
-        // Recorded against PBR-111 rather than half-landed.
+        // Bevy's CPU branch. Its extraction is registered here, in the same set as the
+        // GPU one; what remains is the `BatchedInstanceBuffer` it writes into, which is
+        // built from the device's limits (device facts, so `ready` rather than
+        // `attach`) and `no_gpu_preprocessing::write_batched_instance_buffer`, which
+        // has no counterpart yet.
+        render_app->get().add_systems(
+            epix::app::ScheduleInfo(epix::render::ExtractSchedule),
+            epix::ecs::into(extract_meshes_for_cpu_building)
+                .in_set(MeshExtractionSystems::Extract)
+                .set_name("extract meshes for cpu building"));
     }
 
     // The extraction systems Bevy adds alongside: the skin and morph extraction,
