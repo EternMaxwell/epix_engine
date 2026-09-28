@@ -1,5 +1,8 @@
 #include <epix/pbr/mesh_extraction.hpp>
 #include <epix/render.hpp>
+#include <epix/core_graph/core3d.hpp>
+#include <epix/pbr/shadow_phase.hpp>
+#include <epix/render/batching.hpp>
 #include <epix/render/visibility_range.hpp>
 #include <epix/pbr/morph.hpp>
 #include <epix/pbr/skin.hpp>
@@ -1385,6 +1388,11 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
     // `MeshExtractionSystems` is Bevy's, attached here; the lightmap and material
     // extraction order against it, so until this ran the ordering was inert - the
     // registration warning the tracker records for unregistered sets.
+    // Bevy's seven render-phase plugins are **not** registered here yet: the phase
+    // plugin asserts the whole `GetFullBatchDataImpl` concept at once, and
+    // `GetFullBatchData<MeshPipeline>` does not satisfy it - so wiring them is blocked
+    // on finding which clause is missing, which the aggregate assert does not name.
+    // Recorded against PBR-106 rather than guessed at by iteration.
     auto render_app = app.get_sub_app_mut(epix::render::Render);
     render_app->get().world_mut().init_resource<MorphUniforms>();
     render_app->get().world_mut().init_resource<MorphIndices>();
@@ -1392,6 +1400,17 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
     // too, and one untyped registry serves every material type.
     render_app->get().world_mut().init_resource<RenderMaterialInstances>();
     render_app->get().world_mut().init_resource<MeshCullingDataBuffer>();
+
+    // The extraction systems Bevy adds alongside: the skin and morph extraction,
+    // which run before the mesh extraction itself. `clear_batched_gpu_instance_buffers`
+    // is not ported with them - it belongs to the gpu-preprocessing path, which has
+    // its own row.
+    render_app->get().add_systems(
+        epix::app::ScheduleInfo(epix::render::ExtractSchedule),
+        epix::ecs::into(extract_skins).before(MeshExtractionSystems::Extract).set_name("extract skins"));
+    render_app->get().add_systems(
+        epix::app::ScheduleInfo(epix::render::ExtractSchedule),
+        epix::ecs::into(extract_morphs).before(MeshExtractionSystems::Extract).set_name("extract morphs"));
 
     // Bevy orders the mesh extraction after the visibility ranges and after the
     // material sweep; without these the set is registered but its place is arbitrary.
