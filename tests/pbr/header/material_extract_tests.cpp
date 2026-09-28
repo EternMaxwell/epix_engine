@@ -5,6 +5,7 @@
 #include <epix/image.hpp>
 #include <epix/mesh.hpp>
 #include <epix/pbr/material.hpp>
+#include <epix/pbr/mesh_view_key.hpp>
 #include <epix/pbr/scattering_medium.hpp>
 #include <epix/pbr/mesh_extraction.hpp>
 #include <epix/pbr/mesh_shaders.hpp>
@@ -460,4 +461,56 @@ TEST(MaterialExtract, TheScatteringMediumBuildsItsLutsOnADevice) {
     // and this wrapper handle has no comparable null.
     const pbr::ScatteringMediumSampler sampler = pbr::make_scattering_medium_sampler(device);
     (void)sampler;
+}
+/** @brief The view specialisation check fills both caches (Bevy
+ *  `check_views_need_specialization`, `bevy_pbr/src/render/mesh.rs:309-446`).
+ *
+ *  The system is registered in `Render`; this test puts it in the `Extract` schedule the
+ *  harness runs, spawns a view and asserts the key and its tick land - which also proves
+ *  the batch-183 re-keying, since the system could not insert into a cache keyed by main
+ *  entity. The key is checked for the perspective arm and for Gaussian filtering, the
+ *  latter because the field zero is hardware 2x2. */
+TEST(MaterialExtract, TheViewSpecialisationCheckFillsItsCaches) {
+    App application = App::create();
+    application.add_events<epix::window::WindowClosed>();
+    add_render_prerequisites(application);
+    try {
+        application.add_plugins(RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+    ASSERT_TRUE(application.get_sub_app_mut(Render).has_value());
+    add_render_dependent_prerequisites(application);
+    application.add_plugins(pbr::MeshRenderPlugin{});
+    application.resource_scope([&application](epix::app::internal::Plugins& plugins) {
+        plugins.ready_all(application);
+    });
+
+    auto render_sub = application.take_sub_app(Render);
+    ASSERT_TRUE(render_sub);
+    render_sub->add_systems(epix::app::ScheduleInfo(ExtractSchedule),
+                            epix::ecs::into(pbr::check_views_need_specialization)
+                                .set_name("check views need specialization (test)"));
+
+    const auto view_id = epix::render::view::RetainedViewEntity::create(sync_world::MainEntity{ecs::Entity{1}},
+                                                                       std::nullopt, 0);
+    render_sub->world_mut().spawn(epix::render::view::ExtractedView{.retained_view_entity = view_id},
+                                 epix::render::view::Msaa::Sample4, epix::camera::PerspectiveProjection{});
+
+    render_sub->extract(application);
+    render_sub->resource_scope([](epix::ecs::Schedules& schedules, epix::ecs::World& world) {
+        schedules.schedule_mut(ExtractSchedule).apply_deferred(world);
+    });
+
+    render_sub->resource_scope([&](epix::ecs::World& world) {
+        const auto& cache = world.resource<pbr::ViewKeyCache>();
+        const auto found  = cache.keys.find(view_id);
+        ASSERT_NE(found, cache.keys.end()) << "the key is recorded against the retained view";
+        EXPECT_TRUE(found->second.contains(pbr::MeshPipelineKey::VIEW_PROJECTION_PERSPECTIVE));
+        EXPECT_TRUE(found->second.contains(pbr::MeshPipelineKey::SHADOW_FILTER_METHOD_GAUSSIAN))
+            << "the default filtering method, not the field zero";
+
+        const auto& ticks = world.resource<pbr::ViewSpecializationTicks>();
+        EXPECT_TRUE(ticks.ticks.contains(view_id)) << "and a tick is stamped for it";
+    });
 }
