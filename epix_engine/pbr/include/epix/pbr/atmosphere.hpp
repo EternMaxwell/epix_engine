@@ -1,4 +1,6 @@
 #pragma once
+#include <epix/pbr/scattering_medium.hpp>
+#include <epix/render/extract.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
@@ -151,7 +153,60 @@ static_assert(sizeof(GpuAtmosphere) == 32, "GpuAtmosphere must match the shader'
 static_assert(sizeof(GpuAtmosphereSettings) == 80, "GpuAtmosphereSettings must match the shader's 80 bytes");
 static_assert(sizeof(AtmosphereData) == 112, "AtmosphereData must match the shader's 112 bytes");
 
+/** @brief An atmosphere on a camera (Bevy `Atmosphere`, `bevy_pbr/src/atmosphere/mod.rs:210-231`).
+ *
+ *  Bevy derives no `Default` for it, because a medium handle cannot be defaulted;
+ *  `earthlike` is the constructor that supplies one. */
+EPIX_EXPORT struct Atmosphere {
+    float bottom_radius = 0.0f;
+    float top_radius = 0.0f;
+    glm::vec3 ground_albedo{0.0f};
+    assets::Handle<ScatteringMedium> medium;
+
+    /** @brief Earth numbers, with the caller medium (Bevy `Atmosphere::earthlike`,
+     *  `:233-245`). */
+    static Atmosphere earthlike(assets::Handle<ScatteringMedium> medium) {
+        return Atmosphere{.bottom_radius = 6'360'000.0f,
+                          .top_radius    = 6'460'000.0f,
+                          .ground_albedo = glm::vec3{0.3f},
+                          .medium        = std::move(medium)};
+    }
+};
+
+/** @brief The render-world representation of an `Atmosphere`, before it becomes
+ *  shader uniforms (Bevy `ExtractedAtmosphere`, `:264-272`). */
+EPIX_EXPORT struct ExtractedAtmosphere {
+    float bottom_radius = 0.0f;
+    float top_radius = 0.0f;
+    glm::vec3 ground_albedo{0.0f};
+    assets::AssetId<ScatteringMedium> medium;
+
+    bool operator==(const ExtractedAtmosphere&) const = default;
+};
+
 }  // namespace epix::pbr
+
+namespace epix::render {
+
+/** @brief Extracts the atmosphere onto the view, keeping the medium by id (Bevy
+ *  `impl ExtractComponent for Atmosphere`, `bevy_pbr/src/atmosphere/mod.rs:247-262`):
+ *  the query is filtered to 3D cameras, and the handle becomes an `AssetId` because
+ *  the render world holds no handles. */
+template <>
+struct ExtractComponent<::epix::pbr::Atmosphere> {
+    using QueryData   = const ::epix::pbr::Atmosphere&;
+    using QueryFilter = epix::ecs::Filter<epix::ecs::With<::epix::camera::Camera3d>>;
+    using Out         = ::epix::pbr::ExtractedAtmosphere;
+
+    static std::optional<Out> extract_component(const ::epix::pbr::Atmosphere& item) {
+        return Out{.bottom_radius = item.bottom_radius,
+                   .top_radius    = item.top_radius,
+                   .ground_albedo = item.ground_albedo,
+                   .medium        = item.medium.id()};
+    }
+};
+
+}  // namespace epix::render
 
 namespace epix::render::render_resource {
 /** @brief The three atmosphere shader types carry their layout explicitly, so

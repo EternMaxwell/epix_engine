@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <epix/pbr/atmosphere.hpp>
 #include <epix/pbr/scattering_medium.hpp>
 
 namespace {
@@ -122,5 +123,25 @@ TEST(ScatteringMedium, LutDataMatchesBevySizingAndSampling) {
     ASSERT_EQ(scattering.size(), 32u) << "falloff_resolution * phase_resolution";
     // The falloff parameter is the fast axis, as Bevy indexes it: i = raw % phase.
     EXPECT_GT(scattering[3].x, 0.0f);
+}
+/** @brief The atmosphere component and what extraction keeps (Bevy `Atmosphere`,
+ *  `bevy_pbr/src/atmosphere/mod.rs:210-245`, and `impl ExtractComponent` at `:247-262`). */
+TEST(ScatteringMedium, AtmosphereEarthlikeAndExtraction) {
+    const auto handle = epix::assets::Handle<ScatteringMedium>{
+        epix::assets::AssetId<ScatteringMedium>::invalid()};
+    const auto atmosphere = epix::pbr::Atmosphere::earthlike(handle);
+
+    EXPECT_FLOAT_EQ(atmosphere.bottom_radius, 6'360'000.0f) << "Earth radius, in metres";
+    EXPECT_FLOAT_EQ(atmosphere.top_radius, 6'460'000.0f) << "where the atmosphere ends";
+    EXPECT_EQ(atmosphere.ground_albedo, glm::vec3(0.3f));
+
+    // Extraction copies the three values and reduces the handle to an id, because the
+    // render world holds no handles.
+    const auto extracted = epix::render::ExtractComponent<epix::pbr::Atmosphere>::extract_component(atmosphere);
+    ASSERT_TRUE(extracted.has_value());
+    EXPECT_FLOAT_EQ(extracted->bottom_radius, atmosphere.bottom_radius);
+    EXPECT_FLOAT_EQ(extracted->top_radius, atmosphere.top_radius);
+    EXPECT_EQ(extracted->ground_albedo, atmosphere.ground_albedo);
+    EXPECT_EQ(extracted->medium, atmosphere.medium.id());
 }
 }  // namespace
