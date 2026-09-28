@@ -1,6 +1,7 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <epix/pbr/mesh_pipeline_resource.hpp>
 #include <epix/pbr/light_markers.hpp>
 #include <epix/pbr/mesh_pipeline_key.hpp>
 #include <epix/render/alpha.hpp>
@@ -572,5 +573,17 @@ EPIX_EXPORT struct PreparedMaterial {
     std::shared_ptr<MaterialProperties> properties;
 };
 
+
+
+/** @brief The 3D mesh pipeline data a material specializes against (Bevy
+ *  `MaterialPipeline`, `bevy_pbr/src/material.rs:442-447`).
+ *
+ *  Bevy's `MaterialPipelineSpecializer` and `ErasedMaterialPipelineKey` are not
+ *  ported: they need `AsBindGroup`'s erased key, which belongs to the render module
+ *  and is recorded against `add_material_bind_group_allocator`'s row. */
+EPIX_EXPORT struct MaterialPipeline {
+    /** @brief The mesh pipeline this material's pipeline derives from. */
+    MeshPipeline mesh_pipeline;
+};
 
 }  // namespace epix::pbr
