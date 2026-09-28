@@ -12,6 +12,7 @@
 #include <epix/pbr/morph.hpp>
 #include <epix/pbr/mesh_uniform.hpp>
 #include <epix/pbr/skin.hpp>
+#include <epix/mesh/mesh.hpp>
 #include <epix/render.hpp>
 #include <epix/shader.hpp>
 #include <epix/task.hpp>
@@ -42,6 +43,9 @@ void add_render_prerequisites(App& app) {
     app.add_plugins(epix::time::TimePlugin{})
         .add_plugins(epix::camera::CameraPlugin{})
         .add_plugins(AssetPlugin{})
+        // Registers `Assets<Mesh>`, which the mesh-asset extraction reads; without it
+        // that system is skipped on parameter validation.
+        .add_plugins(epix::mesh::MeshPlugin{})
         .add_plugins(epix::image::ImagePlugin{})
         .add_plugins(epix::shader::ShaderPlugin{})
         .add_plugins(FrameCountPlugin{})
@@ -109,6 +113,12 @@ TEST(MaterialExtract, VisibilityDecidesRecordsAndTheSweepsAdvanceTheTick) {
     // the resources and systems it creates differ by that flag, so the test states
     // which branch it means.
     application.add_plugins(pbr::MeshRenderPlugin{.use_gpu_instance_buffer_builder = true});
+
+    // What `App::run` does before any schedule runs: `SkinUniforms` is created in a
+    // plugin's `ready`, and without it the skin extraction is skipped on validation.
+    application.resource_scope([&application](epix::app::internal::Plugins& plugins) {
+        plugins.ready_all(application);
+    });
     {
         auto& render_world = render_app->get().world();
         EXPECT_TRUE(render_world.get_resource<pbr::MorphUniforms>().has_value())
