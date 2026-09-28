@@ -2133,6 +2133,12 @@ TEST(GpuArrayBuffer, SelectsBackingAndIndexes) {
     // Storage-buffer path.
     wgpu::Limits storage_limits;
     storage_limits.maxStorageBuffersPerShaderStage = 8;
+    // wgpu::Limits is a set of caps: default-constructed, the unlimited ones read as
+    // UINT64_MAX/UINT32_MAX rather than zero, so leaving them alone asks for a 4 GB
+    // alignment and a bad_alloc. Every limit this test depends on is stated.
+    storage_limits.maxBufferSize                   = 256u << 20;
+    storage_limits.maxStorageBufferBindingSize     = 128u << 20;
+    storage_limits.minUniformBufferOffsetAlignment = 256;
     render_resource::GpuArrayBuffer<view::ViewUniform> storage_buf(storage_limits);
     EXPECT_TRUE(std::holds_alternative<render_resource::BufferVec<view::ViewUniform>>(storage_buf.storage));
     const auto storage_layout = render_resource::GpuArrayBuffer<view::ViewUniform>::binding_layout(storage_limits);
@@ -2147,6 +2153,8 @@ TEST(GpuArrayBuffer, SelectsBackingAndIndexes) {
     // Uniform fallback (no storage buffers): dynamic offsets present.
     wgpu::Limits uniform_limits;
     uniform_limits.maxStorageBuffersPerShaderStage = 0;
+    uniform_limits.maxBufferSize                   = 256u << 20;
+    uniform_limits.minUniformBufferOffsetAlignment = 256;
     uniform_limits.maxUniformBufferBindingSize     = sizeof(view::ViewUniform);
     render_resource::GpuArrayBuffer<view::ViewUniform> uniform_buf(uniform_limits);
     EXPECT_TRUE(std::holds_alternative<render_resource::BatchedUniformBuffer<view::ViewUniform>>(uniform_buf.storage));
@@ -4729,3 +4737,4 @@ TEST(RenderResource, RuntimeSizedShaderTypeSeparatesHeaderFromWrittenSize) {
     EXPECT_EQ(ShaderTypeInfo<epix::render::GlobalsUniform>::size_for(fixed_probe),
               ShaderTypeInfo<epix::render::GlobalsUniform>::shader_size);
 }
+

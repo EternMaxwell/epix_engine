@@ -3173,6 +3173,21 @@ verified; the fixing commit is recorded here.
 | Parent modules touched | none - and the failing test is in one. |
 | Status | **committed with this record** |
 
+### Batch 174 - the hidden render failure fixed by measuring its input, not by reading
+
+| Field | Value |
+| --- | --- |
+| The measurement that settled it | A one-line probe printing a default-constructed `wgpu::Limits`: `maxBufferSize = 18446744073709551615`, `maxUniformBufferBindingSize = 18446744073709551615`, `minUniformBufferOffsetAlignment = 4294967295`. **`wgpu::Limits` is a set of caps, and default-constructed it means unlimited** - `UINT64_MAX` and `UINT32_MAX`, not zero. |
+| The mechanism | `BatchedUniformBuffer` takes `minUniformBufferOffsetAlignment` **verbatim** - it guards only the `== 0` case - so the test's default limits asked for a **4 GB** alignment, and the first aligned allocation threw `bad_alloc`. Nothing was wrong with the buffer code on realistic device limits, which is why production never saw it. |
+| The fix, and why it is in the test | The test now states every limit it depends on (`maxBufferSize`, `maxStorageBufferBindingSize`, `minUniformBufferOffsetAlignment`), since it was relying on a default that means the opposite of what the test assumed. Test hygiene, in scope, and it restores the suite. |
+| Result | That binary: **158/158**. Full suite: **100% tests passed, 0 failed out of 111** - the first fully green run in this stretch, and the first time the suite has completed at all in seven rounds. |
+| For the render audit, when it happens | `BatchedUniformBuffer` clamps the binding size to `MAX_REASONABLE_UNIFORM_BUFFER_BINDING_SIZE` but accepts any alignment verbatim. Bevy's precedent for clamping one and not the other is worth checking, though with a real device's limits this cannot arise - recorded as robustness rather than a live defect. |
+| The lesson, and it is the one this audit keeps earning | Three rounds of reading the allocator narrowed nothing; **one probe of the input** ended it. Measuring the input is cheaper than reasoning about the code that consumes it - and the six-round stall had been hiding a red test the whole time, which is the real cost of leaving a suite un-runnable. |
+| Verification | Whole tree built green (0 errors); full CTest **111/111** at `-j3`. No library code changed, so the `DBABB1D0` example baseline stands and no capture was taken. |
+| Counts | total **2342** rows - 1842 matching - 9 diverging - 249 intentional - 208 missing; open index 501 |
+| Parent modules touched | none - the defect was in a render-module *test*, and the render-module note above is recorded rather than patched. |
+| Status | **committed with this record** |
+
 ### Next candidates
 
 Ranked by value from the sections merged so far:
