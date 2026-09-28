@@ -9,6 +9,7 @@
 #include <epix/pbr/mesh_instance.hpp>
 #include <epix/render/gpu_preprocessing_support.hpp>
 #include <epix/pbr/morph.hpp>
+#include <epix/pbr/mesh_uniform.hpp>
 #include <epix/pbr/skin.hpp>
 #include <epix/render.hpp>
 #include <epix/shader.hpp>
@@ -92,7 +93,10 @@ TEST(MaterialExtract, VisibilityDecidesRecordsAndTheSweepsAdvanceTheTick) {
     // `MeshRenderPlugin` is what creates the resources the mesh path needs; the
     // material plugin creates the registry, and `init_resource` in both is safe
     // because one untyped registry serves every material type.
-    application.add_plugins(pbr::MeshRenderPlugin{});
+    // With `use_gpu_instance_buffer_builder` set, the plugin takes Bevy's GPU branch -
+    // the resources and systems it creates differ by that flag, so the test states
+    // which branch it means.
+    application.add_plugins(pbr::MeshRenderPlugin{.use_gpu_instance_buffer_builder = true});
     {
         auto& render_world = render_app->get().world();
         EXPECT_TRUE(render_world.get_resource<pbr::MorphUniforms>().has_value())
@@ -105,6 +109,14 @@ TEST(MaterialExtract, VisibilityDecidesRecordsAndTheSweepsAdvanceTheTick) {
             << "and the per-view key cache the specialization check fills";
         EXPECT_TRUE(render_world.get_resource<pbr::ViewSpecializationTicks>().has_value());
 
+        // The alias is needed because the macro would otherwise see the comma in the
+        // template argument list and take it for a second argument.
+        using InstanceBuffers = epix::render::batching::BatchedInstanceBuffers<pbr::MeshUniform, pbr::MeshInputUniform>;
+        EXPECT_TRUE(render_world.get_resource<InstanceBuffers>().has_value())
+            << "the GPU branch's instance buffers";
+        EXPECT_TRUE(render_world.get_resource<pbr::RenderMeshInstanceGpuQueues>().has_value());
+        EXPECT_TRUE(render_world.get_resource<pbr::MeshesToReextractNextFrame>().has_value())
+            << "and the re-extraction set, which the GPU branch creates";
         EXPECT_TRUE(render_world.get_resource<pbr::RenderMeshInstances>().has_value())
             << "the instance record set the mesh path is built on";
         // `SkinUniforms` is built in the plugin's `ready` hook, which the port invokes

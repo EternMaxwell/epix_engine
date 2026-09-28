@@ -1464,6 +1464,45 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
     }
     const bool build_on_gpu = use_gpu_instance_buffer_builder && gpu_preprocessing_supported;
     render_app->get().world_mut().insert_resource(RenderMeshInstances::make(build_on_gpu));
+    if (build_on_gpu) {
+        // Bevy's GPU branch: the instance buffers, the per-entity queues, and the
+        // re-extraction set, then the systems that fill them.
+        render_app->get().world_mut().init_resource<
+            epix::render::batching::BatchedInstanceBuffers<MeshUniform, MeshInputUniform>>();
+        render_app->get().world_mut().init_resource<RenderMeshInstanceGpuQueues>();
+        render_app->get().world_mut().init_resource<MeshesToReextractNextFrame>();
+
+        render_app->get().add_systems(
+            epix::app::ScheduleInfo(epix::render::ExtractSchedule),
+            epix::ecs::into(extract_meshes_for_gpu_building)
+                .in_set(MeshExtractionSystems::Extract)
+                .set_name("extract meshes for gpu building"));
+        // `write_batched_instance_buffers<MeshPipeline>` is **not registered**: the
+        // compiler cannot deduce it through `ecs::into` ("could not deduce template
+        // arguments"), even though the same adapter works for
+        // `delete_old_work_item_buffers<MeshPipeline>` right below and
+        // `GetFullBatchDataImpl<MeshPipeline>` is asserted by
+        // `MeshBatchAdapter.ReportsWhichClauseIsMissing`. The likely cause is its
+        // `ResMut<BatchedInstanceBuffers<GetBatchData<..>::BufferData,
+        // GetFullBatchData<..>::BufferInputData>>` parameter being dependent, but that
+        // is a hypothesis to test, not a finding. Recorded against PBR-111.
+        // `delete_old_work_item_buffers<MeshPipeline>` is not registered either, and for
+        // the same reason as `write_batched_instance_buffers` above: `ecs::into` cannot
+        // deduce it. Both take a `ResMut<BatchedInstanceBuffers<GetBatchData<..>::BufferData,
+        // GetFullBatchData<..>::BufferInputData>>` parameter, while
+        // `clear_batched_cpu_instance_buffers<MeshPipeline>` - registered in batch 141 and
+        // compiling - does not. That is the shared feature and therefore the hypothesis;
+        // the next round on this should read the `BatchedInstanceBuffers` system-param
+        // path rather than try another spelling.
+        // `collect_meshes_for_gpu_building` is Bevy's other system here, and it has no
+        // counterpart to register: the name appears in the port only inside a comment
+        // (`mesh_extraction.cpp`). That is `PBR-182`/`PBR-183`, both open.
+    } else {
+        // Bevy's CPU branch is not ported: it needs `extract_meshes_for_cpu_building`,
+        // which has no counterpart (`PBR-174`), and a `BatchedInstanceBuffer` built
+        // from the device's limits - device facts, so `ready` rather than `attach`.
+        // Recorded against PBR-111 rather than half-landed.
+    }
 
     // The extraction systems Bevy adds alongside: the skin and morph extraction,
     // which run before the mesh extraction itself. `clear_batched_gpu_instance_buffers`
