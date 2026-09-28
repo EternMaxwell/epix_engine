@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <epix/common.hpp>
+#include <webgpu/webgpu.hpp>
 
 #include <glm/glm.hpp>
 
@@ -283,5 +284,41 @@ EPIX_EXPORT struct ScatteringMedium {
                     });
     }
 };
+
+/** @brief The GPU representation of a medium (Bevy `GpuScatteringMedium`,
+ *  `bevy_pbr/src/medium.rs:391-416`): the two LUTs plus the terms they were built
+ *  from, so a re-prepare can compare.
+ *
+ *  Bevy builds these in `RenderAsset::prepare_asset` and uploads with
+ *  `create_texture_with_data`; this wrapper has no such call, so the port creates the
+ *  texture and uploads with `writeTexture`, the idiom `dummy_white_image.cpp` uses. */
+EPIX_EXPORT struct GpuScatteringMedium {
+    std::vector<ScatteringTerm> terms;
+    std::uint32_t falloff_resolution = 0;
+    std::uint32_t phase_resolution   = 0;
+    /** @brief `falloff_resolution x 2`: absorption density, then scattering. */
+    wgpu::Texture density_lut;
+    wgpu::TextureView density_lut_view;
+    /** @brief `falloff_resolution x phase_resolution`: scattering density times the
+     *  phase function. */
+    wgpu::Texture scattering_lut;
+    wgpu::TextureView scattering_lut_view;
+};
+
+/** @brief Build the medium LUTs on a device (Bevy `GpuScatteringMedium::prepare_asset`,
+ *  `:423-540`). Sizes are `falloff_resolution x 2` and `falloff_resolution x
+ *  phase_resolution`, both `Rgba32Float` and texture-binding only; the label, when
+ *  present, prefixes both texture labels as Bevy prefixes them. */
+EPIX_EXPORT EPIX_API GpuScatteringMedium make_gpu_scattering_medium(
+    const wgpu::Device& device, const wgpu::Queue& queue, const ScatteringMedium& medium);
+
+/** @brief The sampler the medium LUTs are read with (Bevy `ScatteringMediumSampler`,
+ *  `:562-579`): linear magnification and minification. */
+EPIX_EXPORT struct EPIX_API ScatteringMediumSampler {
+    wgpu::Sampler sampler;
+};
+
+/** @brief Create that sampler (Bevy `init_scattering_medium_sampler`, `:570-579`). */
+EPIX_EXPORT EPIX_API ScatteringMediumSampler make_scattering_medium_sampler(const wgpu::Device& device);
 
 }  // namespace epix::pbr

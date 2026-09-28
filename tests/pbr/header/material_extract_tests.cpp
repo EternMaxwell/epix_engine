@@ -5,6 +5,7 @@
 #include <epix/image.hpp>
 #include <epix/mesh.hpp>
 #include <epix/pbr/material.hpp>
+#include <epix/pbr/scattering_medium.hpp>
 #include <epix/pbr/mesh_extraction.hpp>
 #include <epix/pbr/mesh_shaders.hpp>
 #include <epix/pbr/mesh_instance.hpp>
@@ -416,4 +417,47 @@ TEST(MaterialExtract, TheCollectHalfDrainsTheQueuesAndKeepsTheBufferNonEmpty) {
         EXPECT_FALSE(std::holds_alternative<std::monostate>(queues.queue.queue))
             << "and the queue keeps its shape for the coming frame";
     });
+}
+/** @brief The medium LUTs and sampler build on a device (Bevy
+ *  `GpuScatteringMedium::prepare_asset`, `bevy_pbr/src/medium.rs:423-540`, and
+ *  `init_scattering_medium_sampler`, `:570-579`).
+ *
+ *  The sizes are the part worth pinning: the density LUT is `falloff_resolution x 2`
+ *  and the scattering LUT `falloff_resolution x phase_resolution`, both `Rgba32Float`
+ *  and texture-binding only. The data itself is covered device-free by the scattering
+ *  medium tests; here it only has to reach the texture. */
+TEST(MaterialExtract, TheScatteringMediumBuildsItsLutsOnADevice) {
+    App application = App::create();
+    application.add_events<epix::window::WindowClosed>();
+    add_render_prerequisites(application);
+    try {
+        application.add_plugins(RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+    auto render_app = application.get_sub_app_mut(Render);
+    ASSERT_TRUE(render_app.has_value());
+    add_render_dependent_prerequisites(application);
+
+    auto render_sub = application.take_sub_app(Render);
+    ASSERT_TRUE(render_sub);
+    const wgpu::Device& device = render_sub->world().resource<wgpu::Device>();
+    const wgpu::Queue& queue  = render_sub->world().resource<wgpu::Queue>();
+
+    const auto medium = pbr::ScatteringMedium::earthlike(8, 4).with_label("test_sky");
+    const pbr::GpuScatteringMedium gpu = pbr::make_gpu_scattering_medium(device, queue, medium);
+
+    EXPECT_EQ(gpu.falloff_resolution, 8u);
+    EXPECT_EQ(gpu.phase_resolution, 4u);
+    EXPECT_EQ(gpu.terms.size(), 3u) << "the terms travel with the LUTs, as Bevy keeps them";
+    EXPECT_EQ(gpu.density_lut.getWidth(), 8u);
+    EXPECT_EQ(gpu.density_lut.getHeight(), 2u) << "absorption row, then scattering row";
+    EXPECT_EQ(gpu.scattering_lut.getWidth(), 8u) << "falloff is the U axis";
+    EXPECT_EQ(gpu.scattering_lut.getHeight(), 4u) << "phase is the V axis";
+    EXPECT_EQ(gpu.density_lut.getFormat(), wgpu::TextureFormat::eRGBA32Float);
+
+    // Creating the sampler is the check: a bad descriptor would fail validation here,
+    // and this wrapper handle has no comparable null.
+    const pbr::ScatteringMediumSampler sampler = pbr::make_scattering_medium_sampler(device);
+    (void)sampler;
 }
