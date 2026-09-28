@@ -1,5 +1,6 @@
 #include <epix/pbr/mesh_view_key.hpp>
 #include <epix/pbr/shadow_filtering_method.hpp>
+#include <epix/pbr/shadow_samplers.hpp>
 #include <epix/pbr/ambient_light.hpp>
 #include <epix/pbr/atmosphere.hpp>
 #include <epix/pbr/cascade.hpp>
@@ -6636,6 +6637,29 @@ TEST(Cluster, TheShadowFilteringMethodExtracts) {
     // The filter is what keeps it to cameras, as Bevy's `With<Camera3d>` does.
     static_assert(std::same_as<ExtractComponent<ShadowFilteringMethod>::QueryFilter,
                                epix::ecs::Filter<epix::ecs::With<epix::camera::Camera3d>>>);
+}
+/** @brief The shadow samplers' descriptor choices (Bevy `init_shadow_samplers`,
+ *  `bevy_pbr/src/render/light.rs:205-230`): clamp to edge on all three axes, linear
+ *  magnification and minification, nearest mipmapping, and `GreaterEqual` comparison -
+ *  reverse-Z, the comparison the depth state uses too. */
+TEST(Cluster, TheShadowSamplerDescriptorsMatchBevy) {
+    using epix::pbr::shadow_sampler_base_descriptor;
+    using epix::pbr::shadow_sampler_comparison_descriptor;
+
+    const wgpu::SamplerDescriptor base = shadow_sampler_base_descriptor();
+    EXPECT_EQ(base.addressModeU, wgpu::AddressMode::eClampToEdge);
+    EXPECT_EQ(base.addressModeV, wgpu::AddressMode::eClampToEdge);
+    EXPECT_EQ(base.addressModeW, wgpu::AddressMode::eClampToEdge);
+    EXPECT_EQ(base.magFilter, wgpu::FilterMode::eLinear);
+    EXPECT_EQ(base.minFilter, wgpu::FilterMode::eLinear);
+    EXPECT_EQ(base.mipmapFilter, wgpu::MipmapFilterMode::eNearest);
+
+    const wgpu::SamplerDescriptor comparison =
+        shadow_sampler_comparison_descriptor("point_light_comparison_sampler");
+    EXPECT_EQ(comparison.compare, wgpu::CompareFunction::eGreaterEqual)
+        << "shadow lookups compare depth, and reverse-Z compares GreaterEqual";
+    EXPECT_EQ(comparison.magFilter, wgpu::FilterMode::eLinear)
+        << "and the comparison sampler keeps the base filtering";
 }
 }  // namespace
 

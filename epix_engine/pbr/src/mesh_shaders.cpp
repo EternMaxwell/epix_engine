@@ -1,6 +1,7 @@
 #include <epix/pbr/mesh_batching.hpp>
 #include <epix/pbr/mesh_extraction.hpp>
 #include <epix/pbr/mesh_view_key.hpp>
+#include <epix/pbr/shadow_samplers.hpp>
 #include <epix/render.hpp>
 #include <epix/render/gpu_preprocessing_support.hpp>
 #include <epix/core_graph/core3d.hpp>
@@ -1556,6 +1557,12 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
         epix::ecs::into(set_mesh_motion_vector_flags)
             .in_set(epix::render::RenderSystems::PrepareMeshes)
             .set_name("set mesh motion vector flags"));
+
+    // The shadow samplers the view bind groups need, built on the render world's device
+    // from the render startup, as Bevy builds them.
+    render_app->get().add_systems(epix::app::ScheduleInfo(epix::render::RenderStartup),
+                                  epix::ecs::into(init_shadow_samplers)
+                                      .set_name("init shadow samplers"));
 
     // Bevy extracts the camera filtering method onto its render entity so the check
     // below can read it there; without this its arm silently defaults.
