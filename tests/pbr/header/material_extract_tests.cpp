@@ -13,6 +13,7 @@
 #include <epix/pbr/mesh_uniform.hpp>
 #include <epix/pbr/skin.hpp>
 #include <epix/mesh/mesh.hpp>
+#include <epix/render/mesh_allocator.hpp>
 #include <epix/render.hpp>
 #include <epix/shader.hpp>
 #include <epix/task.hpp>
@@ -41,15 +42,13 @@ struct IoTaskPoolInit {
 
 void add_render_prerequisites(App& app) {
     app.add_plugins(epix::time::TimePlugin{})
-        .add_plugins(epix::camera::CameraPlugin{})
         .add_plugins(AssetPlugin{})
         // Registers `Assets<Mesh>`, which the mesh-asset extraction reads; without it
         // that system is skipped on parameter validation.
         .add_plugins(epix::mesh::MeshPlugin{})
         .add_plugins(epix::image::ImagePlugin{})
         .add_plugins(epix::shader::ShaderPlugin{})
-        .add_plugins(FrameCountPlugin{})
-        .add_plugins(GlobalsPlugin{});
+        .add_plugins(epix::shader::ShaderPlugin{});
 }
 
 /** @brief The render-dependent plugins, which must follow `RenderPlugin`.
@@ -60,7 +59,14 @@ void add_render_prerequisites(App& app) {
  * and adding it again afterwards does not help either: the port drops the duplicate by type,
  * so the early, empty registration is the one that counts (batch 157). */
 void add_render_dependent_prerequisites(App& app) {
-    app.add_plugins(view::ViewPlugin{});
+    // Each of these builds render-world state in `attach` behind an
+    // `if (!render_app) return;`, so they must follow `RenderPlugin`. Batch 157
+    // found it for the visibility ranges; `FrameCountPlugin` is the same shape,
+    // which is why the render world was missing `FrameCount` too.
+    app.add_plugins(view::ViewPlugin{})
+        .add_plugins(epix::camera::CameraPlugin{})
+        .add_plugins(FrameCountPlugin{})
+        .add_plugins(GlobalsPlugin{});
 }
 
 /** @brief A stand-in material type: the registry is untyped, as Bevy's is, so the
@@ -334,4 +340,80 @@ TEST(MaterialExtract, TheMotionVectorFlagsFollowTheMorphTable) {
     const auto& flags = instances.cpu_instances.at(sync_world::MainEntity{morphed}).shared.flags;
     EXPECT_TRUE(flags.contains(pbr::RenderMeshInstanceFlags::HAS_PREVIOUS_MORPH))
         << "a mesh whose weights were extracted last frame gets the previous-morph flag";
+}
+/** @brief The collect half drains the queues and keeps the bound buffer non-empty
+ *  (Bevy `collect_meshes_for_gpu_building`, `render/mesh.rs:1738-1845`).
+ *
+ *  Two things had to be right before this could run at all. The plugins that build
+ *  render-world state in `attach` must follow `RenderPlugin` - `MeshAllocatorPlugin`
+ *  and `LightmapPlugin` are added here, and the shared helper now orders the rest
+ *  (batch 158). And the extract has to run **twice**: the render world's `FrameCount`
+ *  is created by `extract_frame_count` through `Commands` rather than by its plugin, so
+ *  it exists from the second frame, and a system reading it is skipped on the first.
+ *
+ *  What it asserts is `PBR-183`'s own detail: the previous frame's input buffer is
+ *  bound even when empty, so the collect half ends by making sure it is not. Building
+ *  an actual instance would need a mesh whose asset the allocator has seen, which this
+ *  round did not stage. */
+TEST(MaterialExtract, TheCollectHalfDrainsTheQueuesAndKeepsTheBufferNonEmpty) {
+    App application = App::create();
+    application.add_events<epix::window::WindowClosed>();
+    add_render_prerequisites(application);
+    try {
+        application.add_plugins(RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+    ASSERT_TRUE(application.get_sub_app_mut(Render).has_value());
+    add_render_dependent_prerequisites(application);
+    application.add_plugins(epix::render::mesh::MeshAllocatorPlugin{});
+    // Creates `RenderLightmaps`, which the collect half reads.
+    application.add_plugins(pbr::LightmapPlugin{});
+
+    using Material = StandInMaterial;
+    application.add_plugins(pbr::MaterialPlugin<Material>{});
+    // The GPU branch: the one that registers both the extraction and the collect.
+    application.add_plugins(pbr::MeshRenderPlugin{.use_gpu_instance_buffer_builder = true});
+    application.resource_scope([&application](epix::app::internal::Plugins& plugins) {
+        plugins.ready_all(application);
+    });
+
+    epix::camera::ViewVisibility visible;
+    visible.set_visible();
+    const auto handle = Handle<Material>{AssetId<Material>::invalid()};
+    application.world_mut()
+        .spawn(epix::mesh::Mesh3d{}, pbr::MeshMaterial3d<Material>{handle}, visible,
+               epix::transform::GlobalTransform{});
+    application.update();
+
+    auto render_sub = application.take_sub_app(Render);
+    ASSERT_TRUE(render_sub);
+    render_sub->add_systems(epix::app::ScheduleInfo(ExtractSchedule),
+                            epix::ecs::into(pbr::collect_meshes_for_gpu_building)
+                                .after(pbr::MeshExtractionSystems::Extract)
+                                .set_name("collect meshes for gpu building (test)"));
+
+    // First extract: the extraction queues its builders and `extract_frame_count`
+    // inserts the render world's `FrameCount`, which its `Commands` applies at the end
+    // of the schedule.
+    render_sub->extract(application);
+    render_sub->resource_scope([](epix::ecs::Schedules& schedules, epix::ecs::World& world) {
+        schedules.schedule_mut(ExtractSchedule).apply_deferred(world);
+    });
+
+    // Second extract: now that `FrameCount` exists, the collect half validates and runs.
+    render_sub->extract(application);
+    render_sub->resource_scope([](epix::ecs::Schedules& schedules, epix::ecs::World& world) {
+        schedules.schedule_mut(ExtractSchedule).apply_deferred(world);
+    });
+
+    render_sub->resource_scope([](epix::ecs::World& world) {
+        const auto& buffers =
+            world.resource<epix::render::batching::BatchedInstanceBuffers<pbr::MeshUniform, pbr::MeshInputUniform>>();
+        EXPECT_GE(buffers.previous_input_buffer.len(), 1u)
+            << "a bound buffer must not be empty, which is what the collect half guarantees";
+        const auto& queues = world.resource<pbr::RenderMeshInstanceGpuQueues>();
+        EXPECT_FALSE(std::holds_alternative<std::monostate>(queues.queue.queue))
+            << "and the queue keeps its shape for the coming frame";
+    });
 }
