@@ -1,5 +1,6 @@
 #include <epix/pbr/mesh_extraction.hpp>
 #include <epix/render.hpp>
+#include <epix/render/visibility_range.hpp>
 #include <epix/pbr/morph.hpp>
 #include <epix/pbr/skin.hpp>
 #include <spdlog/spdlog.h>
@@ -1384,10 +1385,21 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
     // `MeshExtractionSystems` is Bevy's, attached here; the lightmap and material
     // extraction order against it, so until this ran the ordering was inert - the
     // registration warning the tracker records for unregistered sets.
-    app.get_sub_app_mut(epix::render::Render)
-        ->get()
-        .configure_sets(epix::app::ScheduleInfo(epix::render::ExtractSchedule),
-                         epix::ecs::sets(MeshExtractionSystems::Extract));
+    auto render_app = app.get_sub_app_mut(epix::render::Render);
+    render_app->get().world_mut().init_resource<MorphUniforms>();
+    render_app->get().world_mut().init_resource<MorphIndices>();
+    // `init_resource` rather than `insert_resource`: `MaterialPlugin` creates this
+    // too, and one untyped registry serves every material type.
+    render_app->get().world_mut().init_resource<RenderMaterialInstances>();
+
+    // Bevy orders the mesh extraction after the visibility ranges and after the
+    // material sweep; without these the set is registered but its place is arbitrary.
+    // A system function is a valid label here, as the sprite_render module shows.
+    render_app->get().configure_sets(
+        epix::app::ScheduleInfo(epix::render::ExtractSchedule),
+        epix::ecs::sets(MeshExtractionSystems::Extract)
+            .after(epix::render::view::extract_visibility_ranges)
+            .after(late_sweep_material_instances));
 }
 
 }  // namespace epix::pbr

@@ -5,6 +5,8 @@
 #include <epix/image.hpp>
 #include <epix/mesh.hpp>
 #include <epix/pbr/material.hpp>
+#include <epix/pbr/mesh_shaders.hpp>
+#include <epix/pbr/morph.hpp>
 #include <epix/render.hpp>
 #include <epix/shader.hpp>
 #include <epix/task.hpp>
@@ -83,6 +85,18 @@ TEST(MaterialExtract, VisibilityDecidesRecordsAndTheSweepsAdvanceTheTick) {
     // The plugin registers the systems and creates the registry, so this covers both
     // its asset registration and the ordering it installs.
     application.add_plugins(pbr::MaterialPlugin<Material>{});
+
+    // `MeshRenderPlugin` is what creates the resources the mesh path needs; the
+    // material plugin creates the registry, and `init_resource` in both is safe
+    // because one untyped registry serves every material type.
+    application.add_plugins(pbr::MeshRenderPlugin{});
+    {
+        auto& render_world = render_app->get().world();
+        EXPECT_TRUE(render_world.get_resource<pbr::MorphUniforms>().has_value())
+            << "the morph uniforms the extraction reads";
+        EXPECT_TRUE(render_world.get_resource<pbr::MorphIndices>().has_value());
+        EXPECT_TRUE(render_world.get_resource<pbr::RenderMaterialInstances>().has_value());
+    }
 
     // The plugin also creates the specialization-tick resource its extraction
     // system writes, which is what makes the two halves one path.
