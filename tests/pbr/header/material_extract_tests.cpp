@@ -5,6 +5,7 @@
 #include <epix/image.hpp>
 #include <epix/mesh.hpp>
 #include <epix/pbr/material.hpp>
+#include <epix/pbr/mesh_extraction.hpp>
 #include <epix/pbr/mesh_shaders.hpp>
 #include <epix/pbr/mesh_instance.hpp>
 #include <epix/render/gpu_preprocessing_support.hpp>
@@ -256,4 +257,71 @@ TEST(MaterialExtract, TheCpuExtractionBuildsTheInstanceRecords) {
         << "a visible mesh gets a record from the CPU extraction";
     EXPECT_FALSE(instances.cpu_instances.contains(sync_world::MainEntity{hidden}))
         << "and an invisible one is left out, since the set is rebuilt rather than updated";
+}
+/** @brief The motion-vector flags follow the morph table (Bevy
+ *  `set_mesh_motion_vector_flags`, `render/mesh.rs:1721-1734`).
+ *
+ *  The system is registered in `RenderSystems::PrepareMeshes`; this test puts it in the
+ *  `Extract` schedule instead, ordered after the extraction, because that is the
+ *  schedule this harness already runs.
+ *
+ *  The table to fill is `current`, not `prev`: `extract_morphs` swaps the two and then
+ *  clears `current`, so what a caller writes into `current` is what the flags system -
+ *  running later in the same extract - reads as last frame's mapping. Writing `prev`
+ *  directly is silently undone by that swap, which is how this test first failed.
+ *
+ *  It tests the morph half. The skin half needs an entry in `SkinUniforms`, and
+ *  `SkinUniformInfo` cannot be fabricated here any more than `RenderMeshInstanceShared`
+ *  can, so a skin fixture would mean driving `prepare_skins` as well. */
+TEST(MaterialExtract, TheMotionVectorFlagsFollowTheMorphTable) {
+    App application = App::create();
+    application.add_events<epix::window::WindowClosed>();
+    add_render_prerequisites(application);
+    try {
+        application.add_plugins(RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+    ASSERT_TRUE(application.get_sub_app_mut(Render).has_value());
+    add_render_dependent_prerequisites(application);
+
+    using Material = StandInMaterial;
+    application.add_plugins(pbr::MaterialPlugin<Material>{});
+    application.add_plugins(pbr::MeshRenderPlugin{});
+    application.resource_scope([&application](epix::app::internal::Plugins& plugins) {
+        plugins.ready_all(application);
+    });
+
+    epix::camera::ViewVisibility visible;
+    visible.set_visible();
+    const auto handle = Handle<Material>{AssetId<Material>::invalid()};
+    const ecs::Entity morphed =
+        application.world_mut()
+            .spawn(epix::mesh::Mesh3d{}, pbr::MeshMaterial3d<Material>{handle}, visible,
+                   epix::transform::GlobalTransform{})
+            .id();
+
+    auto render_sub = application.take_sub_app(Render);
+    ASSERT_TRUE(render_sub);
+    render_sub->add_systems(epix::app::ScheduleInfo(ExtractSchedule),
+                            epix::ecs::into(pbr::set_mesh_motion_vector_flags)
+                                .after(pbr::MeshExtractionSystems::Extract)
+                                .set_name("set mesh motion vector flags (test)"));
+
+    render_sub->resource_scope([&](epix::ecs::World& world) {
+        auto& morphs = world.resource_mut<pbr::MorphIndices>();
+        morphs.current.emplace(sync_world::MainEntity{morphed}, pbr::MorphIndex{});
+    });
+
+    render_sub->extract(application);
+    render_sub->resource_scope([](epix::ecs::Schedules& schedules, epix::ecs::World& world) {
+        schedules.schedule_mut(ExtractSchedule).apply_deferred(world);
+    });
+
+    const auto& instances = render_sub->world().resource<pbr::RenderMeshInstances>();
+    ASSERT_TRUE(instances.cpu_instances.contains(sync_world::MainEntity{morphed}))
+        << "the extraction records a visible mesh, which the flags then annotate";
+    const auto& flags = instances.cpu_instances.at(sync_world::MainEntity{morphed}).shared.flags;
+    EXPECT_TRUE(flags.contains(pbr::RenderMeshInstanceFlags::HAS_PREVIOUS_MORPH))
+        << "a mesh whose weights were extracted last frame gets the previous-morph flag";
 }
