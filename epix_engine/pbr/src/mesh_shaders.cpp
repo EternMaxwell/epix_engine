@@ -1391,6 +1391,7 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
     // `init_resource` rather than `insert_resource`: `MaterialPlugin` creates this
     // too, and one untyped registry serves every material type.
     render_app->get().world_mut().init_resource<RenderMaterialInstances>();
+    render_app->get().world_mut().init_resource<MeshCullingDataBuffer>();
 
     // Bevy orders the mesh extraction after the visibility ranges and after the
     // material sweep; without these the set is registered but its place is arbitrary.

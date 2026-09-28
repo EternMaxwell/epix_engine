@@ -6,6 +6,7 @@
 #include <epix/mesh.hpp>
 #include <epix/pbr/material.hpp>
 #include <epix/pbr/mesh_shaders.hpp>
+#include <epix/pbr/mesh_instance.hpp>
 #include <epix/pbr/morph.hpp>
 #include <epix/render.hpp>
 #include <epix/shader.hpp>
@@ -96,6 +97,8 @@ TEST(MaterialExtract, VisibilityDecidesRecordsAndTheSweepsAdvanceTheTick) {
             << "the morph uniforms the extraction reads";
         EXPECT_TRUE(render_world.get_resource<pbr::MorphIndices>().has_value());
         EXPECT_TRUE(render_world.get_resource<pbr::RenderMaterialInstances>().has_value());
+        EXPECT_TRUE(render_world.get_resource<pbr::MeshCullingDataBuffer>().has_value())
+            << "the culling buffer, whose type the port already defined";
     }
 
     // The plugin also creates the specialization-tick resource its extraction
