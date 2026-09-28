@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include <epix/pbr/mesh_pipeline_key.hpp>
+#include <epix/render/extract.hpp>
 
 namespace epix::pbr {
 
@@ -49,3 +50,30 @@ EPIX_EXPORT inline constexpr ShadowFilteringMethod SHADOW_FILTERING_METHOD_DEFAU
 }
 
 }  // namespace epix::pbr
+
+namespace epix::render {
+
+/** @brief Extract the camera shadow filtering method onto its render entity (Bevy
+ *  `extract_shadow_filtering_method`, `bevy_pbr/src/render/light.rs:234-245`).
+ *
+ *  Bevy needs a *system* for this rather than an `ExtractComponent` impl, and its comment
+ *  says why: Rust orphan rules forbid implementing a foreign trait on a foreign type, and
+ *  `ShadowFilteringMethod` belongs to `bevy_light` while `ExtractComponent` belongs to
+ *  `bevy_render`. C++ has no such rule, so this port says the same thing as a
+ *  specialization - the mechanism differs, the effect does not.
+ *
+ *  Without it the view specialisation check cannot see a camera chosen method at all: the
+ *  component lives in the main world, that system runs in `Render`, and its query would
+ *  find nothing - which is exactly the state this port was in until batch 189. */
+template <>
+struct ExtractComponent<::epix::pbr::ShadowFilteringMethod> {
+    using QueryData   = const ::epix::pbr::ShadowFilteringMethod&;
+    using QueryFilter = epix::ecs::Filter<epix::ecs::With<::epix::camera::Camera3d>>;
+    using Out         = ::epix::pbr::ShadowFilteringMethod;
+
+    static std::optional<Out> extract_component(const ::epix::pbr::ShadowFilteringMethod& item) {
+        return item;
+    }
+};
+
+}  // namespace epix::render

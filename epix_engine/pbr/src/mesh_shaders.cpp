@@ -1557,6 +1557,10 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
             .in_set(epix::render::RenderSystems::PrepareMeshes)
             .set_name("set mesh motion vector flags"));
 
+    // Bevy extracts the camera filtering method onto its render entity so the check
+    // below can read it there; without this its arm silently defaults.
+    app.add_plugins(epix::render::ExtractComponentPlugin<ShadowFilteringMethod>{});
+
     // Fills the view key cache and the specialisation ticks the phase code reads, so a
     // view whose key is unchanged keeps its tick (Bevy registers this with the mesh
     // plugin, in the same set the collect half sits in).
