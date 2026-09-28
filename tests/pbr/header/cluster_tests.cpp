@@ -1,3 +1,4 @@
+#include <epix/pbr/shadow_filtering_method.hpp>
 #include <epix/pbr/ambient_light.hpp>
 #include <epix/pbr/atmosphere.hpp>
 #include <epix/pbr/cascade.hpp>
@@ -6565,4 +6566,31 @@ TEST(Cluster, MeshViewBindGroupCarriesTheThreeGroups) {
 
     const MeshViewBindGroup group{};
     EXPECT_EQ(group.main, group.empty) << "an unset group compares equal to another unset group";
+}
+/** @brief The shadow-filtering method's default is not the key's zero (Bevy
+ *  `ShadowFilteringMethod`, `bevy_light/src/lib.rs:235-262`).
+ *
+ *  Bevy's `#[default]` is `Gaussian`, while `MeshPipelineKey`'s shadow-filter field
+ *  starts at zero - `HARDWARE_2X2`. A camera with no component therefore filters
+ *  differently from a key built from the default constant unless the mapping is used,
+ *  and that difference is `PBR-115`'s recorded divergence. Both halves are asserted
+ *  here so the trap cannot be reintroduced quietly. */
+TEST(Cluster, TheShadowFilteringDefaultIsNotTheKeysZero) {
+    using epix::pbr::MeshPipelineKey;
+    using epix::pbr::ShadowFilteringMethod;
+
+    EXPECT_EQ(epix::pbr::SHADOW_FILTERING_METHOD_DEFAULT, ShadowFilteringMethod::Gaussian)
+        << "Bevy's #[default] arm, not the first enumerator";
+
+    const MeshPipelineKey zero_key{};
+    EXPECT_TRUE(zero_key.contains(MeshPipelineKey::SHADOW_FILTER_METHOD_HARDWARE_2X2))
+        << "and the key's own zero really is hardware 2x2, which is why the mapping exists";
+    EXPECT_FALSE(zero_key.contains(MeshPipelineKey::SHADOW_FILTER_METHOD_GAUSSIAN));
+
+    EXPECT_TRUE(epix::pbr::shadow_filter_method_bits(ShadowFilteringMethod::Gaussian)
+                    .contains(MeshPipelineKey::SHADOW_FILTER_METHOD_GAUSSIAN));
+    EXPECT_TRUE(epix::pbr::shadow_filter_method_bits(ShadowFilteringMethod::Temporal)
+                    .contains(MeshPipelineKey::SHADOW_FILTER_METHOD_TEMPORAL));
+    EXPECT_TRUE(epix::pbr::shadow_filter_method_bits(ShadowFilteringMethod::Hardware2x2)
+                    .contains(MeshPipelineKey::SHADOW_FILTER_METHOD_HARDWARE_2X2));
 }
