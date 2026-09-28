@@ -295,3 +295,25 @@ TEST(MeshPipeline, SpecializeAssemblesDescriptorFollowBevy) {
     ASSERT_TRUE(alpha->depth_stencil.has_value());
     EXPECT_EQ(alpha->depth_stencil->depthWriteEnabled, wgpu::OptionalBool::eFalse);
 }
+
+/** @brief The plugin registers the same shader set the bare call does (Bevy
+ *  `MeshRenderPlugin::build`'s `load_shader_library!` calls and its
+ *  `embedded_asset!(app, "mesh.wgsl")`, `render/mesh.rs:129-150`).
+ *
+ *  Bevy publishes those libraries from the plugin, so a port that registered them
+ *  only in a helper would leave the plugin incomplete in a way no pipeline would
+ *  report until something compiled it. This drives the plugin itself, device-free,
+ *  since none of this half needs a device. */
+TEST(MeshShaders, TheMeshRenderPluginRegistersTheSameShaderSet) {
+    auto app = make_shader_asset_app();
+
+    app.add_plugins(pbr::MeshRenderPlugin{});
+    flush_load_tasks(app);
+
+    expect_embedded_shader_loaded(app, "embedded://pbr/mesh_types.slang");
+    expect_embedded_shader_loaded(app, "embedded://pbr/mesh_bindings.slang");
+    expect_embedded_shader_loaded(app, "embedded://pbr/mesh.slang");
+    expect_embedded_shader_loaded(app, "embedded://pbr/lightmap.slang");
+    // The handles resource the rest of the port reads from is populated by the same
+    // call, which the assertions above already imply.
+}

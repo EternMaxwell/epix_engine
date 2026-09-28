@@ -1,3 +1,7 @@
+#include <epix/pbr/mesh_extraction.hpp>
+#include <epix/render.hpp>
+#include <epix/pbr/morph.hpp>
+#include <epix/pbr/skin.hpp>
 #include <spdlog/spdlog.h>
 
 #include <epix/pbr/mesh_shaders.hpp>
@@ -1361,6 +1365,29 @@ void register_mesh_shaders(ecs::World& world) {
             server->get().load<shader::Shader>(std::string("embedded://") + std::string(MESH_FUNCTIONS_SHADER_PATH)),
         .mesh = server->get().load<shader::Shader>(std::string("embedded://") + std::string(MESH_SHADER_PATH)),
     });
+}
+
+void MeshRenderPlugin::attach(epix::app::App& app) {
+    // Bevy's `load_shader_library!` calls and `embedded_asset!` for the forward mesh
+    // shader: the port publishes the same set from one function.
+    register_mesh_shaders(app.world_mut());
+
+    if (!app.get_sub_app_mut(epix::render::Render)) return;
+
+    // Bevy adds both to `PostUpdate`; they stop the automatic batching of skins and
+    // morphs that would otherwise be inferred.
+    app.add_systems(epix::app::ScheduleInfo(epix::app::PostUpdate),
+                    epix::ecs::into(no_automatic_skin_batching).set_name("no automatic skin batching"));
+    app.add_systems(epix::app::ScheduleInfo(epix::app::PostUpdate),
+                    epix::ecs::into(no_automatic_morph_batching).set_name("no automatic morph batching"));
+
+    // `MeshExtractionSystems` is Bevy's, attached here; the lightmap and material
+    // extraction order against it, so until this ran the ordering was inert - the
+    // registration warning the tracker records for unregistered sets.
+    app.get_sub_app_mut(epix::render::Render)
+        ->get()
+        .configure_sets(epix::app::ScheduleInfo(epix::render::ExtractSchedule),
+                         epix::ecs::sets(MeshExtractionSystems::Extract));
 }
 
 }  // namespace epix::pbr

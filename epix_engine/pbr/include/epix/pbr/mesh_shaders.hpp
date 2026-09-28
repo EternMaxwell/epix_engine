@@ -85,4 +85,28 @@ EPIX_EXPORT struct MeshShaderHandles {
  * arrangement the light systems have. */
 EPIX_EXPORT EPIX_API void register_mesh_shaders(ecs::World& world);
 
+
+/** @brief Registers the 3D mesh render pipeline (Bevy `MeshRenderPlugin`,
+ *  `bevy_pbr/src/render/mesh.rs:96-183`).
+ *
+ *  This is the first slice of it, and it is deliberately the part that needs no
+ *  device: the embedded shader libraries and the forward mesh shader that
+ *  `register_mesh_shaders` publishes (Bevy''s `load_shader_library!` calls and
+ *  `embedded_asset!(app, "mesh.wgsl")`), the two `PostUpdate` batching systems, and
+ *  the registration of `MeshExtractionSystems` - which until now had no owner,
+ *  because Bevy attaches it here.
+ *
+ *  What is still missing, each with its own row: the render-app resources
+ *  (`MorphUniforms`, `MorphIndices` and the two the port has not ported), the seven
+ *  render-phase plugins, the `ExtractSchedule` systems, the `Render` schedule
+ *  systems, and the whole `finish` half with the pipeline caches. */
+EPIX_EXPORT struct EPIX_API MeshRenderPlugin {
+    /** @brief Debugging flags, as Bevy carries them (Bevy `RenderDebugFlags`).
+     *  Unused so far, because nothing here compiles a pipeline. */
+    bool debug_flags = false;
+
+    /** @brief Bevy's build-time hook, spelled `attach` in this port. */
+    void attach(app::App& app);
+};
+
 }  // namespace epix::pbr
