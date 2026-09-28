@@ -1,3 +1,4 @@
+#include <epix/pbr/mesh_batching.hpp>
 #include <epix/pbr/mesh_extraction.hpp>
 #include <epix/render.hpp>
 #include <epix/core_graph/core3d.hpp>
@@ -1388,7 +1389,25 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
     // `MeshExtractionSystems` is Bevy's, attached here; the lightmap and material
     // extraction order against it, so until this ran the ordering was inert - the
     // registration warning the tracker records for unregistered sets.
-    // Bevy's seven render-phase plugins are **not** registered here yet: the phase
+    // Bevy's seven render-phase plugins: five binned and two sorted.
+    //
+    // The first attempt failed on `use of undefined type GetFullBatchData` - the
+    // adapter's specialization lives in `pbr/mesh_batching.hpp`, which this file did
+    // not include, so the plugin's assert saw an incomplete type rather than a
+    // missing member. Measured one instantiation at a time rather than iterating all
+    // seven.
+    // Still not registered, and the blocker is now two specific things rather than an
+    // anonymous concept failure:
+    //   1. FIXED: the adapter's `GetFullBatchData` specialization lives in
+    //      `pbr/mesh_batching.hpp`, which this file did not include, so the plugin's
+    //      assert saw an *incomplete* type. Including it clears that.
+    //   2. OPEN: with it included, the plugin's resource registration needs the phase
+    //      items' keys to be **hashable** as well as ordered - the compiler fails in
+    //      `xhash` with "term does not evaluate to a function taking 1 arguments",
+    //      which is a missing `std::hash` for one of the key types (`Opaque3dBatchSetKey`,
+    //      `ShadowBatchSetKey`, their bin keys, or a deferred phase's). Naming which is
+    //      the next measurement; recorded against PBR-106.
+    // The two ordering constraints the set carries are noted after the render app.: the phase
     // plugin asserts the whole `GetFullBatchDataImpl` concept at once, and
     // `GetFullBatchData<MeshPipeline>` does not satisfy it - so wiring them is blocked
     // on finding which clause is missing, which the aggregate assert does not name.
