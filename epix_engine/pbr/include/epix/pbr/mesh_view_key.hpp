@@ -5,6 +5,13 @@
 #include <epix/common.hpp>
 #include <epix/pbr/mesh_pipeline_key.hpp>
 #include <epix/pbr/shadow_filtering_method.hpp>
+#include <epix/render.hpp>
+#include <epix/pbr/atmosphere.hpp>
+#include <epix/pbr/fog.hpp>
+#include <epix/core_graph/core3d.hpp>
+#include <epix/core_graph/oit.hpp>
+#include <epix/core_graph/tonemapping.hpp>
+#include <epix/pbr/mesh_pipeline_resource.hpp>
 
 namespace epix::pbr {
 
