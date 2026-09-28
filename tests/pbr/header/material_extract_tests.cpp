@@ -117,4 +117,9 @@ TEST(MaterialExtract, VisibilityDecidesRecordsAndTheSweepsAdvanceTheTick) {
     EXPECT_FALSE(after.instances.contains(sync_world::MainEntity{lit}))
         << "an invisible mesh has no record";
     EXPECT_EQ(after.current_change_tick.get(), 2u) << "and the tick advanced once more";
+
+    // The sweep drops the specialization bookkeeping of an entity that lost its
+    // material, unless its tick was updated this frame - which is what distinguishes
+    // "replaced by another material type" from "lost its material"
+    // (Bevy `sweep_entities_needing_specialization<M>`, `material.rs:820-880`).
 }

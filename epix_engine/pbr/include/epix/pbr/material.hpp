@@ -345,6 +345,61 @@ void check_light_entities_needing_specialization(
 }
 
 
+/** @brief The cached pipeline of each material entity in one view (Bevy
+ *  `SpecializedMaterialViewPipelineCache`, `material.rs:954-960`): material entity
+ *  to the tick it was specialized at and the pipeline it got. */
+EPIX_EXPORT struct SpecializedMaterialViewPipelineCache {
+    render::sync_world::MainEntityHashMap<std::pair<ecs::Tick, render::CachedRenderPipelineId>> map;
+};
+
+/** @brief The per-view caches of specialized material pipelines (Bevy
+ *  `SpecializedMaterialPipelineCache`, `material.rs:948-954`). */
+EPIX_EXPORT struct SpecializedMaterialPipelineCache {
+    std::unordered_map<render::view::RetainedViewEntity, SpecializedMaterialViewPipelineCache> map;
+};
+
+/** @brief Drops the specialization bookkeeping of entities whose
+ *  `MeshMaterial3d<M>` was removed (Bevy `sweep_entities_needing_specialization<M>`,
+ *  `bevy_pbr/src/material.rs:820-880`).
+ *
+ *  An entity whose tick was **updated this frame** is kept, not swept: a material
+ *  replaced by one of another type in the same frame appears in the removed
+ *  components list while also having been re-added, which is why this runs after
+ *  `extract_entities_needs_specialization` and reads the tick it recorded.
+ *
+ *  **Bevy also clears the prepass and shadow pipeline caches here**, through two
+ *  optional resources. Neither cache exists in the port - they belong to the prepass
+ *  and shadow material features - so only the main cache is cleared, and the rows
+ *  for those features carry the rest. */
+EPIX_EXPORT template <typename M>
+void sweep_entities_needing_specialization(
+    ecs::ResMut<EntitySpecializationTicks> entity_specialization_ticks,
+    app::Extract<ecs::RemovedComponents<MeshMaterial3d<M>>> removed_mesh_material_components,
+    ecs::ResMut<SpecializedMaterialPipelineCache> specialized_material_pipeline_cache,
+    ecs::Res<RenderMaterialInstances> render_material_instances,
+    ecs::Query<ecs::Item<const render::view::ExtractedView&>> views) {
+    for (const ecs::Entity entity : removed_mesh_material_components.read()) {
+        const render::sync_world::MainEntity main_entity{entity};
+
+        // A tick updated this frame means the entity changed materials rather than
+        // losing one - keep its bookkeeping.
+        const auto ticks = entity_specialization_ticks->entities.find(main_entity);
+        if (ticks != entity_specialization_ticks->entities.end() &&
+            ticks->second.material_instances_tick == render_material_instances->current_change_tick) {
+            continue;
+        }
+
+        entity_specialization_ticks->entities.erase(main_entity);
+        for (auto&& [view] : views.iter()) {
+            const auto cache = specialized_material_pipeline_cache->map.find(view.retained_view_entity);
+            if (cache != specialized_material_pipeline_cache->map.end()) {
+                cache->second.map.erase(main_entity);
+            }
+        }
+    }
+}
+
+
 /** @brief Registers one 3D material type (Bevy `MaterialPlugin<M>`,
  *  `bevy_pbr/src/material.rs:339-404`).
  *
@@ -365,6 +420,10 @@ EPIX_EXPORT template <typename M>
 struct MaterialPlugin {
     void attach(app::App& app) {
         app_register_asset<M>(app);
+        // Bevy initialises the specialization queue in `build` too; without it the
+        // PostUpdate system that fills it fails validation and the queue stays empty,
+        // which is what the extraction then has nothing to read.
+        app.world_mut().init_resource<EntitiesNeedingSpecialization<M>>();
 
         auto render_app = app.get_sub_app_mut(render::Render);
         if (!render_app) return;
@@ -407,7 +466,11 @@ struct MaterialPlugin {
                 app::ScheduleInfo(render::ExtractSchedule),
                 ecs::into(extract_entities_needs_specialization<M>)
                     .in_set(MaterialExtractEntitiesNeedingSpecializationSystems::Extract)
-                    .set_name("extract entities needing material specialization"));
+                    .set_name("extract entities needing material specialization"));            render_app->get().add_systems(
+                app::ScheduleInfo(render::ExtractSchedule),
+                ecs::into(sweep_entities_needing_specialization<M>)
+                    .after(MaterialExtractEntitiesNeedingSpecializationSystems::Extract)
+                    .set_name("sweep entities needing material specialization"));
         }
         app.add_systems(app::ScheduleInfo(app::PostUpdate),
                         ecs::into(check_entities_needing_specialization<M>)
@@ -504,5 +567,6 @@ EPIX_EXPORT struct PreparedMaterial {
     /** @brief What the pipeline needs to know about it. */
     std::shared_ptr<MaterialProperties> properties;
 };
+
 
 }  // namespace epix::pbr
