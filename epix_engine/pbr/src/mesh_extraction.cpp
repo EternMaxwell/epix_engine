@@ -233,3 +233,67 @@ void epix::pbr::extract_meshes_for_cpu_building(
                                                               std::move(render_mesh_instance));
     }
 }
+void epix::pbr::collect_meshes_for_gpu_building(
+    ecs::ResMut<RenderMeshInstances> render_mesh_instances,
+    ecs::ResMut<epix::render::batching::BatchedInstanceBuffers<MeshUniform, MeshInputUniform>>
+        batched_instance_buffers,
+    ecs::ResMut<MeshCullingDataBuffer> mesh_culling_data_buffer,
+    ecs::ResMut<RenderMeshInstanceGpuQueues> render_mesh_instance_queues,
+    ecs::Res<render::mesh::MeshAllocator> mesh_allocator,
+    ecs::Res<RenderMaterialInstances> mesh_material_ids,
+    ecs::Res<RenderMaterialBindings> render_material_bindings,
+    ecs::Res<RenderLightmaps> render_lightmaps,
+    ecs::Res<SkinUniforms> skin_uniforms,
+    ecs::Res<render::FrameCount> frame_count,
+    ecs::ResMut<MeshesToReextractNextFrame> meshes_to_reextract_next_frame) {
+    // The CPU side has its own extraction and no input buffers, so there is nothing
+    // for this system to consume there.
+    if (render_mesh_instances->is_cpu_building()) return;
+
+    // Rebuilt from scratch every frame: an entity is left in it only if its builder
+    // could not be updated this frame for want of a prepared material.
+    meshes_to_reextract_next_frame->entities.clear();
+
+    auto& current_input_buffer = batched_instance_buffers->current_input_buffer;
+    auto& previous_input_buffer = batched_instance_buffers->previous_input_buffer;
+    previous_input_buffer.clear();
+
+    RenderMeshInstanceGpuQueue& queue = **render_mesh_instance_queues;
+    const auto update_one = [&](render::sync_world::MainEntity entity,
+                                RenderMeshInstanceGpuBuilder& builder) {
+        return builder.update(entity, render_mesh_instances->gpu_instances, current_input_buffer,
+                              previous_input_buffer, *mesh_allocator, *mesh_material_ids,
+                              *render_material_bindings, *render_lightmaps, *skin_uniforms,
+                              *frame_count, *meshes_to_reextract_next_frame);
+    };
+
+    if (auto* cpu = std::get_if<RenderMeshInstanceGpuQueue::CpuCulling>(&queue.queue)) {
+        for (auto& [entity, builder] : cpu->changed) {
+            (void)update_one(entity, builder);
+        }
+        for (const auto entity : cpu->removed) {
+            remove_mesh_input_uniform(entity, render_mesh_instances->gpu_instances,
+                                      current_input_buffer);
+        }
+        cpu->changed.clear();
+        cpu->removed.clear();
+    } else if (auto* gpu = std::get_if<RenderMeshInstanceGpuQueue::GpuCulling>(&queue.queue)) {
+        for (auto& [entity, builder, culling] : gpu->changed) {
+            const std::optional<std::uint32_t> instance_data_index = update_one(entity, builder);
+            if (!instance_data_index) continue;
+            // The culling data is keyed by the instance's slot, so it can only be
+            // written once the builder has one.
+            culling.update(*mesh_culling_data_buffer, static_cast<std::size_t>(*instance_data_index));
+        }
+        for (const auto entity : gpu->removed) {
+            remove_mesh_input_uniform(entity, render_mesh_instances->gpu_instances,
+                                      current_input_buffer);
+        }
+        gpu->changed.clear();
+        gpu->removed.clear();
+    }
+
+    // A buffer that is bound must not be empty, and the previous frame's is bound even
+    // when the scene is empty (`PBR-183`).
+    previous_input_buffer.ensure_nonempty();
+}

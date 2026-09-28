@@ -211,4 +211,28 @@ EPIX_EXPORT EPIX_API void extract_meshes_for_cpu_building(
     ecs::Local<std::vector<std::pair<ecs::Entity, RenderMeshInstanceCpu>>> queue,
     app::Extract<ecs::Query<CpuMeshExtractionItem>> meshes_query);
 
+/** @brief Consume the extraction queues and build the input uniforms (Bevy
+ *  `collect_meshes_for_gpu_building`, `render/mesh.rs:1738-1845`).
+ *
+ *  The other half of the GPU path: `extract_meshes_for_gpu_building` queues builders,
+ *  this drains them into `RenderMeshInstances` and the input buffers, and it must run
+ *  **before** `set_mesh_motion_vector_flags`, which Bevy notes because that system
+ *  overwrites the flags this one's builders carry.
+ *
+ *  Bevy returns early when the render world is not building on the GPU - the CPU side
+ *  has its own extraction - and ends by calling `ensure_nonempty`, because a buffer
+ *  that is bound must not be empty. */
+EPIX_EXPORT EPIX_API void collect_meshes_for_gpu_building(
+    ecs::ResMut<RenderMeshInstances> render_mesh_instances,
+    ecs::ResMut<epix::render::batching::BatchedInstanceBuffers<MeshUniform, MeshInputUniform>>
+        batched_instance_buffers,
+    ecs::ResMut<MeshCullingDataBuffer> mesh_culling_data_buffer,
+    ecs::ResMut<RenderMeshInstanceGpuQueues> render_mesh_instance_queues,
+    ecs::Res<render::mesh::MeshAllocator> mesh_allocator,
+    ecs::Res<RenderMaterialInstances> mesh_material_ids,
+    ecs::Res<RenderMaterialBindings> render_material_bindings,
+    ecs::Res<RenderLightmaps> render_lightmaps,
+    ecs::Res<SkinUniforms> skin_uniforms,
+    ecs::Res<render::FrameCount> frame_count,
+    ecs::ResMut<MeshesToReextractNextFrame> meshes_to_reextract_next_frame);
 }  // namespace epix::pbr

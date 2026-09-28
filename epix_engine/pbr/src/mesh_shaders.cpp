@@ -1502,9 +1502,14 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
         // compiling - does not. That is the shared feature and therefore the hypothesis;
         // the next round on this should read the `BatchedInstanceBuffers` system-param
         // path rather than try another spelling.
-        // `collect_meshes_for_gpu_building` is Bevy's other system here, and it has no
-        // counterpart to register: the name appears in the port only inside a comment
-        // (`mesh_extraction.cpp`). That is `PBR-182`/`PBR-183`, both open.
+        // Bevy's ordering note, kept: this must run before
+        // `set_mesh_motion_vector_flags` or it would overwrite those flags.
+        render_app->get().add_systems(
+            epix::app::ScheduleInfo(epix::render::Render),
+            epix::ecs::into(collect_meshes_for_gpu_building)
+                .in_set(epix::render::RenderSystems::PrepareMeshes)
+                .before(set_mesh_motion_vector_flags)
+                .set_name("collect meshes for gpu building"));
     } else {
         // Bevy's CPU branch. Its extraction is registered here, in the same set as the
         // GPU one; what remains is the `BatchedInstanceBuffer` it writes into, which is
