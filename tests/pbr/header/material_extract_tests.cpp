@@ -560,3 +560,53 @@ TEST(MaterialExtract, TheScatteringMediumPluginRegistersItsParts) {
     // this harness. The registration is therefore verified by reading the plugin rather
     // than by the test, and that is recorded on the row instead of implied.    (void)render_sub;
 }
+/** @brief The camera filtering method actually reaches its render entity (Bevy
+ *  `extract_shadow_filtering_method`, `bevy_pbr/src/render/light.rs:234-245`).
+ *
+ *  The device-free test asserts the specialization; this one asserts the path: a
+ *  main-world camera carrying `SyncToRenderWorld` gets a render entity from
+ *  `SyncWorldPlugin`, and the extraction puts the method there. Without this the arm in
+ *  `check_views_need_specialization` reads a component that never arrived - which is
+ *  exactly the state batch 189 found and fixed. */
+TEST(MaterialExtract, TheShadowFilteringMethodReachesItsRenderEntity) {
+    App application = App::create();
+    application.add_events<epix::window::WindowClosed>();
+    add_render_prerequisites(application);
+    try {
+        application.add_plugins(RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+    ASSERT_TRUE(application.get_sub_app_mut(Render).has_value());
+    add_render_dependent_prerequisites(application);
+    // Registers the extraction plugin this test exercises.
+    application.add_plugins(pbr::MeshRenderPlugin{});
+    application.resource_scope([&application](epix::app::internal::Plugins& plugins) {
+        plugins.ready_all(application);
+    });
+
+    const ecs::Entity camera =
+        application.world_mut()
+            .spawn(epix::render::sync_world::SyncToRenderWorld{}, epix::camera::Camera3d{},
+                   pbr::ShadowFilteringMethod::Temporal)
+            .id();
+
+    auto render_sub = application.take_sub_app(Render);
+    ASSERT_TRUE(render_sub);
+    render_sub->extract(application);
+    render_sub->resource_scope([](epix::ecs::Schedules& schedules, epix::ecs::World& world) {
+        schedules.schedule_mut(ExtractSchedule).apply_deferred(world);
+    });
+
+    // The sync step maps the main entity to a render entity, and the extraction writes
+    // the component there.
+    const auto camera_ref = application.world().get_entity(camera);
+    ASSERT_TRUE(camera_ref.has_value());
+    const auto mapped = camera_ref->get<epix::render::sync_world::RenderEntity>();
+    ASSERT_TRUE(mapped.has_value()) << "SyncToRenderWorld gives the camera a render entity";
+    const auto render_entity = render_sub->world().get_entity(mapped->get().id());
+    ASSERT_TRUE(render_entity.has_value()) << "the render entity exists";
+    const auto extracted = render_entity->get<pbr::ShadowFilteringMethod>();
+    ASSERT_TRUE(extracted.has_value()) << "and the extraction reaches it";
+    EXPECT_EQ(extracted->get(), pbr::ShadowFilteringMethod::Temporal);
+}
