@@ -122,4 +122,33 @@ TEST(MaterialExtract, VisibilityDecidesRecordsAndTheSweepsAdvanceTheTick) {
     // material, unless its tick was updated this frame - which is what distinguishes
     // "replaced by another material type" from "lost its material"
     // (Bevy `sweep_entities_needing_specialization<M>`, `material.rs:820-880`).
+
+    // The sweep drops the specialization bookkeeping of an entity that lost its
+    // material (Bevy `sweep_entities_needing_specialization<M>`, `material.rs:820-880`).
+    // Staging it is subtle, and the measurement in batch 131 is what makes it possible:
+    // the sweep keeps an entity whose tick was recorded *this run*, so the entity has to
+    // settle a frame first (out of the queue), and the removal then has to happen in the
+    // same frame as the extraction, since a frame in between is long enough for the
+    // removal event to be gone by the time the sweep reads it.
+    const ecs::Entity lost =
+        application.world_mut().spawn(pbr::MeshMaterial3d<Material>{handle}, visible, epix::mesh::Mesh3d{}).id();
+    application.update();
+    render_sub->extract(application);
+    render_sub->resource_scope([](epix::ecs::Schedules& schedules, epix::ecs::World& world) {
+        schedules.schedule_mut(ExtractSchedule).apply_deferred(world);
+    });
+    ASSERT_TRUE(render_sub->world().resource<pbr::EntitySpecializationTicks>().entities.contains(
+        sync_world::MainEntity{lost}))
+        << "the extraction records a tick for the new mesh";
+
+    application.update();  // settle: the entity is no longer queued
+    application.world_mut().entity_mut(lost).remove<pbr::MeshMaterial3d<Material>>();
+    render_sub->extract(application);
+    render_sub->resource_scope([](epix::ecs::Schedules& schedules, epix::ecs::World& world) {
+        schedules.schedule_mut(ExtractSchedule).apply_deferred(world);
+    });
+
+    EXPECT_FALSE(render_sub->world().resource<pbr::EntitySpecializationTicks>().entities.contains(
+        sync_world::MainEntity{lost}))
+        << "and the sweep clears it once the material is gone";
 }
