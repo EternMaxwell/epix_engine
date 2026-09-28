@@ -101,12 +101,24 @@ EPIX_EXPORT EPIX_API void register_mesh_shaders(ecs::World& world);
  *  render-phase plugins, the `ExtractSchedule` systems, the `Render` schedule
  *  systems, and the whole `finish` half with the pipeline caches. */
 EPIX_EXPORT struct EPIX_API MeshRenderPlugin {
-    /** @brief Debugging flags, as Bevy carries them (Bevy `RenderDebugFlags`).
-     *  Unused so far, because nothing here compiles a pipeline. */
+
+    /** @brief Whether mesh uniforms are built on the GPU (Bevy
+     *  `use_gpu_instance_buffer_builder`). Bevy''s `MeshRenderPlugin::new` starts it
+     *  `false` and its plugin group passes its own value through; the port starts at
+     *  `false` for the same reason, and a GPU-capable app sets it. It is additionally
+     *  gated on the device actually supporting GPU preprocessing. */
+    bool use_gpu_instance_buffer_builder = false;
+    /** @brief Debugging flags, as Bevy carries them. Unused so far, because nothing
+     *  here compiles a pipeline. */
     bool debug_flags = false;
 
     /** @brief Bevy's build-time hook, spelled `attach` in this port. */
     void attach(app::App& app);
+    /** @brief Bevy's finish-time hook, spelled `ready` in this port. The split matters:
+     *  `attach` runs before the render device exists and `ready` after it, which is
+     *  why anything built from device facts belongs here (Bevy does the same work in
+     *  `finish`). */
+    void ready(app::App& app);
 };
 
 }  // namespace epix::pbr

@@ -9,6 +9,7 @@
 #include <epix/pbr/mesh_instance.hpp>
 #include <epix/render/gpu_preprocessing_support.hpp>
 #include <epix/pbr/morph.hpp>
+#include <epix/pbr/skin.hpp>
 #include <epix/render.hpp>
 #include <epix/shader.hpp>
 #include <epix/task.hpp>
@@ -103,6 +104,12 @@ TEST(MaterialExtract, VisibilityDecidesRecordsAndTheSweepsAdvanceTheTick) {
         EXPECT_TRUE(render_world.get_resource<pbr::ViewKeyCache>().has_value())
             << "and the per-view key cache the specialization check fills";
         EXPECT_TRUE(render_world.get_resource<pbr::ViewSpecializationTicks>().has_value());
+
+        EXPECT_TRUE(render_world.get_resource<pbr::RenderMeshInstances>().has_value())
+            << "the instance record set the mesh path is built on";
+        // `SkinUniforms` is built in the plugin's `ready` hook, which the port invokes
+        // only from `App::run()` - so a test that drives schedules directly cannot
+        // observe it. Asserting it here would assert the harness, not the plugin.
         EXPECT_TRUE(render_world.get_resource<pbr::MeshCullingDataBuffer>().has_value())
             << "the culling buffer, whose type the port already defined";
     }

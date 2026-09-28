@@ -1451,6 +1451,20 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
     render_app->get().world_mut().init_resource<ViewKeyCache>();
     render_app->get().world_mut().init_resource<ViewSpecializationTicks>();
 
+    // The instance record set, whose side depends on whether GPU building is both
+    // requested and supported (Bevy `finish`: `self.use_gpu_instance_buffer_builder
+    // && gpu_preprocessing_support.is_available()`). Bevy inserts this in `finish`;
+    // nothing else writes it and no schedule runs before `finish`, so inserting it
+    // here is equivalent - and it keeps the resource's existence independent of
+    // whether a render device was ever created.
+    bool gpu_preprocessing_supported = false;
+    if (const auto support =
+            render_app->get().world().get_resource<epix::render::batching::GpuPreprocessingSupport>()) {
+        gpu_preprocessing_supported = support->get().is_available();
+    }
+    const bool build_on_gpu = use_gpu_instance_buffer_builder && gpu_preprocessing_supported;
+    render_app->get().world_mut().insert_resource(RenderMeshInstances::make(build_on_gpu));
+
     // The extraction systems Bevy adds alongside: the skin and morph extraction,
     // which run before the mesh extraction itself. `clear_batched_gpu_instance_buffers`
     // is not ported with them - it belongs to the gpu-preprocessing path, which has
@@ -1475,7 +1489,17 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
     // (`set_mesh_motion_vector_flags`, `prepare_mesh_bind_groups`, and
     // `prepare_mesh_view_bind_groups`, which `PBR-302` records as gated) are named
     // against `PBR-109` rather than left to be noticed.
-    // `set_mesh_motion_vector_flags` is implemented but **deliberately not registered
+    // `set_mesh_motion_vector_flags` is Bevy's only writer of the motion-vector
+    // flags; it needs `RenderMeshInstances` (inserted above) and `SkinUniforms`
+    // (built in `ready`, where the device exists).
+    render_app->get().add_systems(
+        epix::app::ScheduleInfo(epix::render::Render),
+        epix::ecs::into(set_mesh_motion_vector_flags)
+            .in_set(epix::render::RenderSystems::PrepareMeshes)
+            .set_name("set mesh motion vector flags"));
+
+    // Kept as history - the deferral this replaces, and its reason:
+    // `set_mesh_motion_vector_flags` is implemented but **originally not registered
     // yet**: it needs `RenderMeshInstances` and `SkinUniforms` in the render world,
     // and neither is created by anything in the port - that is Bevy's `finish` half
     // (`RenderMeshInstances::new(...)` in `finish`, and the skin uniforms built from
@@ -1495,6 +1519,21 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
             .in_set(epix::render::RenderSystems::Cleanup)
             .after(epix::render::RenderSystems::Render)
             .set_name("clear batched cpu instance buffers"));
+}
+
+void MeshRenderPlugin::ready(epix::app::App& app) {
+    auto render_app = app.get_sub_app_mut(epix::render::Render);
+    if (!render_app) return;
+
+    // Device facts are needed here, which is why this half is `ready` rather than
+    // `attach`: `SkinUniforms` allocates its joint buffers from the device and its
+    // limits (Bevy's `impl FromWorld`, used by `finish`'s `init_resource`).
+    const auto device = render_app->get().world().get_resource<wgpu::Device>();
+    if (!device) return;
+
+    wgpu::Limits limits{};
+    device->get().getLimits(&limits);
+    render_app->get().world_mut().insert_resource(SkinUniforms::make(device->get(), limits));
 }
 
 }  // namespace epix::pbr
