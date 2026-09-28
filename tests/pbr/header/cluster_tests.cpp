@@ -6615,6 +6615,28 @@ TEST(Cluster, TheMeshViewKeyAssemblesBevysArms) {
         << "a view with no camera contributes none of the quality bits";
     EXPECT_FALSE(custom_key.contains(MeshPipelineKey::VIEW_PROJECTION_PERSPECTIVE));
 }
+/** @brief The shadow filtering method extracts onto the render entity (Bevy
+ *  `extract_shadow_filtering_method`, `bevy_pbr/src/render/light.rs:234-245`).
+ *
+ *  Bevy needs a system for this only because Rust orphan rules forbid an
+ *  `ExtractComponent` impl across crates; C++ has no such rule, so the port states the
+ *  same thing as a specialization. What is asserted here is the specialization itself -
+ *  the concept is proven by `ExtractComponentPlugin<ShadowFilteringMethod>` compiling at
+ *  all. The sync path - that a main-world camera's method reaches its render entity -
+ *  needs a synced camera fixture and is recorded as owed rather than faked. */
+TEST(Cluster, TheShadowFilteringMethodExtracts) {
+    using epix::pbr::ShadowFilteringMethod;
+    using epix::render::ExtractComponent;
+
+    const auto temporal = ExtractComponent<ShadowFilteringMethod>::extract_component(
+        ShadowFilteringMethod::Temporal);
+    ASSERT_TRUE(temporal.has_value());
+    EXPECT_EQ(*temporal, ShadowFilteringMethod::Temporal);
+
+    // The filter is what keeps it to cameras, as Bevy's `With<Camera3d>` does.
+    static_assert(std::same_as<ExtractComponent<ShadowFilteringMethod>::QueryFilter,
+                               epix::ecs::Filter<epix::ecs::With<epix::camera::Camera3d>>>);
+}
 }  // namespace
 
 /** @brief The three view bind groups a view renders with (Bevy `MeshViewBindGroup`,
