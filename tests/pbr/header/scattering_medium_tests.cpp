@@ -82,4 +82,45 @@ TEST(ScatteringMedium, BuildersScaleEveryTermAndKeepTheTerms) {
     EXPECT_EQ(denser.terms[0].absorption, glm::vec3(0.0f)) << "zero stays zero";
 }
 
+/** @brief The phase function values Bevy computes when filling the LUTs (Bevy
+ *  `PhaseFunction::sample`, `bevy_pbr/src/medium.rs:369-381`). */
+TEST(ScatteringMedium, PhaseFunctionValuesMatchBevy) {
+    constexpr float PI = 3.14159265358979323846f;
+    EXPECT_NEAR(PhaseFunction::isotropic().sample(0.3f), 0.25f / PI, 1e-7f)
+        << "isotropic is a constant, and independent of direction";
+    EXPECT_NEAR(PhaseFunction::rayleigh().sample(0.0f), 0.1875f / PI, 1e-7f);
+    EXPECT_NEAR(PhaseFunction::rayleigh().sample(1.0f), 0.1875f / PI * 2.0f, 1e-7f)
+        << "the Rayleigh arm grows with the square of the cosine";
+    // With zero asymmetry the Mie arm degenerates to isotropic, denominator included.
+    EXPECT_NEAR(PhaseFunction::mie(0.0f).sample(0.7f), 0.25f / PI, 1e-7f);
+    EXPECT_NEAR(PhaseFunction::mie(0.8f).sample(-1.0f), 0.25f / PI * (1.0f - 0.64f) / std::pow(1.0f + 0.64f + 1.6f, 1.5f), 1e-6f);
+
+    // Bevy derives Default, and its default arm is Mie with asymmetry 0.8 - not the
+    // first enumerator, which is why the port names it rather than relying on order.
+    EXPECT_EQ(PhaseFunction::default_phase().kind, PhaseFunction::Kind::Mie);
+    EXPECT_FLOAT_EQ(PhaseFunction::default_phase().asymmetry, 0.8f);
+}
+
+/** @brief The LUT data the GPU representation uploads (Bevy
+ *  `GpuScatteringMedium::prepare_asset`, `bevy_pbr/src/medium.rs:429-475`). */
+TEST(ScatteringMedium, LutDataMatchesBevySizingAndSampling) {
+    const ScatteringMedium medium = ScatteringMedium::earthlike(8, 4);
+
+    const auto density = medium.density_lut();
+    ASSERT_EQ(density.size(), 16u) << "two rows of falloff_resolution";
+    // Row 0 is absorption: earthlike absorbs only through ozone, whose tent is centred
+    // at 0.75 with half-width 0.15, so a cell centre inside the band picks it up and
+    // one outside stays zero.
+    const float inside = density[5].x;   // cell centre 5.5/8 = 0.6875, inside 0.6..0.9
+    const float outside = density[0].x;  // cell centre 0.0625, far outside
+    EXPECT_GT(inside, 0.0f) << "the ozone band is where absorption comes from";
+    EXPECT_NEAR(outside, 0.0f, 1e-12f);
+    // Row 1 is scattering, which Rayleigh and Mie contribute everywhere.
+    EXPECT_GT(density[8 + 4].x, 0.0f);
+
+    const auto scattering = medium.scattering_lut();
+    ASSERT_EQ(scattering.size(), 32u) << "falloff_resolution * phase_resolution";
+    // The falloff parameter is the fast axis, as Bevy indexes it: i = raw % phase.
+    EXPECT_GT(scattering[3].x, 0.0f);
+}
 }  // namespace

@@ -99,13 +99,21 @@ EPIX_EXPORT struct Falloff {
 EPIX_EXPORT struct PhaseFunction {
     enum class Kind : std::uint8_t { Isotropic, Rayleigh, Mie, Sampled };
 
-    Kind kind = Kind::Isotropic;
+    /** @brief Bevy default is `Mie { asymmetry: 0.8 }`, not the first enumerator. */
+    Kind kind = Kind::Mie;
     /** @brief The Mie asymmetry, in `[-1, 1]`: positive scatters forward. */
     float asymmetry = 0.0f;
     /** @brief The sampled arm values at even intervals over the domain. */
     std::vector<float> samples;
 
-    static PhaseFunction isotropic() noexcept { return PhaseFunction{}; }
+    /** @brief Explicit, because the default arm is Mie: `PhaseFunction{}` is not
+     *  isotropic in Bevy either, and assuming otherwise is the mistake this factory
+     *  exists to prevent. */
+    static PhaseFunction isotropic() noexcept {
+        PhaseFunction f;
+        f.kind = Kind::Isotropic;
+        return f;
+    }
     static PhaseFunction rayleigh() noexcept {
         PhaseFunction f;
         f.kind = Kind::Rayleigh;
@@ -116,6 +124,38 @@ EPIX_EXPORT struct PhaseFunction {
         f.kind      = Kind::Mie;
         f.asymmetry = asymmetry;
         return f;
+    }
+
+    /** @brief Bevy default: low-density media behave Mie-ish, so this is not the
+     *  isotropic arm. */
+    static PhaseFunction default_phase() noexcept { return mie(0.8f); }
+
+    /** @brief The phase value at `neg_l_dot_v` (Bevy `PhaseFunction::sample`,
+     *  `:369-381`). Bevy evaluates this when it fills the LUTs, so the port needs it
+     *  on the CPU side; `Sampled` stands in for Bevy `Curve` by the recorded decision. */
+    [[nodiscard]] float sample(float neg_l_dot_v) const noexcept {
+        constexpr float FRAC_4_PI    = 0.25f / 3.14159265358979323846f;
+        constexpr float FRAC_3_16_PI = 0.1875f / 3.14159265358979323846f;
+        switch (kind) {
+            case Kind::Isotropic: return FRAC_4_PI;
+            case Kind::Rayleigh: return FRAC_3_16_PI * (1.0f + neg_l_dot_v * neg_l_dot_v);
+            case Kind::Mie: {
+                const float denom = 1.0f + asymmetry * asymmetry - 2.0f * asymmetry * neg_l_dot_v;
+                return FRAC_4_PI * (1.0f - asymmetry * asymmetry) / (denom * std::sqrt(denom));
+            }
+            case Kind::Sampled: {
+                if (samples.empty()) return 0.0f;
+                if (samples.size() == 1) return samples.front();
+                const float clamped = std::clamp(neg_l_dot_v, -1.0f, 1.0f);
+                const float scaled  = (clamped + 1.0f) * 0.5f * static_cast<float>(samples.size() - 1);
+                const auto  index   = static_cast<std::size_t>(scaled);
+                const float frac    = scaled - static_cast<float>(index);
+                const float a0      = samples[index];
+                const float a1      = samples[std::min(index + 1, samples.size() - 1)];
+                return a0 + (a1 - a0) * frac;
+            }
+        }
+        return FRAC_4_PI;
     }
 };
 
@@ -170,6 +210,55 @@ EPIX_EXPORT struct ScatteringMedium {
             term.scattering *= multiplier;
         }
         return copy;
+    }
+
+    /** @brief The density LUT data: `2 * falloff_resolution` vec4s whose first half is
+     *  absorption density and second half scattering density, each term scaled by its
+     *  falloff (Bevy `GpuScatteringMedium::prepare_asset`, `:429-450`). The sample
+     *  points are cell centres - `(i + 0.5) / resolution` - not lattice corners. */
+    [[nodiscard]] std::vector<glm::vec4> density_lut() const {
+        std::vector<glm::vec4> density;
+        density.reserve(2 * falloff_resolution);
+        for (int half = 0; half < 2; ++half) {
+            for (std::uint32_t i = 0; i < falloff_resolution; ++i) {
+                const float falloff = (static_cast<float>(i) + 0.5f) / static_cast<float>(falloff_resolution);
+                glm::vec4 total{0.0f};
+                for (const auto& term : terms) {
+                    const glm::vec3 scaled = (half == 0 ? term.absorption : term.scattering) *
+                                             term.falloff.sample(falloff);
+                    total += glm::vec4{scaled, 0.0f};
+                }
+                density.push_back(total);
+            }
+        }
+        return density;
+    }
+
+    /** @brief The scattering LUT data: `falloff_resolution * phase_resolution` vec4s
+     *  of scattering density times the phase function (Bevy `:452-475`).
+     *
+     *  Bevy indexes `i = raw % phase_resolution` and `j = raw / phase_resolution`, so
+     *  the falloff parameter is the fast axis and the phase the slow one, and the
+     *  phase sample is `neg_l_dot_v = 2p - 1`. Copied exactly, including that. */
+    [[nodiscard]] std::vector<glm::vec4> scattering_lut() const {
+        std::vector<glm::vec4> scattering;
+        scattering.reserve(static_cast<std::size_t>(falloff_resolution) * phase_resolution);
+        for (std::uint32_t raw = 0; raw < falloff_resolution * phase_resolution; ++raw) {
+            const std::uint32_t i = raw % phase_resolution;
+            const std::uint32_t j = raw / phase_resolution;
+            const float falloff    = (static_cast<float>(i) + 0.5f) / static_cast<float>(falloff_resolution);
+            const float phase      = (static_cast<float>(j) + 0.5f) / static_cast<float>(phase_resolution);
+            const float neg_l_dot_v = phase * 2.0f - 1.0f;
+
+            glm::vec4 total{0.0f};
+            for (const auto& term : terms) {
+                const glm::vec3 scaled = term.scattering * term.falloff.sample(falloff) *
+                                         term.phase.sample(neg_l_dot_v);
+                total += glm::vec4{scaled, 0.0f};
+            }
+            scattering.push_back(total);
+        }
+        return scattering;
     }
 
     /** @brief A medium approximating Earth atmosphere (Bevy `earthlike`, `:131-161`):
