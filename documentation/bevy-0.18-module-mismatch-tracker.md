@@ -3143,6 +3143,21 @@ verified; the fixing commit is recorded here.
 | Parent modules touched | none - and one of the two options would. |
 | Status | **committed with this record** |
 
+### Batch 172 - the stall fixed as approved, and what it was hiding
+
+| Field | Value |
+| --- | --- |
+| Decisions taken | You chose **mark the shader group serial in ctest** for the stall, and **sampled tables carried with the medium** for the Falloff representation. This batch implements the first; the second is recorded on `PBR-886`. |
+| What was changed | `cmake/utils.cmake`: `_epix_add_group_executables` gained a `SERIAL` option that sets `RUN_SERIAL TRUE` on the registered test, and `epix_add_tests` accepts and forwards it. `tests/CMakeLists.txt`: `epix_add_tests(shader SERIAL)`, with the reason beside it. Test infrastructure, which is why it waited for your call. |
+| Result, and it is the point of the round | The suite **now completes**: `99% tests passed, 1 tests failed out of 111`. Six consecutive rounds could not get past 110/111, and every one of them recorded the suite as not-run. |
+| **And it was hiding a failure** | `tests_header_render_render_parity_tests` fails, reproducibly, on `GpuArrayBuffer.SelectsBackingAndIndexes` with `bad allocation` thrown in the test body - a **parent-module** test. Machine memory is not the cause: 12 GB free, no jobs of mine running, and it fails the same way alone. |
+| Why it is not fixed here | It is a **render-module** failure, and the objective says a parent-module mismatch goes back to a render audit rather than being patched from an audited module. The test file is untouched by this session, so the failure is either pre-existing or environment-dependent; either way it needs the render audit to say which. |
+| The lesson worth keeping | Six rounds of kill-and-retry did not merely cost time: they **concealed a red test**. A suite that never completes is not a suite that passes, and recording it as not-run each time was correct but was also the reason nobody saw this. |
+| Verification | `cmake` reconfigured and the whole tree built green (0 errors). Full suite: **111 tests, 1 failure** - the render parity one above. No library code changed, so the `DBABB1D0` baseline still describes the example; no capture was taken. |
+| Counts | total **2342** rows - 1842 matching - 9 diverging - 249 intentional - 208 missing; open index 501 |
+| Parent modules touched | none - the failing test is in one, and is reported rather than patched. |
+| Status | **committed with this record** |
+
 ### Next candidates
 
 Ranked by value from the sections merged so far:

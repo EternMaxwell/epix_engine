@@ -11,7 +11,9 @@ epix_add_tests(time)
 epix_add_tests(image)
 epix_add_tests(window)
 epix_add_tests(transform)
-epix_add_tests(shader)
+# The shader tests pump schedules from helper threads while waiting on asset loads, so
+# they cannot share the machine with other GPU tests (see cmake/utils.cmake).
+epix_add_tests(shader SERIAL)
 epix_add_tests(mesh)
 epix_add_tests(camera)
 epix_add_tests(sprite)

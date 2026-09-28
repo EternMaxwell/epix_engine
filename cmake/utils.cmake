@@ -167,7 +167,7 @@ endfunction()
 # Shared body of epix_add_tests()/epix_add_examples(): one executable per
 # source file of a group, next to the group's header/ and module/ variants.
 function(_epix_add_group_executables GROUP_NAME)
-  cmake_parse_arguments(PARSE_ARGV 1 _G "TEST" "SOURCE_DIR;EXCLUDE_REGEX;GLOB_TYPE" "LINK_LIBS;INCLUDE_DIRS;SHARED_DEPS")
+  cmake_parse_arguments(PARSE_ARGV 1 _G "TEST;SERIAL" "SOURCE_DIR;EXCLUDE_REGEX;GLOB_TYPE" "LINK_LIBS;INCLUDE_DIRS;SHARED_DEPS")
   if(NOT _G_SOURCE_DIR)
     set(_G_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${GROUP_NAME}")
   elseif(NOT IS_ABSOLUTE "${_G_SOURCE_DIR}")
@@ -215,6 +215,13 @@ function(_epix_add_group_executables GROUP_NAME)
       if(_G_TEST)
         add_test(NAME ${_NAME} COMMAND ${_NAME}
           WORKING_DIRECTORY "${EPIX_ENGINE_SOURCE_DIR}")
+        # A group whose tests wait on asset loads while pumping schedules from helper
+        # threads cannot share a machine with other GPU tests: under `ctest -j` the
+        # shader group stalled the suite at 110/111 six times while passing 11/11 alone.
+        # `RUN_SERIAL` keeps other tests off the machine while these run.
+        if(_G_SERIAL)
+          set_tests_properties(${_NAME} PROPERTIES RUN_SERIAL TRUE)
+        endif()
       endif()
       # collect shared libs
       set(_shared_deps ${_G_SHARED_DEPS})
@@ -234,8 +241,11 @@ function(epix_add_tests GROUP_NAME)
   if(NOT EPIX_ENABLE_TEST)
     return()
   endif()
-  cmake_parse_arguments(PARSE_ARGV 1 _T "" "SOURCE_DIR" "INCLUDE_DIRS;SHARED_DEPS")
+  cmake_parse_arguments(PARSE_ARGV 1 _T "SERIAL" "SOURCE_DIR" "INCLUDE_DIRS;SHARED_DEPS")
   set(_extra "")
+  if(_T_SERIAL)
+    list(APPEND _extra SERIAL)
+  endif()
   if(_T_SOURCE_DIR)
     list(APPEND _extra SOURCE_DIR "${_T_SOURCE_DIR}")
   endif()
