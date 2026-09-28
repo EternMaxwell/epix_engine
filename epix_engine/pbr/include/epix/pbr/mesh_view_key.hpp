@@ -47,6 +47,10 @@ EPIX_EXPORT struct MeshViewKeyInputs {
      *  when SSAO is present - the one input `PBR-115` still lacks. */
     bool screen_space_ambient_occlusion = false;
     bool distance_fog = false;
+    /** @brief The camera transmission quality, or nothing when no 3D camera is
+     *  present: Bevy applies its arm inside `if let Some(camera_3d)`, and optional is
+     *  how that condition is carried rather than defaulting a quality nobody asked for. */
+    std::optional<::epix::camera::ScreenSpaceTransmissionQuality> screen_space_specular_transmission_quality;
 };
 
 /** @brief Assemble a view's mesh key (Bevy's `view_key` assembly, `mesh.rs:355-437`),
@@ -91,6 +95,13 @@ EPIX_EXPORT struct MeshViewKeyInputs {
     if (inputs.deband_dither) key |= MeshPipelineKey::DEBAND_DITHER;
     if (inputs.screen_space_ambient_occlusion) key |= MeshPipelineKey::SCREEN_SPACE_AMBIENT_OCCLUSION;
     if (inputs.distance_fog) key |= MeshPipelineKey::DISTANCE_FOG;
+    // Bevy tail: the transmission quality field, from the camera and only when there is
+    // one. The mapping is older than this helper - `mesh_pipeline_key.hpp` has carried
+    // `screen_space_specular_transmission_pipeline_key` - so this is wiring, not a port.
+    if (inputs.screen_space_specular_transmission_quality) {
+        key |= screen_space_specular_transmission_pipeline_key(
+            *inputs.screen_space_specular_transmission_quality);
+    }
     return key;
 }
 

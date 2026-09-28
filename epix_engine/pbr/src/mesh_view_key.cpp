@@ -27,6 +27,8 @@ void check_views_need_specialization(ecs::ResMut<ViewKeyCache> view_key_cache,
         if (camera_3d) {
             inputs.tonemap_in_shader = tonemapping.has_value();
             inputs.deband_dither     = dither.has_value() && dither->get() == ::epix::core_graph::DebandDither::Enabled;
+            inputs.screen_space_specular_transmission_quality =
+                camera_3d->get().screen_space_specular_transmission_quality;
         }
         if (shadow_filter_method) inputs.shadow_filtering_method = shadow_filter_method->get();
         inputs.projection = perspective ? MeshViewKeyInputs::ProjectionKind::Perspective

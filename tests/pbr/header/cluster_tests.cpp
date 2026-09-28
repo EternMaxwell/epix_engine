@@ -6603,6 +6603,16 @@ TEST(Cluster, TheMeshViewKeyAssemblesBevysArms) {
     custom.projection = MeshViewKeyInputs::ProjectionKind::Nonstandard;
     const MeshPipelineKey custom_key = make_mesh_view_key(custom);
     EXPECT_TRUE(custom_key.contains(MeshPipelineKey::VIEW_PROJECTION_NONSTANDARD));
+    // The assembly tail, applied only when a camera is present as Bevy applies it.
+    // LOW is the field zero (0 << shift), so contains(LOW) is true of every key and
+    // cannot say a view has no quality - the same zero-value trap as HARDWARE_2X2.
+    MeshViewKeyInputs transmissive;
+    transmissive.screen_space_specular_transmission_quality =
+        epix::camera::ScreenSpaceTransmissionQuality::Ultra;
+    const MeshPipelineKey transmissive_key = make_mesh_view_key(transmissive);
+    EXPECT_TRUE(transmissive_key.contains(MeshPipelineKey::SCREEN_SPACE_SPECULAR_TRANSMISSION_ULTRA));
+    EXPECT_FALSE(plain_key.contains(MeshPipelineKey::SCREEN_SPACE_SPECULAR_TRANSMISSION_ULTRA))
+        << "a view with no camera contributes none of the quality bits";
     EXPECT_FALSE(custom_key.contains(MeshPipelineKey::VIEW_PROJECTION_PERSPECTIVE));
 }
 }  // namespace
