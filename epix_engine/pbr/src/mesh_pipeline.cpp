@@ -1,3 +1,4 @@
+#include <epix/pbr/gpu_lights.hpp>
 #include <array>
 #include <epix/core_graph/core3d.hpp>
 #include <epix/image.hpp>
@@ -226,6 +227,14 @@ std::vector<::epix::shader::ShaderDefVal> specialize_mesh_capability_shader_defs
     if (per_object_buffer_batch_size.has_value()) {
         defs.push_back(Def::from_uint("PER_OBJECT_BUFFER_BATCH_SIZE", *per_object_buffer_batch_size));
     }
+    // Bevy attaches these two to `mesh_view_types.wgsl` at *load* time, through a
+    // `ShaderSettings` closure on `load_shader_library!`. This port attaches its defs
+    // when a pipeline specializes against the module instead, so they belong here.
+    // They are the bounds of that module's `cascades[MAX_CASCADES_PER_LIGHT]` and
+    // `directional_lights[MAX_DIRECTIONAL_LIGHTS]` declarations - used by the shader
+    // but defined by nothing else, which is what `PBR-113` recorded.
+    defs.push_back(Def::from_uint("MAX_DIRECTIONAL_LIGHTS", static_cast<std::uint32_t>(MAX_DIRECTIONAL_LIGHTS)));
+    defs.push_back(Def::from_uint("MAX_CASCADES_PER_LIGHT", static_cast<std::uint32_t>(MAX_CASCADES_PER_LIGHT)));
     return defs;
 }
 

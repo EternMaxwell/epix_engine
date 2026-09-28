@@ -5932,9 +5932,27 @@ TEST(Cluster, MeshPipelinePassSelectionMatchesBevy) {
     });
     ASSERT_NE(batch, capable.end());
     EXPECT_EQ(std::get<std::uint32_t>(batch->value), 64u);
-    // Nothing capable and no batch size: no defs at all, which is what tells the
+    // The two array bounds the `mesh_view_types` module's `cascades[..]` and
+    // `directional_lights[..]` declarations use are unconditional: they are
+    // compile-time constants, and Bevy attaches them at load time where this port
+    // attaches them per specialization (`PBR-113`).
+    const auto bound = [&capable](std::string_view name) -> std::optional<std::uint32_t> {
+        const auto found = std::find_if(capable.begin(), capable.end(),
+                                        [name](const auto& def) { return def.name == name; });
+        if (found == capable.end()) return std::nullopt;
+        return std::get<std::uint32_t>(found->value);
+    };
+    EXPECT_EQ(bound("MAX_DIRECTIONAL_LIGHTS"), 10u) << "Bevy's constant, which nothing else defines";
+    EXPECT_EQ(bound("MAX_CASCADES_PER_LIGHT"), 4u);
+    // Nothing capable and no batch size leaves only those two, which is what tells the
     // shader to declare an unbounded array.
-    EXPECT_TRUE(specialize_mesh_capability_shader_defs(false, false, false, std::nullopt).empty());
+    const auto bare = specialize_mesh_capability_shader_defs(false, false, false, std::nullopt);
+    EXPECT_EQ(bare.size(), 2u) << "only the two light-bound defs are unconditional";
+    const bool bare_has_capability = std::any_of(bare.begin(), bare.end(), [](const auto& def) {
+        return def.name == "MULTIPLE_LIGHTMAPS_IN_ARRAY" || def.name == "IRRADIANCE_VOLUMES_ARE_USABLE" ||
+               def.name == "CLUSTERED_DECALS_ARE_USABLE" || def.name == "PER_OBJECT_BUFFER_BATCH_SIZE";
+    });
+    EXPECT_FALSE(bare_has_capability) << "a device without those capabilities gets none of their defs";
 }
 
 /** @brief The mesh pipeline's fixed state: back-face culling, the reverse-Z depth

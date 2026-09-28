@@ -307,6 +307,13 @@ TEST(MeshPipeline, SpecializeAssemblesDescriptorFollowBevy) {
 TEST(MeshShaders, TheMeshRenderPluginRegistersTheSameShaderSet) {
     auto app = make_shader_asset_app();
 
+    // Bevy's `MeshRenderPlugin::new` starts GPU building off and takes only the
+    // flags, so `make` must not be the way to request GPU building.
+    const auto from_new = pbr::MeshRenderPlugin::make(true);
+    EXPECT_TRUE(from_new.debug_flags);
+    EXPECT_FALSE(from_new.use_gpu_instance_buffer_builder)
+        << "Bevy's constructor leaves GPU building off; the plugin group sets it";
+
     app.add_plugins(pbr::MeshRenderPlugin{});
     flush_load_tasks(app);
 

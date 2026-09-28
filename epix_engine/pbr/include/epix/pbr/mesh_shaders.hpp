@@ -112,7 +112,22 @@ EPIX_EXPORT struct EPIX_API MeshRenderPlugin {
      *  here compiles a pipeline. */
     bool debug_flags = false;
 
-    /** @brief Bevy's build-time hook, spelled `attach` in this port. */
+    /** @brief Bevy''s `MeshRenderPlugin::new(debug_flags)`, spelled `make` here
+     *  because `new` is a keyword - the port''s factory convention, as with
+     *  `SkinUniforms::make` and `RenderMeshInstances::make`.
+     *
+     *  Bevy''s constructor sets `use_gpu_instance_buffer_builder` to **false** and
+     *  takes only the flags; the plugin group is what passes a GPU-building value
+     *  through. This mirrors that exactly, so `make` is not the way to ask for GPU
+     *  building - a designated initialiser is. */
+    static MeshRenderPlugin make(bool debug_flags) noexcept {
+        MeshRenderPlugin plugin;
+        plugin.use_gpu_instance_buffer_builder = false;
+        plugin.debug_flags                     = debug_flags;
+        return plugin;
+    }
+
+    /** @brief Bevy''s build-time hook, spelled `attach` in this port. */
     void attach(app::App& app);
     /** @brief Bevy's finish-time hook, spelled `ready` in this port. The split matters:
      *  `attach` runs before the render device exists and `ready` after it, which is
