@@ -1,5 +1,7 @@
 #pragma once
 
+#include <epix/pbr/cascade.hpp>
+
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <epix/assets.hpp>
