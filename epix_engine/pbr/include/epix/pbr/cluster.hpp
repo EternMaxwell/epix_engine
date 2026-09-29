@@ -273,6 +273,21 @@ EPIX_EXPORT inline constexpr std::size_t VIEW_CLUSTER_MAX_OFFSETS       = 16384 
 EPIX_EXPORT inline constexpr std::size_t VIEW_CLUSTER_MAX_UNIFORM_ITEMS = VIEW_CLUSTER_MAX_OFFSETS / 4;
 EPIX_EXPORT inline constexpr std::size_t VIEW_CLUSTER_MAX_INDICES       = 16384;
 
+/** @brief Build the cluster settings the assignment reads (Bevy
+ *  `make_global_cluster_settings`, `bevy_pbr/src/cluster.rs:38-53`).
+ *
+ *  Bevy reads the device and adapter for two capability facts; this port has no
+ *  `RenderDevice`/`RenderAdapter` to query, so both are parameters - the substitution
+ *  recorded on the layout and decal rows. The two counts are the compile-time constants
+ *  above, which is what Bevy passes too. */
+EPIX_EXPORT inline GlobalClusterSettings make_global_cluster_settings(bool supports_storage_buffers,
+                                                                     bool clustered_decals_are_usable) {
+    return GlobalClusterSettings{.supports_storage_buffers = supports_storage_buffers,
+                                 .clustered_decals_are_usable = clustered_decals_are_usable,
+                                 .max_uniform_buffer_clusterable_objects = MAX_UNIFORM_BUFFER_CLUSTERABLE_OBJECTS,
+                                 .view_cluster_bindings_max_indices = VIEW_CLUSTER_MAX_INDICES};
+}
+
 /** @brief Where a cluster's packed offset and counts go in the uniform form of
  *  the offset list (Bevy `ViewClusterBindings::push_offset_and_counts`,
  *  `cluster.rs:378-383`): four packed words per `uvec4`, so the entry is word

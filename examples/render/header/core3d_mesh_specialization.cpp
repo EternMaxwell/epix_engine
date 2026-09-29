@@ -176,7 +176,7 @@ int main() {
         // The subject of this example: until now no other example registered the mesh
         // path at all. It comes through `PbrPlugin` rather than directly, so the light
         // plugin and its four resources are exercised by an app for the first time too.
-        .add_plugins(pbr::PbrPlugin{});
+        .add_plugins(pbr::PbrPlugin{.supports_storage_buffers = true});
 
     app.add_systems(Startup, into(spawn_camera).set_name("spawn 3d camera"));
     app.add_systems(Update, into(log_fps).set_name("log fps"));
