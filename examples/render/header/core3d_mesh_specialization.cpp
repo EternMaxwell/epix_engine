@@ -80,6 +80,41 @@ void probe_mesh_view_keys(ResMut<MeshViewKeyProbe> probe,
     probe->logged = true;
 }
 
+/** @brief Main-world probe state for the light simulation. */
+struct LightClusterProbe {
+    int frames  = 0;
+    bool logged = false;
+};
+
+/** @brief Report the light simulation's effect on the scene, a few frames in.
+ *
+ *  This is what separates "the systems validate" from "the systems work", which batch 203
+ *  could only claim the first half of. `Clusters` on a camera is `add_clusters`' doing;
+ *  non-zero dimensions and tile size on it are `assign_objects_to_clusters`' doing, since
+ *  that system computes them; and a non-empty global list means a light was actually
+ *  gathered. A system that runs and quietly does nothing - the failure that hid in
+ *  `check_views_need_specialization` for two batches - would fail all three. */
+void probe_light_clusters(ResMut<LightClusterProbe> probe,
+                          Query<Item<Entity, const pbr::Clusters&>> clustered_views,
+                          Res<pbr::GlobalVisibleClusterableObjects> global_objects) {
+    if (probe->logged) return;
+    probe->frames += 1;
+    if (probe->frames < 3) return;
+
+    int views_with_clusters = 0;
+    for (auto&& [entity, clusters] : clustered_views.iter()) {
+        (void)entity;
+        views_with_clusters += 1;
+        spdlog::info("[light] clusters: dimensions=({},{},{}) tile_size=({},{}) cluster_slots={}",
+                     clusters.dimensions.x, clusters.dimensions.y, clusters.dimensions.z,
+                     clusters.tile_size.x, clusters.tile_size.y,
+                     clusters.clusterable_objects.size());
+    }
+    spdlog::info("[light] views_with_clusters={} global_clusterable_objects={}", views_with_clusters,
+                 global_objects->entities.size());
+    probe->logged = true;
+}
+
 /** @brief Main-world FPS logger so the capture shows a live frame. */
 void log_fps(Res<time::Time<>> time) {
     static float last_log = 0.0f;
@@ -145,6 +180,11 @@ int main() {
 
     app.add_systems(Startup, into(spawn_camera).set_name("spawn 3d camera"));
     app.add_systems(Update, into(log_fps).set_name("log fps"));
+    // Main world: `Clusters` is attached to cameras by `add_clusters`, a PostUpdate
+    // system in this world, and `GlobalVisibleClusterableObjects` is a main-world
+    // resource the plugin initialises.
+    app.world_mut().init_resource<LightClusterProbe>();
+    app.add_systems(Update, into(probe_light_clusters).set_name("probe light clusters"));
 
     if (auto render_app = app.get_sub_app_mut(render::Render)) {
         render_app->get().world_mut().init_resource<MeshViewKeyProbe>();
