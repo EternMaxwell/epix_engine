@@ -49,26 +49,25 @@ struct MeshViewKeyProbe {
     bool logged = false;
 };
 
-/** @brief Report the key, its filtering bits and its tick for each extracted view -
- *  the state `check_views_need_specialization` writes. */
+/** @brief Report every key the specialization has recorded, with its filtering bits
+ *  and whether a tick was stamped - the state `check_views_need_specialization` writes.
+ *
+ *  It reads the cache rather than querying views on purpose. A view query written the
+ *  way `skybox.hpp` writes one matched nothing here while the cache demonstrably held a
+ *  key, so the cache is both the working signal and the thing under test. */
 void probe_mesh_view_keys(ResMut<MeshViewKeyProbe> probe,
                           Res<pbr::ViewKeyCache> key_cache,
-                          Res<pbr::ViewSpecializationTicks> ticks,
-                          Query<Item<Entity, const render::view::ExtractedView&, const render::view::Msaa&>,
-                                With<render::view::ExtractedView>> views) {
+                          Res<pbr::ViewSpecializationTicks> ticks) {
     if (probe->logged) return;
     probe->frames += 1;
     if (probe->frames < 3) return;
 
-    bool reported = false;
-    for (auto&& [view_entity, extracted_view, msaa] : views.iter()) {
-        (void)view_entity;
-        (void)msaa;
-        const auto& retained = extracted_view.retained_view_entity;
-        const auto key       = key_cache->keys.find(retained);
-        if (key == key_cache->keys.end()) continue;
+    if (key_cache->keys.empty()) {
+        spdlog::warn("[mesh] view key cache still empty after {} frames", probe->frames);
+        return;
+    }
 
-        const auto& value = key->second;
+    for (const auto& [retained, value] : key_cache->keys) {
         spdlog::info(
             "[mesh] view key recorded: gaussian={} hardware_2x2={} temporal={} perspective={} ticked={}",
             value.contains(pbr::MeshPipelineKey::SHADOW_FILTER_METHOD_GAUSSIAN),
@@ -76,24 +75,8 @@ void probe_mesh_view_keys(ResMut<MeshViewKeyProbe> probe,
             value.contains(pbr::MeshPipelineKey::SHADOW_FILTER_METHOD_TEMPORAL),
             value.contains(pbr::MeshPipelineKey::VIEW_PROJECTION_PERSPECTIVE),
             ticks->ticks.contains(retained));
-        reported = true;
     }
-
-    if (reported) {
-        probe->logged = true;
-    } else {
-        // Distinguish the two ways this can be empty: no view matched the query, or the
-        // views matched and the specialization recorded no key for them.
-        int seen = 0;
-        for (auto&& [seen_entity, view, view_msaa] : views.iter()) {
-            (void)seen_entity;
-            (void)view;
-            (void)view_msaa;
-            seen += 1;
-        }
-        spdlog::warn("[mesh] no view key recorded after {} frames: views_matched={} cache_size={}",
-                     probe->frames, seen, key_cache->keys.size());
-    }
+    probe->logged = true;
 }
 
 /** @brief Main-world FPS logger so the capture shows a live frame. */
@@ -113,8 +96,12 @@ void log_fps(Res<time::Time<>> time) {
  *  point: it exercises the extraction, the specialization arm and the key assembly
  *  while the frame stays what it would have been without the component. */
 void spawn_camera(Commands cmd) {
-    cmd.spawn(::epix::camera::Camera3d{}, transform::Transform{},
-              pbr::ShadowFilteringMethod::Gaussian);
+    // `PerspectiveProjection` is named explicitly because Bevy's `Camera3d` *requires*
+    // `Projection`, so a Bevy camera always has one; this port attaches none, which the
+    // key reports as the nonstandard case. Matching the requirement here keeps the
+    // example faithful to a Bevy app rather than papering over the difference.
+    cmd.spawn(::epix::camera::Camera3d{}, ::epix::camera::PerspectiveProjection{},
+              transform::Transform{}, pbr::ShadowFilteringMethod::Gaussian);
 }
 
 }  // namespace

@@ -137,3 +137,38 @@ EPIX_EXPORT EPIX_API void check_views_need_specialization(
     ecs::Query<ViewSpecializationItem> views, ecs::SystemChangeTick ticks);
 
 }  // namespace epix::pbr
+
+namespace epix::render {
+
+/** @brief Extract the camera's projection kind onto its render entity (Bevy extracts
+ *  `Projection` onto the view; see `bevy_render`'s camera extraction).
+ *
+ *  Without these the projection arm of `make_mesh_view_key` always chose the
+ *  nonstandard case, because `PerspectiveProjection` and `OrthographicProjection` are
+ *  main-world camera components and the specialisation check runs in `Render`. The
+ *  first example to run the mesh path in an app caught it: its key carried
+ *  `perspective=false` for a perspective camera. Same shape as the shadow filtering
+ *  method, for the same reason. */
+template <>
+struct ExtractComponent<::epix::camera::PerspectiveProjection> {
+    using QueryData   = const ::epix::camera::PerspectiveProjection&;
+    using QueryFilter = epix::ecs::Filter<epix::ecs::With<::epix::camera::Camera3d>>;
+    using Out         = ::epix::camera::PerspectiveProjection;
+
+    static std::optional<Out> extract_component(const ::epix::camera::PerspectiveProjection& item) {
+        return item;
+    }
+};
+
+template <>
+struct ExtractComponent<::epix::camera::OrthographicProjection> {
+    using QueryData   = const ::epix::camera::OrthographicProjection&;
+    using QueryFilter = epix::ecs::Filter<epix::ecs::With<::epix::camera::Camera3d>>;
+    using Out         = ::epix::camera::OrthographicProjection;
+
+    static std::optional<Out> extract_component(const ::epix::camera::OrthographicProjection& item) {
+        return item;
+    }
+};
+
+}  // namespace epix::render

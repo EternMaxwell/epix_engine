@@ -1567,6 +1567,10 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
     // Bevy extracts the camera filtering method onto its render entity so the check
     // below can read it there; without this its arm silently defaults.
     app.add_plugins(epix::render::ExtractComponentPlugin<ShadowFilteringMethod>{});
+    // The projection kind, for the same reason: the arm would otherwise always read the
+    // nonstandard case, which the mesh specialization example showed happening.
+    app.add_plugins(epix::render::ExtractComponentPlugin<epix::camera::PerspectiveProjection>{});
+    app.add_plugins(epix::render::ExtractComponentPlugin<epix::camera::OrthographicProjection>{});
 
     // Fills the view key cache and the specialisation ticks the phase code reads, so a
     // view whose key is unchanged keeps its tick (Bevy registers this with the mesh
