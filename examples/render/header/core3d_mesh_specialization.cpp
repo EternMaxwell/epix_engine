@@ -54,13 +54,14 @@ struct MeshViewKeyProbe {
 void probe_mesh_view_keys(ResMut<MeshViewKeyProbe> probe,
                           Res<pbr::ViewKeyCache> key_cache,
                           Res<pbr::ViewSpecializationTicks> ticks,
-                          Query<Item<const render::view::ExtractedView&>> views) {
+                          Query<Item<const render::view::ExtractedView&, const render::view::Msaa&>> views) {
     if (probe->logged) return;
     probe->frames += 1;
     if (probe->frames < 3) return;
 
     bool reported = false;
-    for (auto&& [extracted_view] : views.iter()) {
+    for (auto&& [extracted_view, msaa] : views.iter()) {
+        (void)msaa;
         const auto& retained = extracted_view.retained_view_entity;
         const auto key       = key_cache->keys.find(retained);
         if (key == key_cache->keys.end()) continue;
@@ -79,7 +80,16 @@ void probe_mesh_view_keys(ResMut<MeshViewKeyProbe> probe,
     if (reported) {
         probe->logged = true;
     } else {
-        spdlog::warn("[mesh] no view key recorded after {} frames", probe->frames);
+        // Distinguish the two ways this can be empty: no view matched the query, or the
+        // views matched and the specialization recorded no key for them.
+        int seen = 0;
+        for (auto&& [view, view_msaa] : views.iter()) {
+            (void)view;
+            (void)view_msaa;
+            seen += 1;
+        }
+        spdlog::warn("[mesh] no view key recorded after {} frames: views_matched={} cache_size={}",
+                     probe->frames, seen, key_cache->keys.size());
     }
 }
 
