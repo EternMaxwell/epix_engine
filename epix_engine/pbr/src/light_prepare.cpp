@@ -2,6 +2,7 @@
 
 #include <epix/core_graph/core3d.hpp>
 #include <epix/ecs.hpp>
+#include <epix/pbr/gpu_lights.hpp>
 #include <epix/pbr/light_meta.hpp>
 #include <epix/pbr/point_light.hpp>
 #include <epix/render/render_resource.hpp>
@@ -27,8 +28,9 @@ namespace epix::pbr {
  *  carries for the view dimension do not apply to this port's targets. */
 void prepare_lights(const wgpu::Device& device, ::epix::render::render_resource::TextureCache& texture_cache,
                     const PointLightShadowMap& point_light_shadow_map,
-                    std::size_t max_texture_cubes,
-                    ecs::Query<ecs::Item<const ExtractedPointLight&>> point_lights) {
+                    std::size_t max_texture_cubes, std::size_t max_texture_array_layers,
+                    ecs::Query<ecs::Item<const ExtractedPointLight&>> point_lights,
+                    ecs::Query<ecs::Item<const ExtractedDirectionalLight&>> directional_lights) {
     // Bevy counts the shadow-casting point lights - those without spot angles, since a
     // spot light is clustered as a directional one - and clamps to the device's cubemap
     // limit.
@@ -39,6 +41,48 @@ void prepare_lights(const wgpu::Device& device, ::epix::render::render_resource:
         }
     }
     point_light_shadow_maps_count = std::min(point_light_shadow_maps_count, max_texture_cubes);
+
+    // The remaining counts, in Bevy's order (`light.rs:826-853`). Directional lights are
+    // counted only up to `MAX_DIRECTIONAL_LIGHTS` and only those casting shadows, and each
+    // shadow-casting one reserves `MAX_CASCADES_PER_LIGHT` array layers; the three spot
+    // counts take what is left of the array, which is why they all subtract the same
+    // directional reservation.
+    std::size_t directional_shadow_enabled_count = 0;
+    std::size_t taken_directional_lights         = 0;
+    for (auto&& [light] : directional_lights.iter()) {
+        if (taken_directional_lights >= MAX_DIRECTIONAL_LIGHTS) {
+            break;
+        }
+        taken_directional_lights += 1;
+        if (light.shadows_enabled) {
+            directional_shadow_enabled_count += 1;
+        }
+    }
+    directional_shadow_enabled_count = std::min(directional_shadow_enabled_count,
+                                                max_texture_array_layers / MAX_CASCADES_PER_LIGHT);
+
+    const std::size_t layers_left_for_spots =
+        max_texture_array_layers - directional_shadow_enabled_count * MAX_CASCADES_PER_LIGHT;
+
+    std::size_t spot_light_count                    = 0;
+    std::size_t spot_light_volumetric_enabled_count = 0;
+    std::size_t spot_light_shadow_maps_count        = 0;
+    for (auto&& [light] : point_lights.iter()) {
+        if (!light.spot_light_angles.has_value()) {
+            continue;
+        }
+        spot_light_count += 1;
+        if (light.volumetric) {
+            spot_light_volumetric_enabled_count += 1;
+        }
+        if (light.shadows_enabled) {
+            spot_light_shadow_maps_count += 1;
+        }
+    }
+    spot_light_count = std::min(spot_light_count, layers_left_for_spots);
+    spot_light_volumetric_enabled_count =
+        std::min(spot_light_volumetric_enabled_count, layers_left_for_spots);
+    spot_light_shadow_maps_count = std::min(spot_light_shadow_maps_count, layers_left_for_spots);
 
     // Six faces per cubemap, and at least one layer so the texture is never zero-sized.
     wgpu::TextureDescriptor point_light_depth_texture_descriptor{};
