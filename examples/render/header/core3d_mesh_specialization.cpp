@@ -24,6 +24,7 @@
 #include <epix/pbr/material.hpp>
 #include <epix/pbr/mesh_pipeline_resource.hpp>
 #include <epix/pbr/mesh_shaders.hpp>
+#include <epix/pbr/pbr_plugin.hpp>
 #include <epix/pbr/shadow_filtering_method.hpp>
 #include <epix/render.hpp>
 #include <epix/sdl3/core.hpp>
@@ -102,6 +103,10 @@ void spawn_camera(Commands cmd) {
     // example faithful to a Bevy app rather than papering over the difference.
     cmd.spawn(::epix::camera::Camera3d{}, ::epix::camera::PerspectiveProjection{},
               transform::Transform{}, pbr::ShadowFilteringMethod::Gaussian);
+
+    // A light, so the simulation systems the plugin wires have something to gather,
+    // cluster and check visibility for. Without one they validate and then no-op.
+    cmd.spawn(pbr::PointLight{}, transform::Transform::from_xyz(2.0f, 2.0f, 2.0f));
 }
 
 }  // namespace
@@ -133,8 +138,10 @@ int main() {
         // Creates the material registries the mesh extraction reads. Without it that
         // system is skipped on validation, which is the loudest thing this example says.
         .add_plugins(pbr::MaterialPlugin<StandInMaterial>{})
-        // The subject of this example: registered by no other example until now.
-        .add_plugins(pbr::MeshRenderPlugin{});
+        // The subject of this example: until now no other example registered the mesh
+        // path at all. It comes through `PbrPlugin` rather than directly, so the light
+        // plugin and its four resources are exercised by an app for the first time too.
+        .add_plugins(pbr::PbrPlugin{});
 
     app.add_systems(Startup, into(spawn_camera).set_name("spawn 3d camera"));
     app.add_systems(Update, into(log_fps).set_name("log fps"));
