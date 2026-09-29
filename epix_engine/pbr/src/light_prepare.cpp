@@ -84,6 +84,27 @@ void prepare_lights(const wgpu::Device& device, ::epix::render::render_resource:
         std::min(spot_light_volumetric_enabled_count, layers_left_for_spots);
     spot_light_shadow_maps_count = std::min(spot_light_shadow_maps_count, layers_left_for_spots);
 
+    // Iterate the views once to find the most cascade shadow maps any one view needs
+    // (Bevy `light.rs:979-1010`). Bevy walks the sorted cameras and looks each view up;
+    // this port reads the per-view cascades the light already carries instead. Same
+    // computation: that map is keyed by the views the cascade builder produced for this
+    // light, so it has already applied the render-layers filter Bevy applies inline, and a
+    // maximum does not depend on iteration order.
+    std::size_t num_directional_cascades_enabled = 0;
+    for (auto&& [light] : directional_lights.iter()) {
+        if (!light.shadows_enabled) {
+            continue;
+        }
+        for (const auto& [view_entity, cascades] : light.cascades) {
+            (void)view_entity;
+            num_directional_cascades_enabled =
+                std::max(num_directional_cascades_enabled,
+                         std::min(cascades.size(), MAX_CASCADES_PER_LIGHT));
+        }
+    }
+    num_directional_cascades_enabled =
+        std::min(num_directional_cascades_enabled, max_texture_array_layers);
+
     // Six faces per cubemap, and at least one layer so the texture is never zero-sized.
     wgpu::TextureDescriptor point_light_depth_texture_descriptor{};
     point_light_depth_texture_descriptor.setLabel("point_light_shadow_map_texture")
