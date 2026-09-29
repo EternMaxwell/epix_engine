@@ -241,9 +241,12 @@ EPIX_EXPORT struct EPIX_API Camera {
     static void register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator);
 
     /** @brief Converts a physical pixel size into this target's logical size
-     * (Bevy Camera::to_logical). */
+     * (Bevy Camera::to_logical, `camera.rs:400-403`).
+     *
+     *  Bevy's only failure is a missing `target_info` (`?`); a non-positive scale factor
+     *  divides and yields NaN or inf rather than dropping the value. */
     std::optional<glm::vec2> to_logical(glm::uvec2 physical_size) const noexcept {
-        if (!computed.target_info || computed.target_info->scale_factor <= 0.0f) return std::nullopt;
+        if (!computed.target_info) return std::nullopt;
         return glm::vec2(physical_size) / computed.target_info->scale_factor;
     }
     /** @brief Physical viewport rectangle as (min, max), or no value before
@@ -295,35 +298,35 @@ EPIX_EXPORT struct EPIX_API Camera {
     const glm::mat4& clip_from_view() const noexcept { return computed.clip_from_view; }
 
     /** @brief Converts a world-space point to normalized device coordinates
-     * (Bevy world_to_ndc). */
+     * (Bevy world_to_ndc, `camera.rs:702-712`).
+     *
+     *  Bevy rejects only NaN, through `(!ndc_point.is_nan())`; a point whose clip `w` is
+     *  zero divides to inf and is still returned. */
     std::optional<glm::vec3> world_to_ndc(const transform::GlobalTransform& camera_transform,
                                           glm::vec3 world_point) const noexcept {
         const glm::vec4 view_point = glm::inverse(camera_transform.matrix) * glm::vec4(world_point, 1.0f);
         const glm::vec4 clip_point = computed.clip_from_view * view_point;
-        if (clip_point.w == 0.0f) return std::nullopt;
-        const glm::vec3 ndc = glm::vec3(clip_point) / clip_point.w;
-        return std::isfinite(ndc.x) && std::isfinite(ndc.y) && std::isfinite(ndc.z) ? std::optional<glm::vec3>(ndc)
-                                                                                    : std::nullopt;
+        const glm::vec3 ndc        = glm::vec3(clip_point) / clip_point.w;
+        return glm::any(glm::isnan(ndc)) ? std::nullopt : std::optional<glm::vec3>(ndc);
     }
     /** @brief Converts normalized device coordinates to world space (Bevy
-     * ndc_to_world). */
+     * ndc_to_world, `camera.rs:729-744`). Bevy applies the same NaN-only rule here. */
     std::optional<glm::vec3> ndc_to_world(const transform::GlobalTransform& camera_transform,
                                           glm::vec3 ndc_point) const noexcept {
-        const glm::vec4 view_point = glm::inverse(computed.clip_from_view) * glm::vec4(ndc_point, 1.0f);
-        if (view_point.w == 0.0f) return std::nullopt;
+        const glm::vec4 view_point  = glm::inverse(computed.clip_from_view) * glm::vec4(ndc_point, 1.0f);
         const glm::vec4 world_point = camera_transform.matrix * (view_point / view_point.w);
         const glm::vec3 result      = glm::vec3(world_point);
-        return std::isfinite(result.x) && std::isfinite(result.y) && std::isfinite(result.z)
-                   ? std::optional<glm::vec3>(result)
-                   : std::nullopt;
+        return glm::any(glm::isnan(result)) ? std::nullopt : std::optional<glm::vec3>(result);
     }
     /** @brief Converts a viewport pixel position to NDC (Bevy
-     * viewport_to_ndc). */
+     * viewport_to_ndc, `camera.rs:764-777`).
+     *
+     *  Bevy's only failure is a missing logical viewport rect (`ok_or(NoViewportSize)?`);
+     *  a zero-extent rect divides to NaN or inf NDC rather than erroring. */
     std::expected<glm::vec2, ViewportConversionError> viewport_to_ndc(glm::vec2 viewport_position) const noexcept {
         auto rect = logical_viewport_rect();
         if (!rect) return std::unexpected(ViewportConversionError::NoViewportSize);
         const glm::vec2 extent = rect->second - rect->first;
-        if (extent.x <= 0.0f || extent.y <= 0.0f) return std::unexpected(ViewportConversionError::NoViewportSize);
         glm::vec2 ndc = ((viewport_position - rect->first) / extent) * 2.0f - glm::vec2(1.0f);
         ndc.y         = -ndc.y;
         return ndc;
