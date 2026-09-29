@@ -5205,7 +5205,7 @@ TEST(Cluster, PointLightFacesComeFromTheVisibilitySystem) {
 
     const auto mesh_at = [&app](glm::vec3 position) {
         return app.world_mut()
-            .spawn(epix::mesh::Mesh3d{}, epix::camera::InheritedVisibility{}, epix::camera::ViewVisibility::hidden(),
+            .spawn(epix::mesh::Mesh3d{}, epix::camera::InheritedVisibility::visible(), epix::camera::ViewVisibility::hidden(),
                    epix::transform::GlobalTransform{}, Aabb{.center = position, .half_extents = glm::vec3(0.1f)})
             .id();
     };
@@ -5214,11 +5214,11 @@ TEST(Cluster, PointLightFacesComeFromTheVisibilitySystem) {
     const auto beyond    = mesh_at(glm::vec3(range + 5.0f, 0.0f, 0.0f));
     // Nothing to cull against, and culling switched off: both are visible everywhere.
     const auto unbounded = app.world_mut()
-                               .spawn(epix::mesh::Mesh3d{}, epix::camera::InheritedVisibility{},
+                               .spawn(epix::mesh::Mesh3d{}, epix::camera::InheritedVisibility::visible(),
                                       epix::camera::ViewVisibility::hidden(), epix::transform::GlobalTransform{})
                                .id();
     const auto no_culling = app.world_mut()
-                                .spawn(epix::mesh::Mesh3d{}, epix::camera::InheritedVisibility{},
+                                .spawn(epix::mesh::Mesh3d{}, epix::camera::InheritedVisibility::visible(),
                                        epix::camera::ViewVisibility::hidden(), epix::transform::GlobalTransform{},
                                        Aabb{.center = glm::vec3(500.0f, 0.0f, 0.0f),
                                             .half_extents = glm::vec3(0.1f)},
@@ -5288,7 +5288,7 @@ TEST(Cluster, SpotLightMeshesComeFromTheVisibilitySystem) {
     app.world_mut().spawn(view_objects);
 
     const auto mesh_at = [&app](std::optional<glm::vec3> position) {
-        auto commands = app.world_mut().spawn(epix::mesh::Mesh3d{}, epix::camera::InheritedVisibility{},
+        auto commands = app.world_mut().spawn(epix::mesh::Mesh3d{}, epix::camera::InheritedVisibility::visible(),
                                               epix::camera::ViewVisibility::hidden(), epix::transform::GlobalTransform{});
         if (position.has_value()) {
             commands.insert(Aabb{.center = *position, .half_extents = glm::vec3(0.1f)});
@@ -5333,7 +5333,11 @@ TEST(Cluster, CheckPointLightMeshVisibilityWiring) {
         visible.data[0].entities.push_back(epix::ecs::Entity::from_index(900));
         const auto light = app.world_mut()
                                .spawn(PointLight{.shadows_enabled = shadows_enabled, .range = 10.0f},
-                                      epix::transform::GlobalTransform{}, epix::camera::CubemapFrusta{},
+                                      epix::camera::InheritedVisibility::visible(),
+                                      epix::transform::GlobalTransform{},
+                                      epix::camera::CubemapFrusta{.frusta = epix::pbr::point_light_cubemap_frusta(
+                                                                      glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, -1.0f),
+                                                                      10.0f, 0.1f)},
                                       std::move(visible))
                                .id();
 
@@ -5346,7 +5350,7 @@ TEST(Cluster, CheckPointLightMeshVisibilityWiring) {
         // inherited-visible. All carry Mesh3d, as Bevy's query requires.
         const auto mesh = [&app](float x, bool cast, bool inherited_visible) {
             auto commands = app.world_mut().spawn(
-                epix::mesh::Mesh3d{}, epix::camera::InheritedVisibility{}, epix::camera::ViewVisibility::hidden(),
+                epix::mesh::Mesh3d{}, epix::camera::InheritedVisibility::visible(), epix::camera::ViewVisibility::hidden(),
                 epix::transform::GlobalTransform{},
                 epix::camera::Aabb{.center = glm::vec3(x, 0.0f, -2.0f), .half_extents = glm::vec3(0.1f)});
             if (!cast) commands.insert(NotShadowCaster{});
@@ -5486,7 +5490,7 @@ TEST(Cluster, CheckDirLightMeshVisibilityWiring) {
 
     const auto mesh = [&app](float x, bool cast) {
         auto commands = app.world_mut().spawn(
-            epix::mesh::Mesh3d{}, epix::camera::InheritedVisibility{}, epix::camera::ViewVisibility::hidden(),
+            epix::mesh::Mesh3d{}, epix::camera::InheritedVisibility::visible(), epix::camera::ViewVisibility::hidden(),
             epix::transform::GlobalTransform{},
             epix::camera::Aabb{.center = glm::vec3(x, 0.0f, -2.0f), .half_extents = glm::vec3(0.1f)});
         if (!cast) commands.insert(NotShadowCaster{});

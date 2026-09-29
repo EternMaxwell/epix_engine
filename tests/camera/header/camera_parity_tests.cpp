@@ -463,12 +463,13 @@ TEST(Visibility, MarkersAndToggles) {
 }
 
 // InheritedVisibility matches Bevy (visibility__mod.rs:108-131): HIDDEN/VISIBLE
-// consts and get().
+// consts and get(). Bevy's derived `Default` is HIDDEN (`Self(false)`), so a
+// default-constructed value is not visible until propagation sets it.
 TEST(InheritedVisibility, ConstsAndGet) {
     EXPECT_FALSE(epix::camera::InheritedVisibility::hidden().get());
     EXPECT_TRUE(epix::camera::InheritedVisibility::visible().get());
     epix::camera::InheritedVisibility def;
-    EXPECT_TRUE(def.get());
+    EXPECT_FALSE(def.get());
 }
 
 // Bevy primitives::Frustum performs a sphere rejection before the OBB test

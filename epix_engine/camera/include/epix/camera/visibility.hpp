@@ -121,7 +121,7 @@ EPIX_EXPORT struct InheritedVisibility {
    private:
     // Bevy's newtype field is private.
     constexpr explicit InheritedVisibility(bool is_visible) noexcept : is_visible_(is_visible) {}
-    bool is_visible_ = true;
+    bool is_visible_ = false;
     friend struct VisibilityPropagationAccess;
 };
 
@@ -447,11 +447,7 @@ EPIX_EXPORT struct EPIX_API Frustum {
      *  which is what Bevy's private `FAR_PLANE_IDX` names. */
     static constexpr std::size_t NEAR_PLANE_IDX = 4;
 
-    std::array<glm::vec4, 6> planes = [] {
-        std::array<glm::vec4, 6> result{};
-        result.fill(glm::vec4(0.0f, 0.0f, 0.0f, std::numeric_limits<float>::infinity()));
-        return result;
-    }();
+    std::array<glm::vec4, 6> planes{};
 
     /** @brief Extract the planes from a clip-from-world matrix (Bevy
      * `Frustum::from_clip_from_world`). */
