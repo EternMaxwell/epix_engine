@@ -366,7 +366,7 @@ void check_visibility_system(Query<Item<Entity,
                                         Opt<const ::epix::transform::GlobalTransform&>,
                                         Opt<const NoFrustumCulling&>,
                                         Opt<const VisibilityRange&>>> entities,
-                             Res<VisibleEntityRanges> visible_entity_ranges) {
+                             std::optional<Res<VisibleEntityRanges>> visible_entity_ranges) {
     // Bevy check_visibility: for each camera, mark entities visible to it in
     // its view slot and collect them into the camera's VisibleEntities. When
     // bounds are available, use its sphere broad phase followed by a
@@ -382,7 +382,8 @@ void check_visibility_system(Query<Item<Entity,
             if (!inherited.get()) continue;
             const auto& entity_layers = opt_layers ? *opt_layers : RenderLayers::layer(0);
             if (!camera_layers.intersects(entity_layers)) continue;
-            if (opt_visibility_range && !visible_entity_ranges->entity_is_in_range_of_view(entity, camera_entity)) {
+            if (opt_visibility_range && visible_entity_ranges &&
+                !visible_entity_ranges->get().entity_is_in_range_of_view(entity, camera_entity)) {
                 continue;
             }
             if (!no_cpu_culling && !no_frustum_culling && opt_aabb && opt_transform) {

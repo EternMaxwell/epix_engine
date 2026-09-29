@@ -717,7 +717,12 @@ EPIX_EXPORT EPIX_API void check_visibility_system(
                                      epix::ecs::Opt<const ::epix::transform::GlobalTransform&>,
                                      epix::ecs::Opt<const NoFrustumCulling&>,
                                      epix::ecs::Opt<const VisibilityRange&>>> entities,
-    epix::ecs::Res<VisibleEntityRanges> visible_entity_ranges);
+    /* Bevy takes `Option<Res<VisibleEntityRanges>>` (`visibility/mod.rs:609`): the resource
+     * is only present when `VisibilityRangePlugin` ran, and without it Bevy skips range
+     * culling rather than the whole system (`CAM-3`, `CAM-24`). Requiring it here meant
+     * `VisibilityPlugin` alone left the system unvalidated and skipped, producing no
+     * `ViewVisibility` or `VisibleEntities` at all. */
+    std::optional<epix::ecs::Res<VisibleEntityRanges>> visible_entity_ranges);
 
 /** @brief Recomputes each camera's Frustum from its projection and transform
  * (Bevy update_frusta). */
