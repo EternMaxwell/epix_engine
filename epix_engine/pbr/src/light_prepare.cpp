@@ -170,10 +170,27 @@ void prepare_lights(const wgpu::Device& device, ::epix::render::render_resource:
                 .setBaseMipLevel(0)
                 .setBaseArrayLayer(0));
 
-    // Owed, in Bevy's order: the directional-light count, the directional depth texture
-    // and its `D2Array` view, the `DepthAttachment`s, and then the per-view spawning of
-    // `PBR-778`. The locals above are unused until those land, which is why this function
-    // is not registered anywhere yet.
+    // Owed, in Bevy's order: the two `DepthAttachment` maps (keyed by array layer, so they
+    // belong beside the per-layer cache) and then the per-view spawning of `PBR-778`. The
+    // locals above are unused until those land, which is why this function is not
+    // registered anywhere yet.
+}
+
+/** @brief Despawn a list of entities through commands (Bevy `despawn_entities`,
+ *  `render/light.rs:1673-1682`).
+ *
+ *  Bevy queues one world closure for the whole list and returns early when the list is
+ *  empty. This port commands each entity directly: its `Commands` applies at the next sync
+ *  point, which is where Bevy's closure runs, and it has no queued world access to use
+ *  instead. The empty-list guard is kept because it is Bevy's, and because it is what lets
+ *  the three despawn sites in the spawning read as one line each. */
+void despawn_entities(ecs::Commands commands, const std::vector<ecs::Entity>& entities) {
+    if (entities.empty()) {
+        return;
+    }
+    for (const ecs::Entity& entity : entities) {
+        commands.entity(entity).despawn();
+    }
 }
 
 }  // namespace epix::pbr
