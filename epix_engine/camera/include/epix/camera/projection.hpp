@@ -132,9 +132,41 @@ EPIX_EXPORT struct EPIX_API OrthographicProjection {
         return glm::orthoRH_ZO(rect.left, rect.right, rect.bottom, rect.top, far_plane, near_plane);
     }
     /** @brief Projection cropped to a sub-camera view (Bevy
-     * get_clip_from_view_for_sub). */
+     * get_clip_from_view_for_sub, `projection.rs:647-688`).
+     *
+     *  Bevy overrides the trait default here rather than cropping the full matrix: the
+     *  orthographic height comes from `rect`, but the width comes from the **full
+     *  viewport's** aspect, and the sub rect then scales and offsets that. Cropping the
+     *  full matrix would keep the area's own aspect instead, which diverges whenever the
+     *  area aspect differs from the full-size aspect. Perspective keeps the default. */
     glm::mat4 get_clip_from_view_for_sub(const SubCameraView& sub_view) const {
-        return crop_to_sub_view(get_clip_from_view(), sub_view);
+        const float full_width  = static_cast<float>(sub_view.full_size.x);
+        const float full_height = static_cast<float>(sub_view.full_size.y);
+        const float offset_x    = sub_view.offset.x;
+        const float offset_y    = sub_view.offset.y;
+        const float sub_width   = static_cast<float>(sub_view.size.x);
+        const float sub_height  = static_cast<float>(sub_view.size.y);
+
+        const float full_aspect = full_width / full_height;
+
+        const float top          = rect.top;
+        const float bottom       = rect.bottom;
+        const float ortho_height = top - bottom;
+        const float ortho_width  = ortho_height * full_aspect;
+
+        const float center_x = (rect.left + rect.right) / 2.0f;
+        const float left     = center_x - ortho_width / 2.0f;
+        const float right    = center_x + ortho_width / 2.0f;
+
+        const float scale_w = (right - left) / full_width;
+        const float scale_h = (top - bottom) / full_height;
+
+        const float left_prime   = left + scale_w * offset_x;
+        const float right_prime  = left_prime + scale_w * sub_width;
+        const float top_prime    = top - scale_h * offset_y;
+        const float bottom_prime = top_prime - scale_h * sub_height;
+
+        return glm::orthoRH_ZO(left_prime, right_prime, bottom_prime, top_prime, far_plane, near_plane);
     }
     float get_far() const { return far_plane; }
     /** @brief Compute frustum corners at the caller-provided view-space depths. */
