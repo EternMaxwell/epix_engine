@@ -20,7 +20,11 @@ epix_add_tests(sprite)
 epix_add_tests(render)
 epix_add_tests(core_graph)
 epix_add_tests(sprite_render)
-epix_add_tests(pbr)
+# The material-extract tests create GPU resources and wait on them; under `ctest -j`
+# they have twice failed the suite while passing alone (batches 178 and 191), the same
+# load-sensitive class as the shader group, so this one file runs serially rather than
+# the whole pbr group.
+epix_add_tests(pbr SERIAL_FILES material_extract_tests.cpp)
 # The text tests exercise private headers of the text module directly.
 epix_add_tests(text INCLUDE_DIRS "${EPIX_ENGINE_SOURCE_DIR}/epix_engine/text/src")
 epix_add_tests(grid)

@@ -167,7 +167,7 @@ endfunction()
 # Shared body of epix_add_tests()/epix_add_examples(): one executable per
 # source file of a group, next to the group's header/ and module/ variants.
 function(_epix_add_group_executables GROUP_NAME)
-  cmake_parse_arguments(PARSE_ARGV 1 _G "TEST;SERIAL" "SOURCE_DIR;EXCLUDE_REGEX;GLOB_TYPE" "LINK_LIBS;INCLUDE_DIRS;SHARED_DEPS")
+  cmake_parse_arguments(PARSE_ARGV 1 _G "TEST;SERIAL" "SOURCE_DIR;EXCLUDE_REGEX;GLOB_TYPE" "LINK_LIBS;INCLUDE_DIRS;SHARED_DEPS;SERIAL_FILES")
   if(NOT _G_SOURCE_DIR)
     set(_G_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${GROUP_NAME}")
   elseif(NOT IS_ABSOLUTE "${_G_SOURCE_DIR}")
@@ -218,8 +218,10 @@ function(_epix_add_group_executables GROUP_NAME)
         # A group whose tests wait on asset loads while pumping schedules from helper
         # threads cannot share a machine with other GPU tests: under `ctest -j` the
         # shader group stalled the suite at 110/111 six times while passing 11/11 alone.
-        # `RUN_SERIAL` keeps other tests off the machine while these run.
-        if(_G_SERIAL)
+        # `RUN_SERIAL` keeps other tests off the machine while these run. A group is
+        # marked whole with `SERIAL`; `SERIAL_FILES` names individual sources, for a
+        # group whose other tests parallelize happily.
+        if(_G_SERIAL OR _REL IN_LIST _G_SERIAL_FILES)
           set_tests_properties(${_NAME} PROPERTIES RUN_SERIAL TRUE)
         endif()
       endif()
