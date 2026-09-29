@@ -3,6 +3,7 @@
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
 #include <epix/assets.hpp>
+#include <epix/camera/visibility.hpp>
 #include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/transform.hpp>
@@ -49,6 +50,17 @@ EPIX_EXPORT struct Mesh3d {
     operator assets::AssetId<Mesh>() const noexcept { return handle.id(); }
 
     bool operator==(const Mesh3d&) const = default;
+
+    /** @brief Append the Mesh3d visibility class (Bevy
+     *  `#[component(on_add = visibility::add_visibility_class::<Mesh3d>)]`,
+     *  `bevy_camera/src/visibility/mod.rs:430-435`).
+     *
+     *  Appended rather than supplied only when absent, so an entity that is already in
+     *  another class - a `Mesh3d` that also carries a `Sprite`, say - ends up in both.
+     *  The class-less form is what `Mesh2d` still uses, recorded as its own row. */
+    static void on_add(ecs::World& world, ecs::HookContext context) {
+        camera::add_visibility_class<Mesh3d>(world, context);
+    }
 
     static void register_required_components(ecs::RequiredComponentsRegistrator& registrator) {
         registrator.template register_required<transform::Transform>([] { return transform::Transform{}; });
