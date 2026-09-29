@@ -34,58 +34,29 @@ void prepare_lights(const wgpu::Device& device, ::epix::render::render_resource:
                     const DirectionalLightShadowMap& directional_light_shadow_map,
                     ecs::Query<ecs::Item<const ExtractedPointLight&>> point_lights,
                     ecs::Query<ecs::Item<const ExtractedDirectionalLight&>> directional_lights) {
-    // Bevy counts the shadow-casting point lights - those without spot angles, since a
-    // spot light is clustered as a directional one - and clamps to the device's cubemap
-    // limit.
-    std::size_t point_light_shadow_maps_count = 0;
+    // The counts come from this port's own helper rather than a second copy of Bevy's
+    // arithmetic. `count_lights` already ports `light.rs:806-853`, including the
+    // shared-texture-array subtraction the spot counts need, and it counts more than this
+    // function alone would - the volumetric and non-shadowing lights too. **Batch 223: this
+    // replaced a hand-written copy of that arithmetic.** The lesson is the tracker's own
+    // preamble read the other way round: check the port before porting from Bevy, not just
+    // after.
+    //
+    // It takes vectors where Bevy iterates, so the queries are collected here. That is the
+    // one shape difference, and it buys exactly one implementation of this arithmetic.
+    std::vector<ExtractedPointLight> point_light_values;
     for (auto&& [light] : point_lights.iter()) {
-        if (light.shadows_enabled && !light.spot_light_angles.has_value()) {
-            point_light_shadow_maps_count += 1;
-        }
+        point_light_values.push_back(light);
     }
-    point_light_shadow_maps_count = std::min(point_light_shadow_maps_count, max_texture_cubes);
-
-    // The remaining counts, in Bevy's order (`light.rs:826-853`). Directional lights are
-    // counted only up to `MAX_DIRECTIONAL_LIGHTS` and only those casting shadows, and each
-    // shadow-casting one reserves `MAX_CASCADES_PER_LIGHT` array layers; the three spot
-    // counts take what is left of the array, which is why they all subtract the same
-    // directional reservation.
-    std::size_t directional_shadow_enabled_count = 0;
-    std::size_t taken_directional_lights         = 0;
+    std::vector<ExtractedDirectionalLight> directional_light_values;
     for (auto&& [light] : directional_lights.iter()) {
-        if (taken_directional_lights >= MAX_DIRECTIONAL_LIGHTS) {
-            break;
-        }
-        taken_directional_lights += 1;
-        if (light.shadows_enabled) {
-            directional_shadow_enabled_count += 1;
-        }
+        directional_light_values.push_back(light);
     }
-    directional_shadow_enabled_count = std::min(directional_shadow_enabled_count,
-                                                max_texture_array_layers / MAX_CASCADES_PER_LIGHT);
 
-    const std::size_t layers_left_for_spots =
-        max_texture_array_layers - directional_shadow_enabled_count * MAX_CASCADES_PER_LIGHT;
-
-    std::size_t spot_light_count                    = 0;
-    std::size_t spot_light_volumetric_enabled_count = 0;
-    std::size_t spot_light_shadow_maps_count        = 0;
-    for (auto&& [light] : point_lights.iter()) {
-        if (!light.spot_light_angles.has_value()) {
-            continue;
-        }
-        spot_light_count += 1;
-        if (light.volumetric) {
-            spot_light_volumetric_enabled_count += 1;
-        }
-        if (light.shadows_enabled) {
-            spot_light_shadow_maps_count += 1;
-        }
-    }
-    spot_light_count = std::min(spot_light_count, layers_left_for_spots);
-    spot_light_volumetric_enabled_count =
-        std::min(spot_light_volumetric_enabled_count, layers_left_for_spots);
-    spot_light_shadow_maps_count = std::min(spot_light_shadow_maps_count, layers_left_for_spots);
+    const LightCounts counts = count_lights(point_light_values, directional_light_values,
+                                            max_texture_array_layers, max_texture_cubes);
+    const std::size_t point_light_shadow_maps_count = counts.point_light_shadow_maps;
+    const std::size_t spot_light_shadow_maps_count  = counts.spot_light_shadow_maps;
 
     // Iterate the views once to find the most cascade shadow maps any one view needs
     // (Bevy `light.rs:979-1010`). Bevy walks the sorted cameras and looks each view up;
