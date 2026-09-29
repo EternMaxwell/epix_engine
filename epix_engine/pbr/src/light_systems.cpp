@@ -10,6 +10,25 @@
 
 namespace epix::pbr {
 
+void add_clusters(ecs::Commands commands,
+                  ecs::Query<ecs::Item<ecs::Entity, ecs::Opt<const ClusterConfig&>, const ::epix::camera::Camera&>,
+                             ecs::Filter<ecs::Without<Clusters>, ecs::With<::epix::camera::Camera3d>>> cameras) {
+    for (auto&& [entity, config, camera] : cameras.iter()) {
+        if (!camera.is_active) {
+            continue;
+        }
+        // Bevy's comment, kept because it explains the odd-looking default: these
+        // settings do not matter here, since `assign_objects_to_clusters` overwrites
+        // them later in the frame.
+        const ClusterConfig value = config ? ClusterConfig(config->get()) : ClusterConfig{};
+        commands.entity(entity).insert(Clusters{}, value);
+    }
+}
+
+}  // namespace epix::pbr
+
+namespace epix::pbr {
+
 void validate_shadow_map_size(ecs::ResMut<DirectionalLightShadowMap> shadow_map) {
     // Bevy `validate_shadow_map_size` (directional_light.rs:198-204): only a
     // changed resource is inspected, and a size that is not a power of two is

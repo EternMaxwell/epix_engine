@@ -35,6 +35,12 @@ void LightPlugin::attach(epix::app::App& app) {
     // system to system - so each one is recorded here and marked owed on the row rather
     // than dropped silently.
     app.add_systems(post_update, epix::ecs::into(validate_shadow_map_size).set_name("validate shadow map size"));
+    // Bevy orders this after `CameraUpdateSystems`; the set is what this port can
+    // express, and the finer ordering is among those recorded at the end of this body.
+    app.add_systems(post_update,
+                    epix::ecs::into(add_clusters)
+                        .in_set(SimulationLightSystems::AddClusters)
+                        .set_name("add clusters"));
     app.add_systems(post_update,
                     epix::ecs::into(build_directional_light_cascades)
                         .in_set(SimulationLightSystems::UpdateDirectionalLightCascades)

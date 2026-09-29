@@ -249,4 +249,16 @@ EPIX_EXPORT EPIX_API void check_dir_light_mesh_visibility(
                          ecs::Opt<const DirectionalLight&>>> visible_entities,
     std::optional<ecs::Res<::epix::camera::VisibleEntityRanges>> visible_entity_ranges);
 
+/** @brief Give every active 3D camera a `Clusters` and a `ClusterConfig` (Bevy
+ *  `add_clusters`, `bevy_light/src/cluster/mod.rs:343-359`).
+ *
+ *  A camera without `Clusters` gets the default layout plus its own config, or the
+ *  config's default. Bevy notes that the settings written here do not matter, because
+ *  `assign_objects_to_clusters` overwrites them. The `Without<Clusters>` filter is what
+ *  keeps this to cameras that have none. */
+EPIX_EXPORT EPIX_API void add_clusters(
+    ecs::Commands commands,
+    ecs::Query<ecs::Item<ecs::Entity, ecs::Opt<const ClusterConfig&>, const ::epix::camera::Camera&>,
+               ecs::Filter<ecs::Without<Clusters>, ecs::With<::epix::camera::Camera3d>>> cameras);
+
 }  // namespace epix::pbr
