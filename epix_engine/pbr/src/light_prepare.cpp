@@ -2,6 +2,7 @@
 
 #include <epix/core_graph/core3d.hpp>
 #include <epix/ecs.hpp>
+#include <epix/pbr/directional_light.hpp>
 #include <epix/pbr/gpu_lights.hpp>
 #include <epix/pbr/light_meta.hpp>
 #include <epix/pbr/point_light.hpp>
@@ -29,6 +30,8 @@ namespace epix::pbr {
 void prepare_lights(const wgpu::Device& device, ::epix::render::render_resource::TextureCache& texture_cache,
                     const PointLightShadowMap& point_light_shadow_map,
                     std::size_t max_texture_cubes, std::size_t max_texture_array_layers,
+                    std::size_t max_texture_dimension_2d,
+                    const DirectionalLightShadowMap& directional_light_shadow_map,
                     ecs::Query<ecs::Item<const ExtractedPointLight&>> point_lights,
                     ecs::Query<ecs::Item<const ExtractedDirectionalLight&>> directional_lights) {
     // Bevy counts the shadow-casting point lights - those without spot angles, since a
@@ -142,6 +145,50 @@ void prepare_lights(const wgpu::Device& device, ::epix::render::render_resource:
     [[maybe_unused]] const ::epix::render::render_resource::CachedTexture point_light_depth_texture =
         texture_cache.get(device, point_light_depth_texture_key,
                           point_light_depth_texture_descriptor);
+
+    // The directional array, whose size and layer count both come from helpers this port
+    // already carries (`light_meta.hpp:113-127`), which is also where the reason the two
+    // light kinds share one array is written down: a spot light's shadow map index is
+    // offset by the cascade count rather than starting at zero.
+    const std::uint32_t directional_shadow_texture_size =
+        directional_light_shadow_texture_size(directional_light_shadow_map.size, max_texture_dimension_2d);
+    const std::uint32_t directional_shadow_texture_layers =
+        directional_light_shadow_texture_layers(num_directional_cascades_enabled, spot_light_shadow_maps_count);
+
+    wgpu::TextureDescriptor directional_light_depth_texture_descriptor{};
+    directional_light_depth_texture_descriptor.setLabel("directional_light_shadow_map_texture")
+        .setSize({directional_shadow_texture_size, directional_shadow_texture_size,
+                  directional_shadow_texture_layers})
+        .setFormat(::epix::core_graph::core_3d::CORE_3D_DEPTH_FORMAT)
+        .setUsage(wgpu::TextureUsage::eRenderAttachment | wgpu::TextureUsage::eTextureBinding)
+        .setDimension(wgpu::TextureDimension::e2D);
+    directional_light_depth_texture_descriptor.setMipLevelCount(1).setSampleCount(1);
+
+    const ::epix::render::render_resource::TextureCacheKey directional_light_depth_texture_key{
+        .format                = ::epix::core_graph::core_3d::CORE_3D_DEPTH_FORMAT,
+        .dimension             = wgpu::TextureDimension::e2D,
+        .width                 = directional_shadow_texture_size,
+        .height                = directional_shadow_texture_size,
+        .depth_or_array_layers = directional_shadow_texture_layers,
+        .mip_level_count       = 1,
+        .sample_count          = 1,
+        .usage = wgpu::TextureUsage::eRenderAttachment | wgpu::TextureUsage::eTextureBinding,
+        .label = "directional_light_shadow_map_texture",
+        .view_formats = {},
+    };
+
+    [[maybe_unused]] const ::epix::render::render_resource::CachedTexture directional_light_depth_texture =
+        texture_cache.get(device, directional_light_depth_texture_key,
+                          directional_light_depth_texture_descriptor);
+
+    [[maybe_unused]] const wgpu::TextureView directional_light_depth_texture_view =
+        directional_light_depth_texture.texture.createView(
+            wgpu::TextureViewDescriptor{}
+                .setLabel("directional_light_shadow_map_array_texture_view")
+                .setDimension(wgpu::TextureViewDimension::e2DArray)
+                .setAspect(wgpu::TextureAspect::eDepthOnly)
+                .setBaseMipLevel(0)
+                .setBaseArrayLayer(0));
 
     [[maybe_unused]] const wgpu::TextureView point_light_depth_texture_view =
         point_light_depth_texture.texture.createView(
