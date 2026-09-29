@@ -46,6 +46,30 @@ EPIX_EXPORT struct DirectionalLight {
     EPIX_EXPORT static constexpr float DEFAULT_SHADOW_DEPTH_BIAS = 0.02f;
     /** @brief Bevy's `DirectionalLight::DEFAULT_SHADOW_NORMAL_BIAS` (`:157`). */
     EPIX_EXPORT static constexpr float DEFAULT_SHADOW_NORMAL_BIAS = 1.8f;
+
+    /** @brief Bevy's `#[require(Cascades, CascadesFrusta, CascadeShadowConfig,
+     *  CascadesVisibleEntities, Transform, Visibility, VisibilityClass)]`.
+     *
+     *  Registered the way this port expresses requirements (`camera/src/camera.cpp:163`,
+     *  `point_light.hpp`). Without them a spawned light carries no `Visibility`, so no
+     *  `ViewVisibility`, and `assign_objects_to_clusters` never sees it: the light is not
+     *  clustered and casts nothing - the bug `PBR-891` fixed for point lights. Bevy's
+     *  `ClusterVisibilityClass` `on_add` hook is not ported, since this port has none. */
+    static void register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator) {
+        registrator.template register_required<::epix::transform::Transform>(
+            [] { return ::epix::transform::Transform{}; });
+        registrator.template register_required<::epix::camera::Visibility>(
+            [] { return ::epix::camera::Visibility{}; });
+        registrator.template register_required<::epix::camera::VisibilityClass>(
+            [] { return ::epix::camera::VisibilityClass{}; });
+        registrator.template register_required<Cascades>([] { return Cascades{}; });
+        registrator.template register_required<::epix::camera::CascadesFrusta>(
+            [] { return ::epix::camera::CascadesFrusta{}; });
+        registrator.template register_required<CascadeShadowConfig>(
+            [] { return CascadeShadowConfig{}; });
+        registrator.template register_required<::epix::camera::CascadesVisibleEntities>(
+            [] { return ::epix::camera::CascadesVisibleEntities{}; });
+    }
 };
 
 /** @brief Controls the resolution of directional and spot light shadow maps

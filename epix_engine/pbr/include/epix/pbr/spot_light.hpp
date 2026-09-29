@@ -62,6 +62,28 @@ EPIX_EXPORT struct SpotLight {
     EPIX_EXPORT static constexpr float DEFAULT_SHADOW_NORMAL_BIAS = 1.8f;
     /** @brief Bevy's `SpotLight::DEFAULT_SHADOW_MAP_NEAR_Z` (`:131`). */
     EPIX_EXPORT static constexpr float DEFAULT_SHADOW_MAP_NEAR_Z = 0.1f;
+
+    /** @brief Bevy's `#[require(Frustum, VisibleMeshEntities, Transform, Visibility,
+     *  VisibilityClass)]` (`bevy_light/src/spot_light.rs:24`).
+     *
+     *  Registered the way this port expresses requirements (`camera/src/camera.cpp:163`,
+     *  `point_light.hpp`). Without them a spawned light carries no `Visibility`, so no
+     *  `ViewVisibility`, and `assign_objects_to_clusters` never sees it: the light is not
+     *  clustered and casts nothing - the bug `PBR-891` fixed for point lights, and the
+     *  same audit found here. Bevy's `ClusterVisibilityClass` `on_add` hook is not
+     *  ported, since this port has none. */
+    static void register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator) {
+        registrator.template register_required<::epix::transform::Transform>(
+            [] { return ::epix::transform::Transform{}; });
+        registrator.template register_required<::epix::camera::Visibility>(
+            [] { return ::epix::camera::Visibility{}; });
+        registrator.template register_required<::epix::camera::VisibilityClass>(
+            [] { return ::epix::camera::VisibilityClass{}; });
+        registrator.template register_required<::epix::camera::Frustum>(
+            [] { return ::epix::camera::Frustum{}; });
+        registrator.template register_required<::epix::camera::VisibleMeshEntities>(
+            [] { return ::epix::camera::VisibleMeshEntities{}; });
+    }
 };
 
 /** @brief A right-handed orthonormal basis from a unit Z vector (Bevy

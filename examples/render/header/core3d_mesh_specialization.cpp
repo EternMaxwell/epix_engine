@@ -151,6 +151,13 @@ void spawn_camera(Commands cmd) {
     // A light, so the simulation systems the plugin wires have something to gather,
     // cluster and check visibility for. Without one they validate and then no-op.
     cmd.spawn(pbr::PointLight{}, transform::Transform::from_xyz(2.0f, 2.0f, 2.0f));
+
+    // One of each other light kind, because the requirements this port registers differ
+    // per kind and the family audit found two of them missing: a light with no Visibility
+    // is never clustered and casts nothing, and only having one kind in the scene hides
+    // that for the others.
+    cmd.spawn(pbr::SpotLight{}, transform::Transform::from_xyz(-2.0f, 2.0f, 2.0f));
+    cmd.spawn(pbr::DirectionalLight{}, transform::Transform::from_xyz(0.0f, 4.0f, 0.0f));
 }
 
 }  // namespace
