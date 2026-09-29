@@ -21,6 +21,7 @@
 #include <epix/input.hpp>
 #include <epix/mesh.hpp>
 #include <epix/pbr.hpp>
+#include <epix/pbr/material.hpp>
 #include <epix/pbr/mesh_pipeline_resource.hpp>
 #include <epix/pbr/mesh_shaders.hpp>
 #include <epix/pbr/shadow_filtering_method.hpp>
@@ -36,6 +37,11 @@ using namespace epix::ecs;
 using namespace epix::app;
 
 namespace {
+
+/** @brief A stand-in 3D material, exactly as the mesh extraction tests use one: the
+ *  registry is untyped and nothing here draws, so `MaterialPlugin` only has to exist
+ *  for the material resources the extraction reads to be created. */
+struct StandInMaterial : pbr::Material<StandInMaterial> {};
 
 /** @brief Render-world probe state: report the recorded key once, a few frames in. */
 struct MeshViewKeyProbe {
@@ -124,6 +130,9 @@ int main() {
         .add_plugins(render::FrameCountPlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(core_graph::CoreGraphPlugin{})
+        // Creates the material registries the mesh extraction reads. Without it that
+        // system is skipped on validation, which is the loudest thing this example says.
+        .add_plugins(pbr::MaterialPlugin<StandInMaterial>{})
         // The subject of this example: registered by no other example until now.
         .add_plugins(pbr::MeshRenderPlugin{});
 

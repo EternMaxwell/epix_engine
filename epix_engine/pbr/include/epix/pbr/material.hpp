@@ -10,6 +10,10 @@
 #include <epix/pbr/mesh_material.hpp>
 #include <cstdint>
 #include <epix/assets/id.hpp>
+// `MaterialPlugin` calls `app_register_asset`, which this declares. Without it the
+// header only compiled in translation units that already had it transitively, so a
+// first-time user of `MaterialPlugin` - an example, in this case - failed to build.
+#include <epix/assets.hpp>
 #include <epix/common.hpp>
 #include <epix/ecs/core/tick.hpp>
 #include <epix/pbr/material_bindings.hpp>
@@ -420,7 +424,7 @@ EPIX_EXPORT template <typename M>
     requires std::derived_from<M, Material<M>>
 struct MaterialPlugin {
     void attach(app::App& app) {
-        app_register_asset<M>(app);
+        assets::app_register_asset<M>(app);
         // Bevy initialises the specialization queue in `build` too; without it the
         // PostUpdate system that fills it fails validation and the queue stays empty,
         // which is what the extraction then has nothing to read.
