@@ -91,9 +91,10 @@ struct LightClusterProbe {
  *  This is what separates "the systems validate" from "the systems work", which batch 203
  *  could only claim the first half of. `Clusters` on a camera is `add_clusters`' doing;
  *  non-zero dimensions and tile size on it are `assign_objects_to_clusters`' doing, since
- *  that system computes them; and a non-empty global list means a light was actually
- *  gathered. A system that runs and quietly does nothing - the failure that hid in
- *  `check_views_need_specialization` for two batches - would fail all three. */
+ *  that system computes them; and the per-cluster occupancy is the only one of the three
+ *  that proves something was actually placed rather than merely laid out. A system that
+ *  runs and quietly does nothing - the failure that hid in `check_views_need_specialization`
+ *  for two batches - would fail all three. */
 void probe_light_clusters(ResMut<LightClusterProbe> probe,
                           Query<Item<Entity, const pbr::Clusters&>> clustered_views,
                           Res<pbr::GlobalVisibleClusterableObjects> global_objects) {
@@ -101,17 +102,25 @@ void probe_light_clusters(ResMut<LightClusterProbe> probe,
     probe->frames += 1;
     if (probe->frames < 3) return;
 
-    int views_with_clusters = 0;
+    int views_with_clusters  = 0;
+    std::size_t assigned_objects = 0;
     for (auto&& [entity, clusters] : clustered_views.iter()) {
         (void)entity;
         views_with_clusters += 1;
+        for (const pbr::VisibleClusterableObjects& cluster : clusters.clusterable_objects) {
+            assigned_objects += cluster.entities.size();
+        }
         spdlog::info("[light] clusters: dimensions=({},{},{}) tile_size=({},{}) cluster_slots={}",
                      clusters.dimensions.x, clusters.dimensions.y, clusters.dimensions.z,
                      clusters.tile_size.x, clusters.tile_size.y,
                      clusters.clusterable_objects.size());
     }
-    spdlog::info("[light] views_with_clusters={} global_clusterable_objects={}", views_with_clusters,
-                 global_objects->entities.size());
+    // The per-cluster occupancy is the signal that a light was actually placed: non-zero
+    // dimensions only prove the layout was computed, not that anything went into it.
+    // `GlobalVisibleClusterableObjects` is the wrong place to look - it holds objects
+    // that fall outside every cluster, so a locally assigned light leaves it at zero.
+    spdlog::info("[light] views_with_clusters={} assigned_objects={} global_clusterable_objects={}",
+                 views_with_clusters, assigned_objects, global_objects->entities.size());
     probe->logged = true;
 }
 
