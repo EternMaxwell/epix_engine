@@ -213,8 +213,20 @@ EPIX_EXPORT struct EPIX_API PerspectiveProjection {
      * to Bevy's ordinary near plane `(0, 0, -1, -near)`. */
     glm::vec4 near_clip_plane{0.0f, 0.0f, -1.0f, -0.1f};
 
-    /** @brief Update the aspect ratio from viewport dimensions. */
-    void update(float width, float height) { aspect_ratio = width / height; }
+    /** @brief Update the aspect ratio from viewport dimensions (Bevy
+     * `PerspectiveProjection::update`, `projection.rs:388-392`).
+     *
+     *  Bevy builds the ratio through `AspectRatio::try_new(width, height)` and `.expect`s
+     *  it, so a non-positive dimension fails loudly instead of producing inf or NaN in the
+     *  projection matrix. Both engine call paths already guard on a non-zero logical size,
+     *  exactly as `camera_system` does, so this only affects direct calls. */
+    void update(float width, float height) {
+        if (!(width > 0.0f) || !(height > 0.0f)) {
+            throw std::invalid_argument(
+                "Failed to update PerspectiveProjection: width and height must be positive, non-zero values");
+        }
+        aspect_ratio = width / height;
+    }
     /** @brief Compute Bevy's infinite right-handed reverse-Z perspective
      * projection, including its optional oblique clip-plane adjustment. */
     glm::mat4 get_clip_from_view() const {
