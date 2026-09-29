@@ -3,6 +3,7 @@
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
 #include <epix/assets.hpp>
+#include <epix/assets/asset_changed.hpp>
 #include <epix/camera/visibility.hpp>
 #include <epix/common.hpp>
 #include <epix/ecs.hpp>
@@ -67,6 +68,23 @@ EPIX_EXPORT struct Mesh3d {
     }
 };
 
+/** @brief Give every `Mesh3d` an `Aabb` and keep it current (Bevy `calculate_bounds`,
+ *  `bevy_camera/src/visibility/mod.rs:451-486`).
+ *
+ *  Declared here rather than in the camera module for the layering reason the definition
+ *  states: camera cannot see `Mesh3d`, while mesh already sees camera. Registered by
+ *  `MeshPlugin` into `VisibilitySystems::CalculateBounds`, the set `VisibilityPlugin`
+ *  configures and which was previously left empty (`CAM-21`). */
+EPIX_EXPORT EPIX_API void calculate_bounds(
+    ecs::Commands commands, ecs::Res<assets::Assets<Mesh>> meshes,
+    ecs::Query<ecs::Item<ecs::Entity, const Mesh3d&>,
+               ecs::Filter<ecs::Without<camera::Aabb>, ecs::Without<camera::NoFrustumCulling>,
+                           ecs::Without<camera::NoAutoAabb>>>
+        new_mesh_aabb,
+    ecs::Query<ecs::Item<ecs::Ref<Mesh3d>, ecs::Mut<camera::Aabb>>,
+               ecs::Filter<ecs::Modified<Mesh3d>,
+                           ecs::Without<camera::NoFrustumCulling>, ecs::Without<camera::NoAutoAabb>>>
+        update_mesh_aabb);
 /** @brief Arbitrary index used to identify a mesh instance while rendering
  * (Bevy `bevy_mesh::MeshTag`). */
 EPIX_EXPORT struct MeshTag {

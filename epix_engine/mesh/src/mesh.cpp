@@ -1142,6 +1142,10 @@ void mark_3d_meshes_as_changed_if_their_assets_changed(ecs::Query<ecs::Item<ecs:
 void MeshPlugin::attach(app::App& app) {
     assets::app_register_asset<Mesh>(app);
     assets::app_register_asset<SkinnedMeshInverseBindposes>(app);
+    app.add_systems(app::PostUpdate,
+                    ecs::into(calculate_bounds)
+                        .in_set(::epix::camera::VisibilitySystems::CalculateBounds)
+                        .set_name("calculate bounds"));
     app.add_systems(app::PostUpdate, ecs::into(mark_3d_meshes_as_changed_if_their_assets_changed)
                                          .after(assets::AssetSystems::WriteEvents)
                                          .set_name("mark 3d meshes changed after mesh asset changes"));
