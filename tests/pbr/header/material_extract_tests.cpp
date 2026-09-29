@@ -496,7 +496,7 @@ TEST(MaterialExtract, TheViewSpecialisationCheckFillsItsCaches) {
     const auto view_id = epix::render::view::RetainedViewEntity::create(sync_world::MainEntity{ecs::Entity{1}},
                                                                        std::nullopt, 0);
     render_sub->world_mut().spawn(epix::render::view::ExtractedView{.retained_view_entity = view_id},
-                                 epix::render::view::Msaa::Sample4, epix::camera::PerspectiveProjection{});
+                                 epix::render::view::Msaa::Sample4, epix::camera::Projection{});
 
     render_sub->extract(application);
     render_sub->resource_scope([](epix::ecs::Schedules& schedules, epix::ecs::World& world) {

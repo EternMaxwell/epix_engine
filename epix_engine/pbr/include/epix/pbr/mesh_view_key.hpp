@@ -111,8 +111,11 @@ EPIX_EXPORT struct MeshViewKeyInputs {
  *  Thirteen items where Bevy has fifteen: the light-probe pair and the SSAO marker are
  *  omitted because this port has no `RenderViewLightProbes` and no
  *  `ScreenSpaceAmbientOcclusion` (`PBR-887`), and their bits are left clear. Bevy reads
- *  one `Projection` enum; this port carries `PerspectiveProjection` and
- *  `OrthographicProjection` as separate components, so both are asked for by presence. */
+ *  one `Projection` enum, and so does this port - `epix::camera::Projection` is the same
+ *  variant type and `Camera3d` requires it - so the arm switches on the active
+ *  alternative. An earlier version of this query asked for `PerspectiveProjection` and
+ *  `OrthographicProjection` as separate components instead; they never matched, which is
+ *  the defect `PBR-895` records. */
 using ViewSpecializationItem = ecs::Item<
     const epix::render::view::ExtractedView&, const epix::render::view::Msaa&,
     ecs::Opt<const epix::core_graph::Tonemapping&>, ecs::Opt<const epix::core_graph::DebandDither&>,
@@ -120,9 +123,8 @@ using ViewSpecializationItem = ecs::Item<
     ecs::Has<epix::core_graph::core_3d::DepthPrepass>,
     ecs::Has<epix::core_graph::core_3d::MotionVectorPrepass>,
     ecs::Has<epix::core_graph::core_3d::DeferredPrepass>, ecs::Opt<const epix::camera::Camera3d&>,
-    ecs::Has<epix::render::camera::TemporalJitter>, ecs::Has<epix::camera::PerspectiveProjection>,
-    ecs::Has<epix::camera::OrthographicProjection>, ecs::Has<DistanceFog>,
-    ecs::Has<epix::core_graph::OrderIndependentTransparencySettings>,
+    ecs::Has<epix::render::camera::TemporalJitter>, const epix::camera::Projection&,
+    ecs::Has<DistanceFog>, ecs::Has<epix::core_graph::OrderIndependentTransparencySettings>,
     ecs::Has<ExtractedAtmosphere>>;
 
 /** @brief Record each view key and stamp a tick when it changed (Bevy

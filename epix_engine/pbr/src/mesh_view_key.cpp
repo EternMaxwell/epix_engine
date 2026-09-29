@@ -7,8 +7,8 @@ void check_views_need_specialization(ecs::ResMut<ViewKeyCache> view_key_cache,
                                      ecs::Query<ViewSpecializationItem> views,
                                      ecs::SystemChangeTick ticks) {
     for (auto&& [view, msaa, tonemapping, dither, shadow_filter_method, normal_prepass, depth_prepass,
-                 motion_vector_prepass, deferred_prepass, camera_3d, temporal_jitter, perspective,
-                 orthographic, distance_fog, has_oit, has_atmosphere] : views.iter()) {
+                 motion_vector_prepass, deferred_prepass, camera_3d, temporal_jitter, projection,
+                 distance_fog, has_oit, has_atmosphere] : views.iter()) {
         MeshViewKeyInputs inputs;
         inputs.msaa_samples          = ::epix::render::view::samples(msaa);
         inputs.hdr                   = view.hdr;
@@ -31,9 +31,19 @@ void check_views_need_specialization(ecs::ResMut<ViewKeyCache> view_key_cache,
                 camera_3d->get().screen_space_specular_transmission_quality;
         }
         if (shadow_filter_method) inputs.shadow_filtering_method = shadow_filter_method->get();
-        inputs.projection = perspective ? MeshViewKeyInputs::ProjectionKind::Perspective
-                                        : (orthographic ? MeshViewKeyInputs::ProjectionKind::Orthographic
-                                                        : MeshViewKeyInputs::ProjectionKind::Nonstandard);
+        // Bevy reads one `Projection` and switches on its kind; this port's `Projection` is
+        // the same variant type and is required on every `Camera3d`, so the arm matches on
+        // the active alternative rather than asking whether two separate components exist.
+        // The separate `PerspectiveProjection`/`OrthographicProjection` query items this
+        // replaced were the bug PBR-895 records: the requirement supplies `Projection`, so
+        // those never matched and every camera read as nonstandard.
+        if (std::holds_alternative<::epix::camera::PerspectiveProjection>(projection.projection)) {
+            inputs.projection = MeshViewKeyInputs::ProjectionKind::Perspective;
+        } else if (std::holds_alternative<::epix::camera::OrthographicProjection>(projection.projection)) {
+            inputs.projection = MeshViewKeyInputs::ProjectionKind::Orthographic;
+        } else {
+            inputs.projection = MeshViewKeyInputs::ProjectionKind::Nonstandard;
+        }
 
         const MeshPipelineKey view_key = make_mesh_view_key(inputs);
         const auto cached              = view_key_cache->keys.find(view.retained_view_entity);

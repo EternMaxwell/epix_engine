@@ -141,12 +141,11 @@ void log_fps(Res<time::Time<>> time) {
  *  point: it exercises the extraction, the specialization arm and the key assembly
  *  while the frame stays what it would have been without the component. */
 void spawn_camera(Commands cmd) {
-    // `PerspectiveProjection` is named explicitly because Bevy's `Camera3d` *requires*
-    // `Projection`, so a Bevy camera always has one; this port attaches none, which the
-    // key reports as the nonstandard case. Matching the requirement here keeps the
-    // example faithful to a Bevy app rather than papering over the difference.
-    cmd.spawn(::epix::camera::Camera3d{}, ::epix::camera::PerspectiveProjection{},
-              transform::Transform{}, pbr::ShadowFilteringMethod::Gaussian);
+    // No projection is named here any more: `Camera3d` requires one (`PBR-895`), and the
+    // view key reads the required `Projection` rather than asking for a separate
+    // component. The earlier hand-named `PerspectiveProjection` was the workaround for
+    // that defect, so leaving it out is part of the test.
+    cmd.spawn(::epix::camera::Camera3d{}, transform::Transform{}, pbr::ShadowFilteringMethod::Gaussian);
 
     // A light, so the simulation systems the plugin wires have something to gather,
     // cluster and check visibility for. Without one they validate and then no-op.
