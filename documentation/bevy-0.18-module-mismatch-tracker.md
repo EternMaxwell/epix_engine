@@ -7854,6 +7854,14 @@ rows.
 
 Counts: ✅ 0 · ❌ 1 · ⚠️ 0 · 🚫 0 · ⛔ 0 · REVIEW 0 (1 rows, `CAM-1`).
 
+**Checked and matching, so deliberately without a row.** `Camera2d` and `Camera3d`'s
+required components (`camera.hpp:433-451`) match Bevy's `#[require(..)]` lists item for
+item: both require `Camera` and a `Projection`, and `Camera2d`'s `Frustum` is computed from
+the 2D orthographic projection rather than defaulted, exactly as Bevy writes it
+(`components.rs:11-15`). Recorded because this is the area the required-components family
+(`PBR-892`) has tripped over three times, and because a withdrawn row (`PRT-7`) once claimed
+the opposite about `Camera3d`.
+
 | ID | kind | What Bevy has | Bevy reference | Epix | Status | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | CAM-1 | const | `CUBE_MAP_FACES` — the six `CubeMapFace` values (`target`, `up`) the cube-face rotations are derived from, `[+X, -X, +Y, -Y, +Z, -Z]`, with the left-handed convention that maps the `+Z` face to `-Z` | `bevy_camera/src/primitives.rs:439-470` | `epix_engine/camera/include/epix/camera/visibility.hpp:547-554` | ❌ | **Present and correct under a different name.** This port calls it `CubeMapFaces`, an `inline const std::array<CubeMapFace, 6>` with the same six targets and ups, compared value by value. So the module is not missing data — but the spelling difference is not cosmetic: searching for Bevy's name reported the array absent, which produced a wrong tracker finding and an unnecessary approval request in batch 225 before the values were found under this port's name. **Fix owed:** rename to `CUBE_MAP_FACES` (or record the divergence as intentional), because a name that cannot be grepped for is a name the next audit will read as absence. |
