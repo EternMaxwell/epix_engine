@@ -12,7 +12,11 @@ wgpu::Texture upload_lut(const wgpu::Device& device, const wgpu::Queue& queue, c
                          std::uint32_t width, std::uint32_t height, const std::vector<glm::vec4>& data) {
     wgpu::TextureDescriptor descriptor{};
     descriptor.setLabel(label.c_str()).setSize({width, height, 1}).setFormat(wgpu::TextureFormat::eRGBA32Float);
-    descriptor.setUsage(wgpu::TextureUsage::eTextureBinding);
+    // `eCopyDst` is required by the `writeTexture` below; without it the upload is
+    // rejected with a WebGPU validation error. Bevy's `create_texture_with_data` sets
+    // the copy-destination usage itself, which is why the CPU-side data path here needs
+    // it explicitly.
+    descriptor.setUsage(wgpu::TextureUsage::eTextureBinding | wgpu::TextureUsage::eCopyDst);
     descriptor.setDimension(wgpu::TextureDimension::e2D);
     descriptor.setMipLevelCount(1).setSampleCount(1);
 
