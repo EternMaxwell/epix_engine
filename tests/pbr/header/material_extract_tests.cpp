@@ -70,6 +70,15 @@ void add_render_dependent_prerequisites(App& app) {
         .add_plugins(epix::camera::CameraPlugin{})
         .add_plugins(FrameCountPlugin{})
         .add_plugins(GlobalsPlugin{});
+
+    // `extract_meshes_for_cpu_building` takes `Res<RenderMaterialBindings>`, which
+    // `MaterialPlugin` creates (material.hpp:475). Bevy's signature requires it too
+    // (bevy_pbr/src/render/mesh.rs:1346-1351). Tests that drive the extraction systems
+    // without that plugin still need the resource present, exactly as
+    // mesh_instance_tests.cpp does.
+    if (auto render_app = app.get_sub_app_mut(Render); render_app.has_value()) {
+        render_app->get().world_mut().init_resource<pbr::RenderMaterialBindings>();
+    }
 }
 
 /** @brief A stand-in material type: the registry is untyped, as Bevy's is, so the
