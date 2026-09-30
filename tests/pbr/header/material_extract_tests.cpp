@@ -400,6 +400,10 @@ TEST(MaterialExtract, TheCollectHalfDrainsTheQueuesAndKeepsTheBufferNonEmpty) {
 
     auto render_sub = application.take_sub_app(Render);
     ASSERT_TRUE(render_sub);
+    // Only the collect half is registered here, so `extract_frame_count` never runs and
+    // its `Commands` never insert `FrameCount`; the collector reads that resource, so the
+    // fixture provides it directly. Bevy's equivalent path has it from the previous frame.
+    render_sub->world_mut().init_resource<FrameCount>();
     render_sub->add_systems(epix::app::ScheduleInfo(ExtractSchedule),
                             epix::ecs::into(pbr::collect_meshes_for_gpu_building)
                                 .after(pbr::MeshExtractionSystems::Extract)
