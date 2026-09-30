@@ -589,6 +589,14 @@ TEST(VisibilityClass, AddHookAppendsTheComponentType) {
     ASSERT_TRUE(visibility_class.has_value());
     ASSERT_EQ(visibility_class->get().classes.size(), 1u);
     EXPECT_EQ(visibility_class->get().classes.front(), epix::meta::type_index(epix::meta::type_id<CustomRenderable>()));
+
+    // Bevy appends without checking - `visibility_class.push(TypeId::of::<C>())` on a
+    // SmallVec through DerefMut (`visibility/mod.rs:161-164,736`) - so a second call stores
+    // the class twice and `check_visibility` then queues the entity once per duplicate
+    // (CAM-19). The port deduplicated here before, which Bevy does not.
+    ::epix::camera::add_visibility_class<CustomRenderable>(
+        world, epix::ecs::HookContext{.entity = entity, .component_id = component_id});
+    ASSERT_EQ(world.get_entity(entity)->get<::epix::camera::VisibilityClass>()->get().classes.size(), 2u);
 }
 
 TEST(MeshAabb, MeshSpecializationIsOwnedByCameraAndComputesBounds) {

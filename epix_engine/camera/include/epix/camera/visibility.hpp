@@ -275,10 +275,16 @@ EPIX_EXPORT struct VisibilityClass {
     std::vector<meta::type_index> classes;
     VisibilityClass() = default;
     explicit VisibilityClass(meta::type_index type) : classes{type} {}
+    /** @brief Append unconditionally (Bevy `VisibilityClass::push`, reached through
+     *  `DerefMut` to the inner `SmallVec`, `visibility/mod.rs:161-164,736`).
+     *
+     *  Bevy appends without checking, so a class can be stored twice and the visibility
+     *  system then queues the entity once per duplicate (CAM-19). `add` below keeps the
+     *  deduplicating form for callers that want it, which Bevy has no equivalent of. */
+    void push(meta::type_index type) { classes.push_back(type); }
     void add(meta::type_index type) {
         if (std::ranges::find(classes, type) == classes.end()) classes.push_back(type);
     }
-    void push(meta::type_index type) { add(type); }
     auto begin() const noexcept { return classes.begin(); }
     auto end() const noexcept { return classes.end(); }
     bool empty() const noexcept { return classes.empty(); }
@@ -292,7 +298,7 @@ template <typename C>
 void add_visibility_class(epix::ecs::World& world, epix::ecs::HookContext context) {
     world.get_entity_mut(context.entity).transform([](epix::ecs::EntityWorldMut&& entity) -> int {
         if (auto visibility_class = entity.template get_mut<VisibilityClass>()) {
-            visibility_class->get_mut().add(meta::type_index(meta::type_id<C>()));
+            visibility_class->get_mut().push(meta::type_index(meta::type_id<C>()));
         }
         return 0;
     });
