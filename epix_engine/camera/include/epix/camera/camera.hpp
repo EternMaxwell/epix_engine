@@ -97,10 +97,17 @@ EPIX_EXPORT struct RenderTargetId {
     /// with coincident numeric identities from sharing an attachment.
     std::uint8_t kind                   = 0;
     std::uint64_t value                 = 0;
+    /// The image target's scale factor, as bits, so it takes part in identity the way
+    /// Bevy's `ImageRenderTarget` does through `FloatOrd(scale_factor)`
+    /// (`bevy_camera/src/camera.rs:910-915`). Zero for every other alternative, and the
+    /// `kind` field keeps alternatives from being compared against each other.
+    std::uint32_t scale_factor_bits     = 0;
     constexpr RenderTargetId() noexcept = default;
     constexpr RenderTargetId(std::uint64_t target_value) noexcept : value(target_value) {}
     constexpr RenderTargetId(std::uint8_t target_kind, std::uint64_t target_value) noexcept
         : kind(target_kind), value(target_value) {}
+    constexpr RenderTargetId(std::uint8_t target_kind, std::uint64_t target_value, std::uint32_t target_scale_bits) noexcept
+        : kind(target_kind), value(target_value), scale_factor_bits(target_scale_bits) {}
     bool operator==(const RenderTargetId&) const noexcept = default;
 };
 

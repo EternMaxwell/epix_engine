@@ -191,7 +191,12 @@ RenderTargetId NormalizedRenderTarget::identity() const noexcept {
     return std::visit(
         utils::visitor{
             [](const ImageRenderTarget& image) -> RenderTargetId {
-                return RenderTargetId{1, reinterpret_cast<std::uintptr_t>(image.texture.raw())};
+                // Bevy's image identity is `(handle, FloatOrd(scale_factor))`
+                // (`bevy_camera/src/camera.rs:893-930`), so the scale factor belongs in the
+                // key: two image targets on one texture with different scale factors are
+                // distinct there, and must not share an attachment here.
+                return RenderTargetId{1, reinterpret_cast<std::uintptr_t>(image.texture.raw()),
+                                      std::bit_cast<std::uint32_t>(image.scale_factor)};
             },
             [](const window::NormalizedWindowRef& w) -> RenderTargetId { return RenderTargetId{0, w.entity().uid}; },
             [](const ManualTextureViewHandle& handle) -> RenderTargetId { return RenderTargetId{2, handle.id}; },
