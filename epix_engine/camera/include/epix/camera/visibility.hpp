@@ -361,9 +361,15 @@ EPIX_EXPORT struct EPIX_API VisibilityPlugin {
 /** @brief A normalized inward-facing plane half-space (Bevy `HalfSpace`). */
 EPIX_EXPORT struct HalfSpace {
     glm::vec4 normal_d{0.0f, 0.0f, 0.0f, std::numeric_limits<float>::infinity()};
+    /** @brief Construct from a plane whose first three components are the normal and the
+     *  fourth is the signed distance along it (Bevy `HalfSpace::new`).
+     *
+     *  Bevy scales by `normal_d.xyz().length_recip()` with no zero guard, so a zero-length
+     *  normal scales by infinity and yields NaN components. This now does the same rather
+     *  than passing the value through unchanged - safer, but a divergence from Bevy. */
     static HalfSpace from_normal_d(glm::vec4 value) noexcept {
         const float length = glm::length(glm::vec3(value));
-        return HalfSpace{length > 0.0f ? value / length : value};
+        return HalfSpace{value / length};
     }
     glm::vec3 normal() const noexcept { return glm::vec3(normal_d); }
     float d() const noexcept { return normal_d.w; }
