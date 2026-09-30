@@ -31,6 +31,19 @@ EPIX_EXPORT struct Mesh2d {
 
     bool operator==(const Mesh2d&) const = default;
 
+    /** @brief Append the Mesh2d visibility class (Bevy
+     *  `#[component(on_add = visibility::add_visibility_class::<Mesh2d>)]`,
+     *  `bevy_camera/src/visibility/mod.rs:433-435`).
+     *
+     *  Appended rather than supplied only when absent, so an entity already in another
+     *  class - a `Sprite` that also carries a `Mesh2d`, say - ends up in both. Required
+     *  components are skipped when the archetype already has one (`bundle.cpp:91-95`),
+     *  which is why the class comes from this hook rather than from the registration
+     *  below (CAM-20). */
+    static void on_add(ecs::World& world, ecs::HookContext context) {
+        camera::add_visibility_class<Mesh2d>(world, context);
+    }
+
     static void register_required_components(ecs::RequiredComponentsRegistrator& registrator) {
         registrator.template register_required<transform::Transform>([] { return transform::Transform{}; });
     }

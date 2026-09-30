@@ -187,6 +187,31 @@ TEST(Sprite, VisibilityClassHookAppendsToAnExistingClass) {
     EXPECT_NE(std::ranges::find(values, epix::meta::type_index(epix::meta::type_id<sprite::Sprite>())), values.end());
 }
 
+// Bevy `#[component(on_add = visibility::add_visibility_class::<Mesh2d>)]`
+// (`bevy_camera/src/visibility/mod.rs:433-435`): the class is appended to whatever is
+// already there, so an entity that is both a `Sprite` and a `Mesh2d` is in both. This is
+// the case CAM-20 records - supplying the class as a required component is skipped when
+// the archetype already carries a `VisibilityClass`, which left the Mesh2d class out.
+TEST(Mesh2d, VisibilityClassHookAppendsToAnExistingClass) {
+    auto app = epix::app::App::create();
+    app.add_plugins(epix::assets::AssetPlugin{});
+    app.add_plugins(image::ImagePlugin{});
+    app.add_plugins(epix::mesh::MeshPlugin{});
+    app.add_plugins(epix::camera::CameraPlugin{});
+    app.add_plugins(sprite::SpritePlugin{});
+
+    const auto other  = epix::meta::type_index(epix::meta::type_id<sprite::Sprite>());
+    const auto entity = app.world_mut().spawn(epix::camera::VisibilityClass{other}).id();
+    app.world_mut().entity_mut(entity).insert(epix::mesh::Mesh2d{});
+
+    const auto classes = app.world().entity(entity).get<epix::camera::VisibilityClass>();
+    ASSERT_TRUE(classes.has_value());
+    const auto& values = classes->get().classes;
+    EXPECT_NE(std::ranges::find(values, other), values.end());
+    EXPECT_NE(std::ranges::find(values, epix::meta::type_index(epix::meta::type_id<epix::mesh::Mesh2d>())),
+              values.end());
+}
+
 // Bevy's `calculate_bounds_2d` inserts with `try_insert`
 // (`bevy_sprite/src/lib.rs:153,190`), so on an entity that has both a `Mesh2d`
 // and a `Sprite` the sprite bounds are the ones that survive; `insert_if_new`

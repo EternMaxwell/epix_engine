@@ -454,8 +454,11 @@ void VisibilityPlugin::attach(App& app) {
     app.world_mut().register_required_components<Visibility, InheritedVisibility>();
     app.world_mut().register_required_components<Visibility, ViewVisibility>();
     app.world_mut().register_required_components<::epix::mesh::Mesh2d, Visibility>();
-    app.world_mut().register_required_components_with<::epix::mesh::Mesh2d>(
-        [] { return VisibilityClass{meta::type_index(meta::type_id<::epix::mesh::Mesh2d>())}; });
+    // The class comes from `Mesh2d`'s own `on_add` hook, as it does for `Mesh3d` below.
+    // Supplying it as a required component is skipped whenever the archetype already
+    // carries a `VisibilityClass`, so a `Sprite` + `Mesh2d` entity would miss the Mesh2d
+    // class (CAM-20).
+    app.world_mut().register_required_components<::epix::mesh::Mesh2d, VisibilityClass>();
     // Bevy registers the same pair for `Mesh3d` (`visibility/mod.rs:397-400`). Without it a
     // 3D mesh carries no `ViewVisibility`, which `check_visibility` reads and which pbr
     // extraction requires, so the mesh is never marked visible or collected (CAM-2).
