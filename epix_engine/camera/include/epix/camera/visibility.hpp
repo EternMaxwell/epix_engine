@@ -168,6 +168,13 @@ EPIX_EXPORT struct EPIX_API RenderLayers {
    public:
     /** @brief Default: entity belongs to layer 0. */
     RenderLayers() { blocks_[0] = 1; }
+    /** @brief A single layer (Bevy `RenderLayers::layer`, `render_layers.rs:60-69`).
+     *
+     *  Bevy stores one inline `u64` and asserts the index fits it, so Bevy caps at 64
+     *  layers. This port deliberately does not: its storage is a growing vector and it
+     *  keeps intentional extensions (`all`, `all_except`, `from_layers` with indices past
+     *  63), which `RenderLayers.Intersects` pins. The divergence is documented rather than
+     *  removed, because capping here would take a capability away (CAM-33). */
     static RenderLayers layer(Layer layer) {
         auto result = none();
         result.extend(block_index(layer) + 1);
@@ -734,7 +741,7 @@ EPIX_EXPORT EPIX_API void check_visibility_system(
                                      epix::ecs::Opt<const VisibilityClass&>,
                                      epix::ecs::Opt<const RenderLayers&>,
                                      epix::ecs::Opt<const Aabb&>,
-                                     epix::ecs::Opt<const ::epix::transform::GlobalTransform&>,
+                                     const ::epix::transform::GlobalTransform&,
                                      epix::ecs::Opt<const NoFrustumCulling&>,
                                      epix::ecs::Opt<const VisibilityRange&>>> entities,
     /* Bevy takes `Option<Res<VisibleEntityRanges>>` (`visibility/mod.rs:609`): the resource
@@ -745,10 +752,14 @@ EPIX_EXPORT EPIX_API void check_visibility_system(
     std::optional<epix::ecs::Res<VisibleEntityRanges>> visible_entity_ranges);
 
 /** @brief Recomputes each camera's Frustum from its projection and transform
- * (Bevy update_frusta). */
-EPIX_EXPORT EPIX_API void update_frusta(epix::ecs::Query<epix::ecs::Item<const ::epix::transform::GlobalTransform&,
-                                                                         const ::epix::camera::Projection&,
-                                                                         epix::ecs::Mut<Frustum>>> cameras);
+ * (Bevy update_frusta). Bevy filters on `Or<(Changed<GlobalTransform>,
+ * Changed<Projection>)>` (`visibility/mod.rs:491-495`), which is what `CAM-25` adds. */
+EPIX_EXPORT EPIX_API void update_frusta(
+    epix::ecs::Query<epix::ecs::Item<const ::epix::transform::GlobalTransform&,
+                                    const ::epix::camera::Projection&,
+                                    epix::ecs::Mut<Frustum>>,
+                     epix::ecs::Filter<epix::ecs::Or<epix::ecs::Modified<::epix::transform::GlobalTransform>,
+                                                     epix::ecs::Modified<::epix::camera::Projection>>>> cameras);
 
 }  // namespace epix::camera
 

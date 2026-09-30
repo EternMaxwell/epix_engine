@@ -368,7 +368,7 @@ void check_visibility_system(Query<Item<Entity,
                                         Opt<const VisibilityClass&>,
                                         Opt<const RenderLayers&>,
                                         Opt<const Aabb&>,
-                                        Opt<const ::epix::transform::GlobalTransform&>,
+                                        const ::epix::transform::GlobalTransform&,
                                         Opt<const NoFrustumCulling&>,
                                         Opt<const VisibilityRange&>>> entities,
                              std::optional<Res<VisibleEntityRanges>> visible_entity_ranges) {
@@ -382,7 +382,7 @@ void check_visibility_system(Query<Item<Entity,
         if (!camera.is_active) continue;
         const auto& camera_layers = opt_camera_layers ? *opt_camera_layers : RenderLayers::layer(0);
         visible_entities.get_mut().clear_all();
-        for (auto&& [entity, inherited, view_visibility, opt_classes, opt_layers, opt_aabb, opt_transform,
+        for (auto&& [entity, inherited, view_visibility, opt_classes, opt_layers, opt_aabb, transform,
                      no_frustum_culling, opt_visibility_range] : entities.iter()) {
             if (!inherited.get()) continue;
             const auto& entity_layers = opt_layers ? *opt_layers : RenderLayers::layer(0);
@@ -391,13 +391,13 @@ void check_visibility_system(Query<Item<Entity,
                 !visible_entity_ranges->get().entity_is_in_range_of_view(entity, camera_entity)) {
                 continue;
             }
-            if (!no_cpu_culling && !no_frustum_culling && opt_aabb && opt_transform) {
+            if (!no_cpu_culling && !no_frustum_culling && opt_aabb) {
                 const auto& aabb       = opt_aabb->get();
-                const auto& transform  = opt_transform->get().matrix;
-                const glm::vec3 center = glm::vec3(transform * glm::vec4(aabb.center, 1.0f));
-                const float radius     = glm::length(glm::abs(glm::mat3(transform)) * aabb.half_extents);
+                const auto& matrix     = transform.matrix;
+                const glm::vec3 center = glm::vec3(matrix * glm::vec4(aabb.center, 1.0f));
+                const float radius     = glm::length(glm::abs(glm::mat3(matrix)) * aabb.half_extents);
                 if (!frustum.intersects_sphere(Sphere{center, radius}, false) ||
-                    !frustum.intersects_obb(aabb, transform, true, false)) {
+                    !frustum.intersects_obb(aabb, matrix, true, false)) {
                     continue;
                 }
             }
@@ -419,8 +419,16 @@ void VisibilityRangePlugin::attach(App& app) {
                                          .set_name("check visibility ranges"));
 }
 
-void update_frusta(
-    Query<Item<const ::epix::transform::GlobalTransform&, const ::epix::camera::Projection&, Mut<Frustum>>> cameras) {
+void update_frusta(Query<Item<const ::epix::transform::GlobalTransform&,
+                              const ::epix::camera::Projection&,
+                              Mut<Frustum>>,
+                         Filter<Or<Modified<::epix::transform::GlobalTransform>,
+                                   Modified<::epix::camera::Projection>>>>
+                       cameras) {
+    // Bevy filters on `Or<(Changed<GlobalTransform>, Changed<Projection>)>`
+    // (`visibility/mod.rs:491-495`), and this port's `Modified` covers `Added` as Bevy's
+    // `Changed` does, so the same cameras are updated. Without it every camera recomputed
+    // its frustum every frame (CAM-25).
     for (auto&& [gtransform, projection, frustum] : cameras.iter()) {
         frustum.get_mut() = projection.compute_frustum(gtransform);
     }
