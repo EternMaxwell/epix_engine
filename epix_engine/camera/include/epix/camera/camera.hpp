@@ -137,7 +137,8 @@ EPIX_EXPORT struct Ray3d {
 /** @brief Hash for RenderTargetId. */
 EPIX_EXPORT struct RenderTargetIdHash {
     std::size_t operator()(const RenderTargetId& id) const noexcept {
-        return std::hash<std::uint64_t>{}(id.value) ^ (std::hash<std::uint8_t>{}(id.kind) << 1);
+        return std::hash<std::uint64_t>{}(id.value) ^ (std::hash<std::uint8_t>{}(id.kind) << 1) ^
+               (std::hash<std::uint32_t>{}(id.scale_factor_bits) << 17);
     }
 };
 
