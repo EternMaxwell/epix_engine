@@ -405,8 +405,14 @@ EPIX_EXPORT struct EPIX_API Aabb {
     }
     glm::vec3 min() const noexcept { return center - half_extents; }
     glm::vec3 max() const noexcept { return center + half_extents; }
+    /** @brief The AABB's radius along a plane normal (Bevy `Aabb::relative_radius`,
+     *  `primitives.rs:106-116`).
+     *
+     *  Bevy absolutes the transformed normal and dots it with the **raw** half extents;
+     *  absoluting the extents too only changes the result for a hand-built `Aabb` with a
+     *  negative component (CAM-38). */
     float relative_radius(const glm::vec3& normal, const glm::mat3& world_from_local) const noexcept {
-        return glm::dot(glm::abs(glm::transpose(world_from_local) * normal), glm::abs(half_extents));
+        return glm::dot(glm::abs(glm::transpose(world_from_local) * normal), half_extents);
     }
     bool is_in_half_space(const HalfSpace& half_space, const glm::mat4& world_from_local) const noexcept {
         const glm::vec3 normal              = half_space.normal();
@@ -440,11 +446,17 @@ concept MeshAabbImpl = requires(const T& mesh) {
 EPIX_EXPORT struct EPIX_API Sphere {
     glm::vec3 center{0.0f};
     float radius = 0.0f;
+    /** @brief Sphere against oriented bounds (Bevy `Sphere::intersects_obb`,
+     *  `primitives.rs:189-195`).
+     *
+     *  Bevy has no zero-distance guard: for a sphere centred exactly on the box centre
+     *  `v / d` is NaN, `relative_radius` is NaN, and `d < radius + NaN` is false. This
+     *  previously short-circuited to `true`, which is the geometrically correct answer but
+     *  not Bevy's arithmetic (CAM-39). */
     bool intersects_obb(const Aabb& aabb, const glm::mat4& world_from_local) const noexcept {
         const glm::vec3 aabb_center = glm::vec3(world_from_local * glm::vec4(aabb.center, 1.0f));
         const glm::vec3 offset      = aabb_center - center;
         const float distance        = glm::length(offset);
-        if (distance == 0.0f) return true;
         return distance < radius + aabb.relative_radius(offset / distance, glm::mat3(world_from_local));
     }
 };

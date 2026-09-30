@@ -488,6 +488,21 @@ TEST(CameraFrustum, CullsSphereAndOrientedBounds) {
     EXPECT_FALSE(frustum.intersects_obb(aabb, glm::translate(glm::mat4(1.0f), glm::vec3(3.0f, 0.0f, 0.0f))));
 }
 
+// Bevy `Sphere::intersects_obb` has no zero-distance guard (`primitives.rs:189-195`): a
+// sphere centred exactly on the box centre makes `v / d` NaN, so `d < radius + NaN` is
+// false. The port short-circuited that case to true - the geometrically correct answer, but
+// not Bevy's arithmetic (CAM-39) - and the guard is gone, so this pins the result.
+TEST(SpherePrimitives, IntersectsObbRejectsTheCoincidentCentreAsBevyDoes) {
+    const epix::camera::Aabb aabb{.center = glm::vec3(0.0f), .half_extents = glm::vec3(0.5f)};
+
+    const epix::camera::Sphere coincident{.center = glm::vec3(0.0f), .radius = 1.0f};
+    EXPECT_FALSE(coincident.intersects_obb(aabb, glm::mat4(1.0f)));
+
+    // Off the centre the ordinary comparison applies, and this sphere overlaps the box.
+    const epix::camera::Sphere offset{.center = glm::vec3(0.25f, 0.0f, 0.0f), .radius = 1.0f};
+    EXPECT_TRUE(offset.intersects_obb(aabb, glm::mat4(1.0f)));
+}
+
 TEST(CameraPrimitives, MatchBevyClipPlanesAndHelpers) {
     const auto frustum = epix::camera::Frustum::from_clip_from_world(glm::mat4(1.0f));
     // Bevy's zero-to-one-depth extraction uses row2 as the far plane.
