@@ -571,7 +571,7 @@ EPIX_EXPORT struct CubeMapFace {
     glm::vec3 target{0.0f};
     glm::vec3 up{0.0f, 1.0f, 0.0f};
 };
-EPIX_EXPORT inline const std::array<CubeMapFace, 6> CubeMapFaces{{
+EPIX_EXPORT inline const std::array<CubeMapFace, 6> CUBE_MAP_FACES{{
     {{1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},
     {{-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},
     {{0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},

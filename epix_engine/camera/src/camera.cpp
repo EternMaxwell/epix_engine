@@ -267,10 +267,16 @@ void visibility_propagate_system(
         const bool is_visible          = visibility.type == Visibility::Type::Visible  ? true
                                          : visibility.type == Visibility::Type::Hidden ? false
                                                                                        : parent_is_visible;
-        if (inherited.get().get() != is_visible) VisibilityPropagationAccess::set(inherited.get_mut(), is_visible);
-        if (auto children = children_query.get(entity)) {
-            for (const Entity child : std::get<0>(*children).entities()) {
-                self(self, is_visible, child);
+        if (inherited.get().get() != is_visible) {
+            VisibilityPropagationAccess::set(inherited.get_mut(), is_visible);
+            // Bevy recurses inside the same guard - the subtree is walked only when this
+            // entity's own value changed (`visibility/mod.rs:529-537`). Recursing
+            // unconditionally reaches the same fixed point but visits unchanged subtrees
+            // (CAM-26).
+            if (auto children = children_query.get(entity)) {
+                for (const Entity child : std::get<0>(*children).entities()) {
+                    self(self, is_visible, child);
+                }
             }
         }
     };
@@ -395,7 +401,11 @@ void check_visibility_system(Query<Item<Entity,
                 const auto& aabb       = opt_aabb->get();
                 const auto& matrix     = transform.matrix;
                 const glm::vec3 center = glm::vec3(matrix * glm::vec4(aabb.center, 1.0f));
-                const float radius     = glm::length(glm::abs(glm::mat3(matrix)) * aabb.half_extents);
+                // Bevy's broad phase is `GlobalTransform::radius_vec3a`, which is exactly
+                // `(matrix3 * extents).length()` with no `abs` (`bevy_transform`
+                // `global_transform.rs:256-258`); the abs here made the radius an upper
+                // bound Bevy does not compute (CAM-22).
+                const float radius = glm::length(glm::mat3(matrix) * aabb.half_extents);
                 if (!frustum.intersects_sphere(Sphere{center, radius}, false) ||
                     !frustum.intersects_obb(aabb, matrix, true, false)) {
                     continue;

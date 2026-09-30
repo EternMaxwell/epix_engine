@@ -4,9 +4,9 @@ namespace epix::pbr {
 
 std::array<glm::mat4, POINT_LIGHT_CUBE_FACE_COUNT> cube_face_view_rotations() {
     std::array<glm::mat4, POINT_LIGHT_CUBE_FACE_COUNT> rotations{};
-    for (std::size_t face = 0; face < camera::CubeMapFaces.size(); ++face) {
+    for (std::size_t face = 0; face < camera::CUBE_MAP_FACES.size(); ++face) {
         transform::Transform oriented;
-        oriented.look_at(camera::CubeMapFaces[face].target, camera::CubeMapFaces[face].up);
+        oriented.look_at(camera::CUBE_MAP_FACES[face].target, camera::CUBE_MAP_FACES[face].up);
         rotations[face] = glm::mat4_cast(oriented.rotation);
     }
     return rotations;

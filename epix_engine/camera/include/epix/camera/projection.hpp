@@ -402,6 +402,11 @@ EPIX_EXPORT struct EPIX_API Projection {
     Projection() : projection(PerspectiveProjection{}) {}
     Projection(const OrthographicProjection& ortho) : projection(ortho) {}
     Projection(const PerspectiveProjection& perspective) : projection(perspective) {}
+    // Bevy derives `From` for all three alternatives (`projection.rs:214-220`), so an
+    // existing custom projection converts implicitly here too; without it the only routes
+    // were assigning the public variant member or re-wrapping with `Projection::custom`
+    // (CAM-17).
+    Projection(const CustomProjection& custom) : projection(custom) {}
 
     /** @brief Create an orthographic projection. */
     static Projection orthographic(const OrthographicProjection& ortho = {}) { return Projection(ortho); }
