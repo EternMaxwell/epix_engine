@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <epix/color.hpp>
 #include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
@@ -139,9 +140,27 @@ EPIX_EXPORT struct FogFalloff {
 
     /** @brief An atmospheric falloff using one colour for both extinction and
      *  in-scattering (Bevy `FogFalloff::from_visibility_color`). */
-    static FogFalloff from_visibility_color(float visibility, glm::vec4 extinction_inscattering_color) {
+    static FogFalloff from_visibility_color(float visibility, ::epix::color::Color extinction_inscattering_color) {
         return from_visibility_contrast_colors(visibility, REVISED_KOSCHMIEDER_CONTRAST_THRESHOLD,
                                                extinction_inscattering_color, extinction_inscattering_color);
+    }
+
+    /** @brief An atmospheric falloff for a visibility distance and separate extinction
+     *  and in-scattering colours (Bevy `FogFalloff::from_visibility_colors`). */
+    static FogFalloff from_visibility_colors(float visibility,
+                                             ::epix::color::Color extinction_color,
+                                             ::epix::color::Color inscattering_color) {
+        return from_visibility_contrast_colors(visibility, REVISED_KOSCHMIEDER_CONTRAST_THRESHOLD, extinction_color,
+                                               inscattering_color);
+    }
+
+    /** @brief An atmospheric falloff using one colour for both extinction and in-scattering
+     *  (Bevy `FogFalloff::from_visibility_contrast_color`). */
+    static FogFalloff from_visibility_contrast_color(float visibility,
+                                                     float contrast_threshold,
+                                                     ::epix::color::Color extinction_inscattering_color) {
+        return from_visibility_contrast_colors(visibility, contrast_threshold, extinction_inscattering_color,
+                                               extinction_inscattering_color);
     }
 
     /** @brief An atmospheric falloff for a visibility distance, contrast threshold and
@@ -149,12 +168,17 @@ EPIX_EXPORT struct FogFalloff {
      *  `FogFalloff::from_visibility_contrast_colors`). */
     static FogFalloff from_visibility_contrast_colors(float visibility,
                                                       float contrast_threshold,
-                                                      glm::vec4 extinction_color,
-                                                      glm::vec4 inscattering_color) {
+                                                      ::epix::color::Color extinction_color,
+                                                      ::epix::color::Color inscattering_color) {
+        // Bevy converts both colours to `LinearRgba` and reads the extinction's alpha
+        // separately (`fog.rs:410-427`).
+        const ::epix::color::LinearRgba extinction   = extinction_color.linear();
+        const ::epix::color::LinearRgba inscattering = inscattering_color.linear();
         return FogFalloff{FogFalloffAtmospheric{
-            .extinction   = fog_atmospheric_extinction(glm::vec3(extinction_color), extinction_color.a, visibility,
-                                                       contrast_threshold),
-            .inscattering = fog_atmospheric_inscattering(glm::vec3(inscattering_color)),
+            .extinction   = fog_atmospheric_extinction(glm::vec3(extinction.red, extinction.green, extinction.blue),
+                                                       extinction.alpha, visibility, contrast_threshold),
+            .inscattering = fog_atmospheric_inscattering(glm::vec3(inscattering.red, inscattering.green,
+                                                                   inscattering.blue)),
         }};
     }
 };
@@ -162,12 +186,11 @@ EPIX_EXPORT struct FogFalloff {
 /** @brief Distance fog on a camera, affecting the meshes it renders (Bevy
  *  `DistanceFog`).
  *
- *  Colours are linear `glm::vec4` as on the light types, since Epix has no colour
- *  crate. The alpha channel modulates the effect without changing the falloff, which is
- *  why it is read for the atmospheric extinction above. */
+ *  The alpha channel of the colour modulates the effect without changing the falloff,
+ *  which is why it is read for the atmospheric extinction above. */
 EPIX_EXPORT struct DistanceFog {
-    glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
-    glm::vec4 directional_light_color{0.0f};
+    ::epix::color::Color color = ::epix::color::Color::WHITE;
+    ::epix::color::Color directional_light_color = ::epix::color::Color::NONE;
     float directional_light_exponent = 8.0f;
     FogFalloff falloff{FogFalloffLinear{.start = 0.0f, .end = 100.0f}};
 };

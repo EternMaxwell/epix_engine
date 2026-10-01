@@ -5,6 +5,7 @@
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <epix/assets.hpp>
+#include <epix/color.hpp>
 #include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
@@ -29,7 +30,7 @@ namespace epix::pbr {
  *  the pinned feature set. */
 EPIX_EXPORT struct DirectionalLight {
     /** @brief The colour of the light; white by default. */
-    glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
+    ::epix::color::Color color = ::epix::color::Color::WHITE;
     /** @brief Illuminance in lux (lumens per square meter). Bevy's default is
      *  ambient daylight, 10 000 lux. */
     float illuminance = light_consts::lux::AMBIENT_DAYLIGHT;

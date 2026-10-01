@@ -14,8 +14,8 @@ glm::vec3 fog_atmospheric_extinction(glm::vec3 extinction_rgb,
 
 GpuFog gpu_fog_from(const DistanceFog& fog) {
     GpuFog gpu;
-    gpu.base_color                 = fog.color;
-    gpu.directional_light_color    = fog.directional_light_color;
+    gpu.base_color                 = fog.color.linear().vec4();
+    gpu.directional_light_color    = fog.directional_light_color.linear().vec4();
     gpu.directional_light_exponent = fog.directional_light_exponent;
 
     std::visit(

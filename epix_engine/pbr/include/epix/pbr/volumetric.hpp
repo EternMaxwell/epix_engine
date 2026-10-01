@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <epix/assets.hpp>
 #include <epix/camera.hpp>
+#include <epix/color.hpp>
 #include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
@@ -25,11 +26,10 @@ EPIX_EXPORT struct VolumetricLight {};
  *
  *  Its ambient light is separate from `AmbientLight` because an
  *  `EnvironmentMapLight` also counts as ambient for volumetric fog; the colour
- *  should approximate that map's average. Bevy stores `bevy_color::Color`s,
- *  which are linear `glm::vec4`s here. */
+ *  should approximate that map's average. */
 EPIX_EXPORT struct VolumetricFog {
     /** @brief The volumetric ambient light's colour; white by default. */
-    glm::vec4 ambient_color{1.0f, 1.0f, 1.0f, 1.0f};
+    ::epix::color::Color ambient_color = ::epix::color::Color::WHITE;
     /** @brief The volumetric ambient light's brightness; 0.1 by default, and 0
      *  when there is no environment map. */
     float ambient_intensity = 0.1f;
@@ -53,7 +53,7 @@ EPIX_EXPORT struct VolumetricFog {
 EPIX_EXPORT struct FogVolume {
     /** @brief The fog's colour; white by default. It only shows once a
      *  `VolumetricLight` or ambient light lights the fog. */
-    glm::vec4 fog_color{1.0f, 1.0f, 1.0f, 1.0f};
+    ::epix::color::Color fog_color = ::epix::color::Color::WHITE;
     /** @brief How dark the fog is; 0.1 by default. */
     float density_factor = 0.1f;
     /** @brief An optional 3D voxel density texture. */
@@ -74,7 +74,7 @@ EPIX_EXPORT struct FogVolume {
     float scattering_asymmetry = 0.5f;
     /** @brief A nonphysical colour applied to the light, for artistic effect;
      *  white by default. */
-    glm::vec4 light_tint{1.0f, 1.0f, 1.0f, 1.0f};
+    ::epix::color::Color light_tint = ::epix::color::Color::WHITE;
     /** @brief Scales the light by a fixed fraction; 1.0 by default, which is no
      *  adjustment. */
     float light_intensity = 1.0f;

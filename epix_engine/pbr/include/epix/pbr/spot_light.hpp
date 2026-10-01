@@ -4,6 +4,7 @@
 #include <cmath>
 #include <epix/assets.hpp>
 #include <epix/camera.hpp>
+#include <epix/color.hpp>
 #include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
@@ -18,14 +19,14 @@ namespace epix::pbr {
  *  perfectly absorbent housing. The direction comes from the transform, so
  *  `Transform::looking_at` is the way to aim it.
  *
- *  As with the other lights, Bevy's `bevy_color::Color` becomes a linear
- *  `glm::vec4`, its required components and `ClusterVisibilityClass` hook are
+ *  As with the other lights, the colour is an `epix::color::Color` as in Bevy; the
+ *  required components and `ClusterVisibilityClass` hook are
  *  registered the Epix way from the owning plugin, and the feature-gated
  *  `soft_shadows_enabled` field is not ported because the PCSS experiment is not
  *  part of the pinned feature set. */
 EPIX_EXPORT struct SpotLight {
     /** @brief The colour of the light; white by default. */
-    glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
+    ::epix::color::Color color = ::epix::color::Color::WHITE;
     /** @brief Luminous power in lumens. Bevy's default is a very large cinema
      *  light, bright at its default exposure and far too bright indoors. */
     float intensity = 1'000'000.0f;

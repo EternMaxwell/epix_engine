@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <epix/assets.hpp>
 #include <epix/camera.hpp>
+#include <epix/color.hpp>
 #include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
@@ -16,8 +17,8 @@ namespace epix::pbr {
 /** @brief A light that emits in all directions from a central point (Bevy
  *  `PointLight`, `bevy_light/src/point_light.rs:51-150`).
  *
- *  Bevy stores a `bevy_color::Color`; Epix has no colour crate, so the colour is
- *  a linear `glm::vec4`, and Bevy's required components (`CubemapFrusta`,
+ *  Bevy stores a `bevy_color::Color`, and this port stores an `epix::color::Color`
+ *  the same way. Bevy's required components (`CubemapFrusta`,
  *  `CubemapVisibleEntities`, `Transform`, `Visibility`, `VisibilityClass`) plus
  *  its `ClusterVisibilityClass` hook are expressed the way Epix registers them,
  *  from the plugin that owns the type. The feature-gated
@@ -25,7 +26,7 @@ namespace epix::pbr {
  *  not part of the pinned feature set. */
 EPIX_EXPORT struct PointLight {
     /** @brief The colour of the light source. */
-    glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
+    ::epix::color::Color color = ::epix::color::Color::WHITE;
     /** @brief Luminous power in lumens, i.e. the light emitted in all
      *  directions. */
     float intensity = light_consts::lumens::VERY_LARGE_CINEMA_LIGHT;

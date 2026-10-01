@@ -157,7 +157,7 @@ TEST(Cluster, AmbientLightMatchesBevyDefaults) {
     using epix::pbr::GlobalAmbientLight;
 
     const AmbientLight ambient{};
-    EXPECT_EQ(ambient.color, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    EXPECT_EQ(ambient.color, ::epix::color::Color::linear_rgba(1.0f, 1.0f, 1.0f, 1.0f));
     EXPECT_FLOAT_EQ(ambient.brightness, 80.0f);
     EXPECT_TRUE(ambient.affects_lightmapped_meshes);
 
@@ -180,7 +180,7 @@ TEST(Cluster, PointLightMatchesBevyDefaults) {
     using epix::pbr::light_consts::lumens::VERY_LARGE_CINEMA_LIGHT;
 
     const PointLight light{};
-    EXPECT_EQ(light.color, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    EXPECT_EQ(light.color, ::epix::color::Color::linear_rgba(1.0f, 1.0f, 1.0f, 1.0f));
     EXPECT_FLOAT_EQ(light.intensity, VERY_LARGE_CINEMA_LIGHT);
     EXPECT_FLOAT_EQ(light.intensity, 1'000'000.0f);
     EXPECT_FLOAT_EQ(light.range, 20.0f);
@@ -202,7 +202,7 @@ TEST(Cluster, SpotLightMatchesBevyDefaults) {
     using epix::pbr::SpotLight;
 
     const SpotLight light{};
-    EXPECT_EQ(light.color, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    EXPECT_EQ(light.color, ::epix::color::Color::linear_rgba(1.0f, 1.0f, 1.0f, 1.0f));
     EXPECT_FLOAT_EQ(light.intensity, 1'000'000.0f);
     EXPECT_FLOAT_EQ(light.range, 20.0f);
     EXPECT_FLOAT_EQ(light.radius, 0.0f);
@@ -304,7 +304,7 @@ TEST(Cluster, DirectionalLightMatchesBevyDefaults) {
     using epix::pbr::light_consts::lux::AMBIENT_DAYLIGHT;
 
     const DirectionalLight light{};
-    EXPECT_EQ(light.color, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    EXPECT_EQ(light.color, ::epix::color::Color::linear_rgba(1.0f, 1.0f, 1.0f, 1.0f));
     EXPECT_FLOAT_EQ(light.illuminance, AMBIENT_DAYLIGHT);
     EXPECT_FLOAT_EQ(light.illuminance, 10'000.0f) << "Bevy defaults to ambient daylight";
     EXPECT_FALSE(light.shadows_enabled);
@@ -426,20 +426,20 @@ TEST(Cluster, VolumetricFogMatchesBevyDefaults) {
     using epix::pbr::VolumetricLight;
 
     const VolumetricFog fog{};
-    EXPECT_EQ(fog.ambient_color, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    EXPECT_EQ(fog.ambient_color, ::epix::color::Color::linear_rgba(1.0f, 1.0f, 1.0f, 1.0f));
     EXPECT_FLOAT_EQ(fog.ambient_intensity, 0.1f);
     EXPECT_FLOAT_EQ(fog.jitter, 0.0f);
     EXPECT_EQ(fog.step_count, 64u);
 
     const FogVolume volume{};
-    EXPECT_EQ(volume.fog_color, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    EXPECT_EQ(volume.fog_color, ::epix::color::Color::linear_rgba(1.0f, 1.0f, 1.0f, 1.0f));
     EXPECT_FLOAT_EQ(volume.density_factor, 0.1f);
     EXPECT_FALSE(volume.density_texture.has_value()) << "Bevy's default is Option::None, not a default image";
     EXPECT_EQ(volume.density_texture_offset, glm::vec3(0.0f, 0.0f, 0.0f));
     EXPECT_FLOAT_EQ(volume.absorption, 0.3f);
     EXPECT_FLOAT_EQ(volume.scattering, 0.3f);
     EXPECT_FLOAT_EQ(volume.scattering_asymmetry, 0.5f) << "the implementation's value, not the doc's 0.8";
-    EXPECT_EQ(volume.light_tint, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    EXPECT_EQ(volume.light_tint, ::epix::color::Color::linear_rgba(1.0f, 1.0f, 1.0f, 1.0f));
     EXPECT_FLOAT_EQ(volume.light_intensity, 1.0f);
 
     const VolumetricLight light{};
@@ -2618,7 +2618,7 @@ TEST(Cluster, AmbientResolutionAndShadowViewMatchBevy) {
     using epix::pbr::ShadowView;
 
     GlobalAmbientLight global;
-    global.color      = glm::vec4(0.25f, 0.5f, 0.75f, 1.0f);
+    global.color      = ::epix::color::Color::linear_rgba(0.25f, 0.5f, 0.75f, 1.0f);
     global.brightness = 200.0f;
     global.affects_lightmapped_meshes = false;
 
@@ -2632,7 +2632,7 @@ TEST(Cluster, AmbientResolutionAndShadowViewMatchBevy) {
     // An override replaces all three, rather than blending with the global: a
     // camera can turn the lightmapped contribution back on while dimming.
     AmbientLight override_light;
-    override_light.color      = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+    override_light.color      = ::epix::color::Color::linear_rgba(1.0f, 0.0f, 0.0f, 1.0f);
     override_light.brightness = 10.0f;
     override_light.affects_lightmapped_meshes = true;
     const auto from_camera = resolve_ambient_light(&override_light, global);
@@ -2642,7 +2642,7 @@ TEST(Cluster, AmbientResolutionAndShadowViewMatchBevy) {
 
     // The resolved pair feeds the uniform the way the light path packs it:
     // colour premultiplied by brightness, and the flag on its own.
-    EXPECT_EQ(epix::pbr::pack_ambient_color(from_camera.color, from_camera.brightness), glm::vec4(10.0f, 0.0f, 0.0f, 10.0f));
+    EXPECT_EQ(epix::pbr::pack_ambient_color(from_camera.color.linear().vec4(), from_camera.brightness), glm::vec4(10.0f, 0.0f, 0.0f, 10.0f));
 
     // A shadow view carries the attachment and the pass name together.
     const ShadowView shadow_view{epix::render::render_resource::DepthAttachment{wgpu::TextureView{}}, "point_light_shadow_map"};
@@ -6195,8 +6195,8 @@ TEST(Cluster, GpuFogMatchesBevy) {
     // The default component matches Bevy's: white, no directional glow, exponent 8,
     // and linear fog from 0 to 100.
     const DistanceFog defaults;
-    EXPECT_EQ(defaults.color, glm::vec4(1.0f));
-    EXPECT_EQ(defaults.directional_light_color, glm::vec4(0.0f));
+    EXPECT_EQ(defaults.color, ::epix::color::Color::linear_rgba(1.0f, 1.0f, 1.0f, 1.0f));
+    EXPECT_EQ(defaults.directional_light_color, ::epix::color::Color::NONE);
     EXPECT_FLOAT_EQ(defaults.directional_light_exponent, 8.0f);
     const auto default_gpu = gpu_fog_from(defaults);
     EXPECT_EQ(default_gpu.mode, GPU_FOG_MODE_LINEAR);
@@ -6235,11 +6235,34 @@ TEST(Cluster, GpuFogMatchesBevy) {
     EXPECT_FLOAT_EQ(std::get<FogFalloffExponentialSquared>(squared_from_visibility.value).density,
                     epix::pbr::fog_exponential_squared_density(100.0f, epix::pbr::REVISED_KOSCHMIEDER_CONTRAST_THRESHOLD));
     // The one-colour atmospheric constructor passes the same colour for both.
-    const auto atmosphere = FogFalloff::from_visibility_color(100.0f, glm::vec4(0.0f, 0.0f, 1.0f, 0.5f));
+    const auto atmosphere =
+        FogFalloff::from_visibility_color(100.0f, ::epix::color::Color::linear_rgba(0.0f, 0.0f, 1.0f, 0.5f));
     ASSERT_TRUE(std::holds_alternative<FogFalloffAtmospheric>(atmosphere.value));
     const auto& fields = std::get<FogFalloffAtmospheric>(atmosphere.value);
     EXPECT_LT(fields.extinction.z, fields.extinction.x) << "a blue extinction leaves blue visible";
     EXPECT_NEAR(fields.inscattering.z, 1.0f, 1e-6f) << "in-scattering keeps the colour as given";
+
+    // The two-colour constructor forwards both colours, and the contrast-threshold
+    // variant forwards the one colour as both (Bevy `fog.rs:367-393`).
+    const ::epix::color::Color blue = ::epix::color::Color::linear_rgba(0.0f, 0.0f, 1.0f, 0.5f);
+    const auto atmosphere_colors   = FogFalloff::from_visibility_colors(
+        100.0f, blue, ::epix::color::Color::linear_rgba(1.0f, 0.0f, 0.0f, 1.0f));
+    ASSERT_TRUE(std::holds_alternative<FogFalloffAtmospheric>(atmosphere_colors.value));
+    const auto& color_fields = std::get<FogFalloffAtmospheric>(atmosphere_colors.value);
+    EXPECT_EQ(color_fields.extinction, fields.extinction)
+        << "the revised contrast threshold is the one-colour constructor's";
+    EXPECT_EQ(color_fields.inscattering, glm::vec3(1.0f, 0.0f, 0.0f)) << "the in-scattering colour is its own";
+
+    const auto atmosphere_contrast = FogFalloff::from_visibility_contrast_color(100.0f, 0.5f, blue);
+    ASSERT_TRUE(std::holds_alternative<FogFalloffAtmospheric>(atmosphere_contrast.value));
+    const auto contrast_both =
+        FogFalloff::from_visibility_contrast_colors(100.0f, 0.5f, blue, blue);
+    ASSERT_TRUE(std::holds_alternative<FogFalloffAtmospheric>(contrast_both.value));
+    const auto& contrast_fields = std::get<FogFalloffAtmospheric>(atmosphere_contrast.value);
+    const auto& both_fields     = std::get<FogFalloffAtmospheric>(contrast_both.value);
+    EXPECT_EQ(contrast_fields.extinction, both_fields.extinction)
+        << "the contrast threshold is passed through and the colour used for extinction";
+    EXPECT_EQ(contrast_fields.inscattering, both_fields.inscattering) << "and for in-scattering as well";
 
     // No fog at all is mode off with everything zeroed, not an absent binding.
     const auto none = epix::pbr::GpuFog{};
