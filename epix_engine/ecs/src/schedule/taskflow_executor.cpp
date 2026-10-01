@@ -1,4 +1,9 @@
+#include <exception>
+#include <format>
+#include <mutex>
 #include <spdlog/spdlog.h>
+#include <stdexcept>
+#include <variant>
 
 #include <epix/ecs/core/labels.hpp>
 #include <epix/ecs/schedule.hpp>
@@ -43,30 +48,39 @@ struct TaskflowExecutor::Impl {
     explicit Impl(size_t n) : executor(shared_executor(n)) {}
 
     void handle_error(size_t index, const RunSystemError& error) {
-        if (std::holds_alternative<ValidateParamError>(error)) {
-            auto&& param_error = std::get<ValidateParamError>(error);
-            spdlog::error("[schedule] parameter validation error at system '{}', type: '{}', msg: {}",
-                          source->nodes[index].node->system->name(), param_error.param_type.short_name(),
-                          param_error.message);
-        } else if (std::holds_alternative<SystemException>(error)) {
-            auto&& expection = std::get<SystemException>(error);
-            try {
-                std::rethrow_exception(expection.exception);
-            } catch (const std::exception& e) {
-                spdlog::error("[schedule] system exception at system '{}', msg: {}",
-                              source->nodes[index].node->system->name(), e.what());
-            } catch (...) {
-                spdlog::error("[schedule] system exception at system '{}', msg: unknown",
-                              source->nodes[index].node->system->name());
-            }
-        } else if (std::holds_alternative<SystemResultError>(error)) {
-            const auto& result_error = std::get<SystemResultError>(error);
-            spdlog::error("[schedule] system error at system '{}', type: '{}', msg: {}",
-                          source->nodes[index].node->system->name(), result_error.error_type.short_name(),
-                          result_error.message);
+        if (exec_config.on_error) {
+            exec_config.on_error(error);
+            return;
         }
-        if (exec_config.on_error) exec_config.on_error(error);
-    };
+        const auto name = source->nodes[index].node->system->name();
+        if (const auto* param_error = std::get_if<ValidateParamError>(&error)) {
+            throw std::runtime_error(std::format(
+                "Encountered an error in system `{}`: Parameter `{}` failed validation: {}", name,
+                param_error->param_type.short_name(), param_error->message));
+        }
+        if (const auto* exception = std::get_if<SystemException>(&error)) {
+            std::rethrow_exception(exception->exception);
+        }
+        if (const auto* result_error = std::get_if<SystemResultError>(&error)) {
+            throw std::runtime_error(std::format("Encountered an error in system `{}`: {}: {}", name,
+                                                result_error->error_type.short_name(), result_error->message));
+        }
+        throw std::runtime_error(std::format("Encountered an error in system `{}`", name));
+    }
+
+    // A failed system stops the schedule, as a Bevy system error panics. A system
+    // task runs on a taskflow worker thread, so the throw cannot propagate on its
+    // own; it is captured here and rethrown from `execute` once the task graph has
+    // drained.
+    std::mutex error_mutex;
+    std::exception_ptr pending_error;
+
+    void capture_error() noexcept {
+        std::lock_guard lock(error_mutex);
+        if (!pending_error) {
+            pending_error = std::current_exception();
+        }
+    }
 
     // ---- taskflow construction ----
 
@@ -152,11 +166,19 @@ struct TaskflowExecutor::Impl {
                                 // Run system
                                 spdlog::trace("[taskflow] Running system '{}' (node={}).", node->system->name(), i);
                                 if (!exclusive) {
-                                    auto res = node->system->run_no_apply({}, *exec_world);
-                                    if (!res) this->handle_error(i, res.error());
+                                    try {
+                                        auto res = node->system->run_no_apply({}, *exec_world);
+                                        if (!res) this->handle_error(i, res.error());
+                                    } catch (...) {
+                                        this->capture_error();
+                                    }
                                 } else {
-                                    auto res = node->system->run({}, *exec_world);
-                                    if (!res) this->handle_error(i, res.error());
+                                    try {
+                                        auto res = node->system->run({}, *exec_world);
+                                        if (!res) this->handle_error(i, res.error());
+                                    } catch (...) {
+                                        this->capture_error();
+                                    }
                                 }
                                 spdlog::trace("[taskflow] Finished system '{}' (node={}).", node->system->name(), i);
                             })
@@ -237,11 +259,19 @@ struct TaskflowExecutor::Impl {
                                 if (!this->cond_met[i]) return;
                                 spdlog::trace("[taskflow] Running system '{}' (node={}).", node->system->name(), i);
                                 if (!exclusive) {
-                                    auto res = node->system->run_no_apply({}, *exec_world);
-                                    if (!res) this->handle_error(i, res.error());
+                                    try {
+                                        auto res = node->system->run_no_apply({}, *exec_world);
+                                        if (!res) this->handle_error(i, res.error());
+                                    } catch (...) {
+                                        this->capture_error();
+                                    }
                                 } else {
-                                    auto res = node->system->run({}, *exec_world);
-                                    if (!res) this->handle_error(i, res.error());
+                                    try {
+                                        auto res = node->system->run({}, *exec_world);
+                                        if (!res) this->handle_error(i, res.error());
+                                    } catch (...) {
+                                        this->capture_error();
+                                    }
                                 }
                                 spdlog::trace("[taskflow] Finished system '{}' (node={}).", node->system->name(), i);
                             })
@@ -428,7 +458,17 @@ void TaskflowExecutor::execute(ScheduleSystems& _data, World& world, const Execu
     if (!m_impl->cached_has_system) return;
 
     std::fill(m_impl->cond_met.begin(), m_impl->cond_met.end(), 1);
+    {
+        std::lock_guard lock(m_impl->error_mutex);
+        m_impl->pending_error = nullptr;
+    }
     m_impl->executor->run(m_impl->taskflow.value()).wait();
+
+    // Bevy's panic aborts the schedule that ran the system; surface the captured
+    // error here, before any deferred work is applied.
+    if (m_impl->pending_error) {
+        std::rethrow_exception(m_impl->pending_error);
+    }
 
     // End-of-iteration deferred handling.
     auto& nodes = _data.cache->nodes;

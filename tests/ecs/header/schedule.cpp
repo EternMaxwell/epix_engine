@@ -7,6 +7,7 @@
 #include <print>
 #include <random>
 #include <string>
+#include <string_view>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -149,7 +150,7 @@ TEST(ecs, schedule) {
     exec_sched.execute(world);
 }
 
-TEST(ecs, scheduled_expected_error_is_forwarded_to_error_handler) {
+TEST(ecs, scheduled_expected_error_is_forwarded_to_the_on_error_callback) {
     World world(WorldId(2));
     Schedule schedule(ScheduleLabel::from_type<Comp1>());
     schedule.add_systems(into([]() -> std::expected<void, SystemTestError> {
@@ -169,4 +170,25 @@ TEST(ecs, scheduled_expected_error_is_forwarded_to_error_handler) {
 
     schedule.execute(world, config);
     EXPECT_TRUE(received);
+}
+
+TEST(ecs, scheduled_system_error_stops_the_schedule) {
+    World world(WorldId(3));
+    Schedule schedule(ScheduleLabel::from_type<Comp1>());
+    schedule.add_systems(into([]() -> std::expected<void, SystemTestError> {
+        return std::unexpected(SystemTestError("expected system failure"));
+    }));
+
+    // Without an `on_error` callback a failed system is a hard failure, exactly as
+    // a system error panics in Bevy (error/handler.rs:125-127); the message names
+    // the system and carries the error.
+    ScheduleConfig config;
+    bool threw = false;
+    try {
+        schedule.execute(world, config);
+    } catch (const std::runtime_error& error) {
+        threw = true;
+        EXPECT_NE(std::string_view(error.what()).find("expected system failure"), std::string_view::npos);
+    }
+    EXPECT_TRUE(threw) << "a failed system must stop the schedule";
 }

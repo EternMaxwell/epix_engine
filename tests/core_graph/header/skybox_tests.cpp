@@ -30,6 +30,20 @@ void add_skybox_test_prerequisites(epix::app::App& app) {
         .add_plugins(epix::render::FrameCountPlugin{});
 }
 
+/** @brief `init_skybox_prepass_pipeline` needs the render world's
+ *  `FullscreenShader`, which `CoreGraphPlugin` installs in its attach
+ *  (`core_graph/src/plugin.cpp:46-62`, mirroring `CorePipelinePlugin`'s
+ *  `render_app.init_resource::<FullscreenShader>()`,
+ *  `bevy_core_pipeline/src/lib.rs:55`). This fixture adds the skybox plugin
+ *  without the umbrella, so it installs the resource the same way. */
+void init_fullscreen_shader(epix::app::App& app) {
+    const auto handle = epix::assets::Handle<epix::shader::Shader>{
+        epix::assets::AssetId<epix::shader::Shader>::invalid()};
+    auto render_app = app.get_sub_app_mut(epix::render::Render);
+    ASSERT_TRUE(render_app.has_value());
+    render_app->get().world_mut().insert_resource(FullscreenShader{handle});
+}
+
 /** @brief The component's defaults are Bevy's: the default image, no brightness
  *  scale and no rotation (`skybox/mod.rs:99-107`). */
 TEST(Skybox, DefaultsMatchBevy) {
@@ -128,6 +142,7 @@ TEST(Skybox, PipelineCompilesWithThePortedShader) {
     }
 
     app.add_plugins(SkyboxPlugin{});
+    init_fullscreen_shader(app);
 
     const auto render_app = app.get_sub_app_mut(epix::render::Render);
     ASSERT_TRUE(render_app.has_value());

@@ -1,4 +1,7 @@
+#include <format>
 #include <spdlog/spdlog.h>
+#include <stdexcept>
+#include <variant>
 
 #include <epix/ecs/schedule.hpp>
 
@@ -59,29 +62,24 @@ void SingleThreadExecutor::execute(ScheduleSystems& _data, World& world, const E
     }
 
     auto handle_error = [&](size_t index, const RunSystemError& error) {
-        if (std::holds_alternative<ValidateParamError>(error)) {
-            auto&& param_error = std::get<ValidateParamError>(error);
-            spdlog::error("[schedule] parameter validation error at system '{}', type: '{}', msg: {}",
-                          cache->nodes[index].node->system->name(), param_error.param_type.short_name(),
-                          param_error.message);
-        } else if (std::holds_alternative<SystemException>(error)) {
-            auto&& expection = std::get<SystemException>(error);
-            try {
-                std::rethrow_exception(expection.exception);
-            } catch (const std::exception& e) {
-                spdlog::error("[schedule] system exception at system '{}', msg: {}",
-                              cache->nodes[index].node->system->name(), e.what());
-            } catch (...) {
-                spdlog::error("[schedule] system exception at system '{}', msg: unknown",
-                              cache->nodes[index].node->system->name());
-            }
-        } else if (std::holds_alternative<SystemResultError>(error)) {
-            const auto& result_error = std::get<SystemResultError>(error);
-            spdlog::error("[schedule] system error at system '{}', type: '{}', msg: {}",
-                          cache->nodes[index].node->system->name(), result_error.error_type.short_name(),
-                          result_error.message);
+        if (config.on_error) {
+            config.on_error(error);
+            return;
         }
-        if (config.on_error) config.on_error(error);
+        const auto name = cache->nodes[index].node->system->name();
+        if (const auto* param_error = std::get_if<ValidateParamError>(&error)) {
+            throw std::runtime_error(std::format(
+                "Encountered an error in system `{}`: Parameter `{}` failed validation: {}", name,
+                param_error->param_type.short_name(), param_error->message));
+        }
+        if (const auto* exception = std::get_if<SystemException>(&error)) {
+            std::rethrow_exception(exception->exception);
+        }
+        if (const auto* result_error = std::get_if<SystemResultError>(&error)) {
+            throw std::runtime_error(std::format("Encountered an error in system `{}`: {}: {}", name,
+                                                result_error->error_type.short_name(), result_error->message));
+        }
+        throw std::runtime_error(std::format("Encountered an error in system `{}`", name));
     };
 
     auto dispatch_system = [&](size_t index) {

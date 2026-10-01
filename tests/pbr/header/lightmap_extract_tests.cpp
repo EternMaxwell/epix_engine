@@ -2,6 +2,7 @@
 #include <epix/assets.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
+#include <epix/mesh.hpp>
 #include <epix/pbr/lightmap.hpp>
 #include <epix/render.hpp>
 #include <epix/shader.hpp>
@@ -35,6 +36,7 @@ void add_render_prerequisites(App& app) {
         .add_plugins(epix::camera::CameraPlugin{})
         .add_plugins(AssetPlugin{})
         .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::mesh::MeshPlugin{})
         .add_plugins(epix::shader::ShaderPlugin{})
         .add_plugins(FrameCountPlugin{})
         .add_plugins(view::ViewPlugin{})
@@ -60,6 +62,12 @@ TEST(LightmapExtract, InitialisesEmptyAndAllocatesForVisibleLightmaps) {
     } catch (const std::exception& error) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
     }
+
+    // `MeshAllocatorPlugin` creates `MeshAllocator` in its `finish`/ready hook,
+    // which a fixture that never calls `App::run` has to invoke directly
+    // (`bevy_render/src/mesh/allocator.rs:1067-1073`); the render schedule it is
+    // registered in runs below.
+    epix::render::mesh::MeshAllocatorPlugin{}.ready(app);
 
     auto render_app = app.get_sub_app_mut(Render);
     ASSERT_TRUE(render_app.has_value());

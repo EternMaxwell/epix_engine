@@ -4,6 +4,7 @@
 #include <epix/camera.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
+#include <epix/mesh.hpp>
 #include <epix/render.hpp>
 #include <epix/render/screenshot.hpp>
 #include <epix/task.hpp>
@@ -31,6 +32,7 @@ TEST(ScreenshotPlugin, WindowRenderPluginInstallsAndCapturesComponentRequest) {
         .add_plugins(epix::camera::CameraPlugin{})
         .add_plugins(epix::assets::AssetPlugin{})
         .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::mesh::MeshPlugin{})
         .add_plugins(FrameCountPlugin{});
 
     try {
@@ -38,6 +40,11 @@ TEST(ScreenshotPlugin, WindowRenderPluginInstallsAndCapturesComponentRequest) {
     } catch (const std::exception& error) {
         GTEST_SKIP() << "GPU/Vulkan not available: " << error.what();
     }
+
+    // `MeshAllocatorPlugin` creates `MeshAllocator` in its `finish`/ready hook,
+    // which a fixture that never calls `App::run` has to invoke directly
+    // (`bevy_render/src/mesh/allocator.rs:1067-1073`).
+    epix::render::mesh::MeshAllocatorPlugin{}.ready(app);
 
     // ScreenshotPlugin is installed by WindowRenderPlugin, not manually here.
     ASSERT_TRUE(app.world().get_resource<CapturedScreenshots>().has_value());

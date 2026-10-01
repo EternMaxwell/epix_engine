@@ -4,6 +4,7 @@
 #include <epix/assets.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
+#include <epix/mesh.hpp>
 #include <epix/render.hpp>
 #include <epix/task.hpp>
 #include <epix/time.hpp>
@@ -33,8 +34,16 @@ void add_render_test_prerequisites(App& app) {
         .add_plugins(epix::camera::CameraPlugin{})
         .add_plugins(epix::assets::AssetPlugin{})
         .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::mesh::MeshPlugin{})
         .add_plugins(FrameCountPlugin{});
 }
+
+/** @brief Runs the render plugins' `finish`/ready phase directly, which these
+ *  fixtures never reach because they do not call `App::run`. `MeshAllocatorPlugin`
+ *  creates `MeshAllocator` there because it needs the device
+ *  (`bevy_render/src/mesh/allocator.rs:1067-1073`), so a fixture that runs the
+ *  render schedule has to install it the same way the running app does. */
+void ready_render_plugins(App& app) { epix::render::mesh::MeshAllocatorPlugin{}.ready(app); }
 
 // The Slang module identity `epix.view` mirrors Bevy's
 // `bevy_render::view` shader import path. Its public symbols must therefore
@@ -140,6 +149,7 @@ TEST(RenderWorld, EndToEndSyncAndExtract) {
     app.add_plugins(epix::time::TimePlugin{})
         .add_plugins(epix::assets::AssetPlugin{})
         .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::mesh::MeshPlugin{})
         .add_plugins(FrameCountPlugin{});
     try {
         app.add_plugins(RenderPlugin{});
@@ -152,6 +162,7 @@ TEST(RenderWorld, EndToEndSyncAndExtract) {
     EXPECT_FALSE(app.world().get_resource<epix::camera::ClearColor>().has_value());
     app.add_plugins(epix::camera::CameraPlugin{});
     EXPECT_TRUE(app.world().get_resource<epix::camera::ClearColor>().has_value());
+    ready_render_plugins(app);
     const auto texture_render_app = app.get_sub_app(Render);
     ASSERT_TRUE(texture_render_app.has_value());
     const auto& texture_world = texture_render_app->get().world();
@@ -508,6 +519,7 @@ TEST(RenderWorld, ExtractVisibleComponentsSkipsCulled) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << e.what();
         return;
     }
+    ready_render_plugins(app);
     app.run_schedule(Startup);
     app.add_plugins(ExtractComponentPlugin<SmokeComponent>::extract_visible());
 

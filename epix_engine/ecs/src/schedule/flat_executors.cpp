@@ -1,4 +1,8 @@
+#include <exception>
+#include <format>
 #include <spdlog/spdlog.h>
+#include <stdexcept>
+#include <variant>
 
 #include <epix/ecs/schedule.hpp>
 
@@ -122,30 +126,32 @@ void MultithreadFlatExecutor::execute(ScheduleSystems& _data, World& world, cons
     };
 
     auto handle_error = [&](size_t orig_index, const RunSystemError& error) {
-        if (std::holds_alternative<ValidateParamError>(error)) {
-            auto&& param_error = std::get<ValidateParamError>(error);
-            spdlog::error("[schedule] parameter validation error at system '{}', type: '{}', msg: {}",
-                          cache->nodes[orig_index].node->system->name(), param_error.param_type.short_name(),
-                          param_error.message);
-        } else if (std::holds_alternative<SystemException>(error)) {
-            auto&& expection = std::get<SystemException>(error);
-            try {
-                std::rethrow_exception(expection.exception);
-            } catch (const std::exception& e) {
-                spdlog::error("[schedule] system exception at system '{}', msg: {}",
-                              cache->nodes[orig_index].node->system->name(), e.what());
-            } catch (...) {
-                spdlog::error("[schedule] system exception at system '{}', msg: unknown",
-                              cache->nodes[orig_index].node->system->name());
-            }
-        } else if (std::holds_alternative<SystemResultError>(error)) {
-            const auto& result_error = std::get<SystemResultError>(error);
-            spdlog::error("[schedule] system error at system '{}', type: '{}', msg: {}",
-                          cache->nodes[orig_index].node->system->name(), result_error.error_type.short_name(),
-                          result_error.message);
+        if (config.on_error) {
+            config.on_error(error);
+            return;
         }
-        if (config.on_error) config.on_error(error);
+        const auto name = cache->nodes[orig_index].node->system->name();
+        if (const auto* param_error = std::get_if<ValidateParamError>(&error)) {
+            throw std::runtime_error(std::format(
+                "Encountered an error in system `{}`: Parameter `{}` failed validation: {}", name,
+                param_error->param_type.short_name(), param_error->message));
+        }
+        if (const auto* exception = std::get_if<SystemException>(&error)) {
+            std::rethrow_exception(exception->exception);
+        }
+        if (const auto* result_error = std::get_if<SystemResultError>(&error)) {
+            throw std::runtime_error(std::format("Encountered an error in system `{}`: {}: {}", name,
+                                                result_error->error_type.short_name(), result_error->message));
+        }
+        throw std::runtime_error(std::format("Encountered an error in system `{}`", name));
     };
+
+    // A failed system stops the schedule, as a Bevy system error panics. A system
+    // dispatched to the pool runs on a worker thread, so the throw cannot propagate
+    // on its own; it is captured in the task and rethrown on this thread once every
+    // dispatched system has finished.
+    std::exception_ptr pending_error;
+    bool has_pending_error = false;
 
     struct PendingEntry {
         size_t flat_index;
@@ -182,13 +188,22 @@ void MultithreadFlatExecutor::execute(ScheduleSystems& _data, World& world, cons
             pool.detach_task([&, slot, fi, oi]() {
                 auto& system = *cache->nodes[oi].node->system;
                 spdlog::trace("[schedule] Running system '{}' on worker thread.", system.name());
-                auto res = system.run_no_apply({}, world);
-                if (!res) handle_error(oi, res.error());
+                std::exception_ptr error;
+                try {
+                    auto res = system.run_no_apply({}, world);
+                    if (!res) handle_error(oi, res.error());
+                } catch (...) {
+                    error = std::current_exception();
+                }
                 spdlog::trace("[schedule] Finished system '{}' on worker thread.", system.name());
                 {
                     std::lock_guard lock(dispatch_mutex);
                     active_accesses[slot] = nullptr;
                     free_slots.push_back(slot);
+                    if (error && !has_pending_error) {
+                        has_pending_error = true;
+                        pending_error     = error;
+                    }
                 }
                 finished_queue.push(fi);
             });
@@ -313,6 +328,12 @@ void MultithreadFlatExecutor::execute(ScheduleSystems& _data, World& world, cons
             flush_pending();
         }
     } while (true);
+
+    // Bevy's panic aborts the schedule that ran the system; surface the captured
+    // error here, before any deferred work is applied.
+    if (has_pending_error) {
+        std::rethrow_exception(pending_error);
+    }
 
     // Deferred handling — iterate original nodes that had systems
     switch (config.deferred) {

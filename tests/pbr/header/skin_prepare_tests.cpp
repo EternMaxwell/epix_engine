@@ -2,6 +2,7 @@
 #include <epix/assets.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
+#include <epix/mesh.hpp>
 #include <epix/pbr/skin.hpp>
 #include <epix/render.hpp>
 #include <epix/shader.hpp>
@@ -37,11 +38,18 @@ void add_render_prerequisites(App& app) {
         .add_plugins(epix::camera::CameraPlugin{})
         .add_plugins(AssetPlugin{})
         .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::mesh::MeshPlugin{})
         .add_plugins(epix::shader::ShaderPlugin{})
         .add_plugins(render::FrameCountPlugin{})
         .add_plugins(render::view::ViewPlugin{})
         .add_plugins(render::GlobalsPlugin{});
 }
+
+/** @brief `MeshAllocatorPlugin` creates `MeshAllocator` in its `finish`/ready
+ *  hook, which a fixture that never calls `App::run` has to invoke directly
+ *  (`bevy_render/src/mesh/allocator.rs:1067-1073`); the render schedule it is
+ *  registered in runs below. */
+void ready_render_plugins(App& app) { render::mesh::MeshAllocatorPlugin{}.ready(app); }
 
 }  // namespace
 
@@ -146,6 +154,8 @@ TEST(SkinPrepare, ExtractSkinsFillsTheStagingBuffer) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
     }
 
+    ready_render_plugins(app);
+
     // The joints and the mesh that skins them, all in the main world.
     const epix::ecs::Entity joint_a = app.world_mut().spawn(epix::transform::GlobalTransform{}).id();
     const epix::ecs::Entity joint_b = app.world_mut().spawn(epix::transform::GlobalTransform{}).id();
@@ -209,9 +219,20 @@ TEST(SkinPrepare, NoAutomaticSkinBatchingFollowsThePlatform) {
     } catch (const std::exception& error) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
     }
+    ready_render_plugins(app);
 
     auto render_app = app.get_sub_app_mut(render::Render);
     ASSERT_TRUE(render_app.has_value());
+
+    // This fixture drives the render schedule without a live frame, so the systems
+    // that expect one (view targets, attachments) cannot validate their parameters.
+    // A failed system now stops the schedule, as a system error does in Bevy; this
+    // headless harness opts into skipping them for this run instead. The assertions
+    // below cover the system under test either way.
+    render_app->get().schedule_scope(
+        render::Render, [](epix::ecs::Schedule& schedule, epix::ecs::World&) {
+            schedule.default_schedule_config().executor_config.on_error = [](const epix::ecs::RunSystemError&) {};
+        });
 
     const auto& device = render_app->get().world().resource<wgpu::Device>();
     wgpu::Limits limits{};

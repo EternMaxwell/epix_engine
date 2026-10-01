@@ -1,6 +1,7 @@
 #include <epix/assets.hpp>
 #include <epix/camera.hpp>
 #include <epix/core_graph/mip_generation.hpp>
+#include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/render.hpp>
 #include <epix/task.hpp>
@@ -233,8 +234,24 @@ TEST(MipGeneration, PluginCreatesAllFourDownsamplePipelines) {
 
     app.add_plugins(epix::core_graph::mip_generation::MipGenerationPlugin{});
 
+    // `MeshAllocatorPlugin` creates `MeshAllocator` in its `finish`/ready hook,
+    // which a fixture that never calls `App::run` has to invoke directly
+    // (`bevy_render/src/mesh/allocator.rs:1067-1073`); the render schedule below
+    // runs the system that needs it.
+    epix::render::mesh::MeshAllocatorPlugin{}.ready(app);
+
     auto render_app = app.get_sub_app_mut(epix::render::Render);
     ASSERT_TRUE(render_app.has_value());
+
+    // This fixture drives the render schedule without a live frame, so the systems
+    // that expect one (frame count, clear color, view attachments) cannot validate
+    // their parameters. A failed system now stops the schedule, as a system error
+    // does in Bevy; this headless harness opts into skipping them for this run
+    // instead. The assertions below cover the system under test either way.
+    render_app->get().schedule_scope(
+        epix::render::Render, [](epix::ecs::Schedule& schedule, epix::ecs::World&) {
+            schedule.default_schedule_config().executor_config.on_error = [](const epix::ecs::RunSystemError&) {};
+        });
 
     // The plugin only loads the embedded shader handle; the asset itself is
     // loaded by the main app's asset systems.

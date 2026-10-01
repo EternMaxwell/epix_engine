@@ -9,6 +9,7 @@
 #include <epix/core_graph.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
+#include <epix/mesh.hpp>
 #include <epix/render.hpp>
 #include <epix/time.hpp>
 #include <optional>
@@ -254,6 +255,25 @@ TEST(SplitTransmissiveRange, DistributesRemainderToInitialRanges) {
     EXPECT_THROW(split_transmissive_range(0, 2, 0), std::invalid_argument);
 }
 
+namespace {
+
+/** @brief Initialize the render world's `FullscreenShader`.
+ *
+ * Bevy's `CorePipelinePlugin` owns this resource
+ * (`bevy_core_pipeline/src/lib.rs:55`, `render_app.init_resource::<FullscreenShader>()`),
+ * and the skybox pipeline systems `Core3dPlugin` registers in `RenderStartup`
+ * require it. A fixture that adds `Core3dPlugin` without the pipeline plugin has
+ * to provide it, exactly as `CoreGraphPlugin` does for a real app. */
+void init_fullscreen_shader(epix::app::App& app) {
+    const auto handle = epix::assets::Handle<epix::shader::Shader>{
+        epix::assets::AssetId<epix::shader::Shader>::invalid()};
+    auto render_app = app.get_sub_app_mut(Render);
+    ASSERT_TRUE(render_app.has_value());
+    render_app->get().world_mut().insert_resource(epix::core_graph::FullscreenShader{handle});
+}
+
+}  // namespace
+
 // Bevy Core3dPlugin gives Camera3d the Core3D graph, an enabled DebandDither,
 // the default Tonemapping, and extracts the marker into the render world so
 // Core3D systems can query it.
@@ -265,13 +285,15 @@ TEST(Core3dPlugin, AddsCameraRequirementsAndExtractsCamera3d) {
         .add_plugins(epix::render::FrameCountPlugin{})
         .add_plugins(epix::camera::CameraPlugin{})
         .add_plugins(epix::assets::AssetPlugin{})
-        .add_plugins(epix::image::ImagePlugin{});
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::mesh::MeshPlugin{});
     try {
         app.add_plugins(RenderPlugin{});
     } catch (const std::exception& error) {
         GTEST_SKIP() << "GPU/Vulkan unavailable: " << error.what();
     }
     app.add_plugins(epix::core_graph::core_3d::Core3dPlugin{});
+    init_fullscreen_shader(app);
     ASSERT_TRUE(app.world().get_resource<FrameCount>().has_value());
 
     const Entity camera = app.world_mut().spawn(::epix::camera::Camera3d{}).id();
@@ -396,7 +418,8 @@ TEST(Core3dDepthTextures, UnionsUsagesPerTargetAndHonorsLoadOp) {
         .add_plugins(epix::time::TimePlugin{})
         .add_plugins(epix::camera::CameraPlugin{})
         .add_plugins(epix::assets::AssetPlugin{})
-        .add_plugins(epix::image::ImagePlugin{});
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::mesh::MeshPlugin{});
     try {
         app.add_plugins(RenderPlugin{});
     } catch (const std::exception& error) {
@@ -490,7 +513,8 @@ TEST(Core3dTransmissionTextures, RequiresStepsItemsPhasesAndSize) {
         .add_plugins(epix::time::TimePlugin{})
         .add_plugins(epix::camera::CameraPlugin{})
         .add_plugins(epix::assets::AssetPlugin{})
-        .add_plugins(epix::image::ImagePlugin{});
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::mesh::MeshPlugin{});
     try {
         app.add_plugins(RenderPlugin{});
     } catch (const std::exception& error) {
@@ -682,13 +706,15 @@ TEST(Core3dPrepassExtraction, RequiresAnActiveCameraWithAPrepassComponent) {
         .add_plugins(epix::render::FrameCountPlugin{})
         .add_plugins(epix::camera::CameraPlugin{})
         .add_plugins(epix::assets::AssetPlugin{})
-        .add_plugins(epix::image::ImagePlugin{});
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::mesh::MeshPlugin{});
     try {
         app.add_plugins(RenderPlugin{});
     } catch (const std::exception& error) {
         GTEST_SKIP() << "GPU/Vulkan unavailable: " << error.what();
     }
     app.add_plugins(epix::core_graph::core_3d::Core3dPlugin{});
+    init_fullscreen_shader(app);
 
     const auto spawn = [&app](bool active, bool depth_prepass, bool normal_prepass, bool deferred_prepass) {
         ::epix::camera::Camera camera;
@@ -789,7 +815,8 @@ TEST(Core3dPrepassTextures, AllocatesOnlyRequestedTexturesWithBevyFormats) {
         .add_plugins(epix::time::TimePlugin{})
         .add_plugins(epix::camera::CameraPlugin{})
         .add_plugins(epix::assets::AssetPlugin{})
-        .add_plugins(epix::image::ImagePlugin{});
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::mesh::MeshPlugin{});
     try {
         app.add_plugins(RenderPlugin{});
     } catch (const std::exception& error) {
@@ -907,7 +934,8 @@ TEST(Core3dPrepassTextures, DoubleBufferSwapsOnFrameParity) {
         .add_plugins(epix::time::TimePlugin{})
         .add_plugins(epix::camera::CameraPlugin{})
         .add_plugins(epix::assets::AssetPlugin{})
-        .add_plugins(epix::image::ImagePlugin{});
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::mesh::MeshPlugin{});
     try {
         app.add_plugins(RenderPlugin{});
     } catch (const std::exception& error) {
@@ -1005,7 +1033,8 @@ TEST(Core3dPrepassTextures, DepthPrepassAddsCopySrcToTheViewDepthTexture) {
         .add_plugins(epix::time::TimePlugin{})
         .add_plugins(epix::camera::CameraPlugin{})
         .add_plugins(epix::assets::AssetPlugin{})
-        .add_plugins(epix::image::ImagePlugin{});
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::mesh::MeshPlugin{});
     try {
         app.add_plugins(RenderPlugin{});
     } catch (const std::exception& error) {
@@ -1080,7 +1109,8 @@ TEST(Core3dDeferredTextures, RequiresDeferredPrepassAndAllocatesBevyFormats) {
         .add_plugins(epix::time::TimePlugin{})
         .add_plugins(epix::camera::CameraPlugin{})
         .add_plugins(epix::assets::AssetPlugin{})
-        .add_plugins(epix::image::ImagePlugin{});
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::mesh::MeshPlugin{});
     try {
         app.add_plugins(RenderPlugin{});
     } catch (const std::exception& error) {
@@ -1160,7 +1190,8 @@ TEST(Core3dDeferredTextures, CopyLightingIdAllocatesADepthTargetPerDeferredView)
         .add_plugins(epix::time::TimePlugin{})
         .add_plugins(epix::camera::CameraPlugin{})
         .add_plugins(epix::assets::AssetPlugin{})
-        .add_plugins(epix::image::ImagePlugin{});
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::mesh::MeshPlugin{});
     try {
         app.add_plugins(RenderPlugin{});
     } catch (const std::exception& error) {

@@ -5,6 +5,7 @@
 #include <epix/core_graph.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
+#include <epix/mesh.hpp>
 #include <epix/render.hpp>
 #include <epix/time.hpp>
 #include <array>
@@ -183,7 +184,8 @@ TEST(TonemappingPipeline, MatchesBevyKeyAndPlaceholderContracts) {
 // to its existing filterable RGBA32F image representation.
 TEST(TonemappingPlugin, InstallsBundledBevyLuts) {
     epix::app::App app = epix::app::App::create();
-    app.add_plugins(epix::assets::AssetPlugin{}).add_plugins(epix::image::ImagePlugin{});
+    app.add_plugins(epix::assets::AssetPlugin{}).add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::mesh::MeshPlugin{});
     app.add_plugins(epix::core_graph::TonemappingPlugin{});
 
     const auto& luts = app.world().resource<epix::core_graph::TonemappingLuts>();
@@ -225,7 +227,8 @@ TEST(UpscalingPlugin, RegistersPerViewPipelineAndTypedCore2dNode) {
         .add_plugins(epix::time::TimePlugin{})
         .add_plugins(epix::camera::CameraPlugin{})
         .add_plugins(epix::assets::AssetPlugin{})
-        .add_plugins(epix::image::ImagePlugin{});
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::mesh::MeshPlugin{});
     try {
         app.add_plugins(RenderPlugin{});
     } catch (const std::exception& error) {
@@ -267,6 +270,26 @@ TEST(UpscalingPlugin, RegistersPerViewPipelineAndTypedCore2dNode) {
     EXPECT_TRUE(core2d->get().get_node_state(epix::core_graph::core_2d::Node2d::Upscaling).has_value());
 }
 
+namespace {
+
+/** @brief Initialize the render world's `FullscreenShader`.
+ *
+ * Bevy's `CorePipelinePlugin` owns this resource
+ * (`bevy_core_pipeline/src/lib.rs:55`, `render_app.init_resource::<FullscreenShader>()`),
+ * and the pipeline systems `Core2dPlugin`/`Core3dPlugin` register in
+ * `RenderStartup` require it. A fixture that adds those plugins without the
+ * pipeline plugin has to provide it, exactly as `CoreGraphPlugin` does for a
+ * real app. */
+void init_fullscreen_shader(epix::app::App& app) {
+    const auto handle = epix::assets::Handle<epix::shader::Shader>{
+        epix::assets::AssetId<epix::shader::Shader>::invalid()};
+    auto render_app = app.get_sub_app_mut(Render);
+    ASSERT_TRUE(render_app.has_value());
+    render_app->get().world_mut().insert_resource(epix::core_graph::FullscreenShader{handle});
+}
+
+}  // namespace
+
 // Bevy Core2dPlugin supplies these three Camera2d requirements and extracts
 // the marker into the render world for its Core2D-only queries.
 TEST(Core2dPlugin, AddsCameraRequirementsAndExtractsCamera2d) {
@@ -277,13 +300,15 @@ TEST(Core2dPlugin, AddsCameraRequirementsAndExtractsCamera2d) {
         .add_plugins(epix::render::FrameCountPlugin{})
         .add_plugins(epix::camera::CameraPlugin{})
         .add_plugins(epix::assets::AssetPlugin{})
-        .add_plugins(epix::image::ImagePlugin{});
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::mesh::MeshPlugin{});
     try {
         app.add_plugins(RenderPlugin{});
     } catch (const std::exception& error) {
         GTEST_SKIP() << "GPU/Vulkan unavailable: " << error.what();
     }
     app.add_plugins(epix::core_graph::core_2d::Core2dPlugin{});
+    init_fullscreen_shader(app);
     ASSERT_TRUE(app.world().get_resource<FrameCount>().has_value());
 
     const Entity camera = app.world_mut().spawn(::epix::camera::Camera2d{}).id();
@@ -356,7 +381,8 @@ TEST(Core2dDepthTextures, FiltersCameraMarkerAndPhasesAndSharesPerTarget) {
         .add_plugins(epix::time::TimePlugin{})
         .add_plugins(epix::camera::CameraPlugin{})
         .add_plugins(epix::assets::AssetPlugin{})
-        .add_plugins(epix::image::ImagePlugin{});
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::mesh::MeshPlugin{});
     try {
         app.add_plugins(RenderPlugin{});
     } catch (const std::exception& error) {
@@ -600,7 +626,8 @@ TEST(FullscreenMaterial, NodeEdgesAndSubGraphsBothExist) {
         .add_plugins(epix::time::TimePlugin{})
         .add_plugins(epix::camera::CameraPlugin{})
         .add_plugins(epix::assets::AssetPlugin{})
-        .add_plugins(epix::image::ImagePlugin{});
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::mesh::MeshPlugin{});
     try {
         app.add_plugins(::epix::render::RenderPlugin{});
     } catch (const std::exception& error) {
