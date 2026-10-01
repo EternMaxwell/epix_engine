@@ -2,9 +2,11 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <epix/assets.hpp>
+#include <epix/camera.hpp>
 #include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
+#include <epix/transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #endif
 
@@ -18,9 +20,18 @@ namespace epix::pbr {
  *  and translated by the entity's `Transform`. A light probe does nothing on its
  *  own; the entity also needs an `EnvironmentMapLight` or an `IrradianceVolume`.
  *
- *  Bevy requires `Transform` and `Visibility`, which Epix registers from the
- *  plugin that owns the component. */
-EPIX_EXPORT struct LightProbe {};
+ *  Bevy requires `Transform` and `Visibility`, which this port registers from
+ *  the type's own hook. */
+EPIX_EXPORT struct LightProbe {
+    /** @brief Bevy's `#[require(Transform, Visibility)]` (`bevy_light/src/probe.rs:50`).
+     *  The probe's volume is placed by the `Transform`, and `Visibility` is what
+     *  gives the entity a `ViewVisibility` for the extraction stage. */
+    static void register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator) {
+        registrator.template register_required<::epix::transform::Transform>(
+            [] { return ::epix::transform::Transform{}; });
+        registrator.template register_required<::epix::camera::Visibility>([] { return ::epix::camera::Visibility{}; });
+    }
+};
 
 /** @brief A pair of cubemaps describing the surroundings of an area (Bevy
  *  `EnvironmentMapLight`, `probe.rs:67-108`).
@@ -90,6 +101,12 @@ EPIX_EXPORT struct IrradianceVolume {
      *  already captured the indirect light set this false to avoid counting it
      *  twice. */
     bool affects_lightmapped_meshes = true;
+
+    /** @brief Bevy's `#[require(LightProbe)]` (`probe.rs:184`): the volume is used
+     *  through the probe its entity carries. */
+    static void register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator) {
+        registrator.template register_required<LightProbe>([] { return LightProbe{}; });
+    }
 };
 
 }  // namespace epix::pbr

@@ -1,11 +1,12 @@
 #pragma once
 #include <epix/pbr/scattering_medium.hpp>
-#include <epix/render/extract.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
 #include <epix/common.hpp>
+#include <epix/render/extract.hpp>
 #include <epix/render/render_resource.hpp>
+#include <epix/render/view.hpp>
 #include <glm/glm.hpp>
 #endif
 
@@ -29,8 +30,9 @@ EPIX_EXPORT enum class AtmosphereMode : std::uint32_t {
 /** @brief The settings an atmosphere is configured with (Bevy
  *  `AtmosphereSettings`, `bevy_pbr/src/atmosphere/mod.rs:292-365`).
  *
- *  Bevy marks this a component and requires it from `Atmosphere`; the fields and
- *  their defaults are the whole type. */
+ *  Bevy marks this a component and requires it from `Atmosphere`, which this port
+ *  registers from `Atmosphere`'s own hook; the fields and their defaults are the
+ *  whole type. */
 EPIX_EXPORT struct AtmosphereSettings {
     /** @brief The size of the transmittance LUT. */
     glm::uvec2 transmittance_lut_size{256, 128};
@@ -170,6 +172,15 @@ EPIX_EXPORT struct Atmosphere {
                           .top_radius    = 6'460'000.0f,
                           .ground_albedo = glm::vec3{0.3f},
                           .medium        = std::move(medium)};
+    }
+
+    /** @brief Bevy's `#[require(AtmosphereSettings, Hdr)]`
+     *  (`bevy_pbr/src/atmosphere/mod.rs:209`). The settings carry the LUT sizes and
+     *  sample counts the atmosphere is built from, and `Hdr` is what makes the
+     *  camera render into a float target instead of clipping the sky. */
+    static void register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator) {
+        registrator.template register_required<AtmosphereSettings>([] { return AtmosphereSettings{}; });
+        registrator.template register_required<render::view::Hdr>([] { return render::view::Hdr{}; });
     }
 };
 

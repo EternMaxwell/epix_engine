@@ -3,6 +3,7 @@
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
 #include <epix/common.hpp>
+#include <epix/core_graph/core3d.hpp>
 #include <epix/render/render_resource.hpp>
 #include <glm/glm.hpp>
 #endif
@@ -14,9 +15,8 @@ namespace epix::pbr {
  *
  *  The fields mirror Bevy's, including the defaults the plugin's own comment
  *  takes from a public gist. Bevy marks the component `#[require(DepthPrepass,
- *  DeferredPrepass)]` and SSR only appears with deferred rendering; Epix has no
- *  required-components declaration, so a caller adding this component is
- *  responsible for the two prepass components. */
+ *  DeferredPrepass)]` and SSR only appears with deferred rendering; this port
+ *  registers both from the type's own hook. */
 EPIX_EXPORT struct ScreenSpaceReflections {
     /** @brief The maximum PBR roughness level that will enable screen-space
      *  reflections. */
@@ -39,6 +39,16 @@ EPIX_EXPORT struct ScreenSpaceReflections {
      *  by solving for the line-line intersection between the ray approach rate
      *  and the surface gradient. */
     bool use_secant = true;
+
+    /** @brief Bevy's `#[require(DepthPrepass, DeferredPrepass)]`
+     *  (`bevy_pbr/src/ssr/mod.rs:87`). SSR traces against the depth buffer and reads
+     *  the deferred G-buffer, so the camera needs both prepasses. */
+    static void register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator) {
+        registrator.template register_required<::epix::core_graph::core_3d::DepthPrepass>(
+            [] { return ::epix::core_graph::core_3d::DepthPrepass{}; });
+        registrator.template register_required<::epix::core_graph::core_3d::DeferredPrepass>(
+            [] { return ::epix::core_graph::core_3d::DeferredPrepass{}; });
+    }
 };
 
 /** @brief The GPU form of the settings above (Bevy

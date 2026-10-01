@@ -96,6 +96,12 @@ EPIX_EXPORT struct DirectionalLightTexture {
     /** @brief Whether to tile the image infinitely, or use a single tile centred
      *  on the light's transform. */
     bool tiled = false;
+
+    /** @brief Bevy's `#[require(DirectionalLight)]` (`directional_light.rs:165`), the
+     *  counterpart of `PointLightTexture`'s and `SpotLightTexture`'s requirements. */
+    static void register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator) {
+        registrator.template register_required<DirectionalLight>([] { return DirectionalLight{}; });
+    }
 };
 
 }  // namespace epix::pbr

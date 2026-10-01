@@ -15,6 +15,7 @@
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/render.hpp>
+#include <epix/transform.hpp>
 #include <glm/glm.hpp>
 #include <limits>
 #include <optional>
@@ -217,6 +218,18 @@ EPIX_EXPORT struct ClusteredDecal {
      *  custom shader has - for example restricting which surfaces the decal
      *  affects. */
     std::uint32_t tag = 0;
+
+    /** @brief Bevy's `#[require(Transform, Visibility, VisibilityClass)]`
+     *  (`bevy_light/src/cluster/mod.rs:166`). The decal projects along its own -Z
+     *  from a 1×1×1 cube at its `Transform`, and `VisibilityClass` is what routes
+     *  the entity to the clustered-decal phase. */
+    static void register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator) {
+        registrator.template register_required<::epix::transform::Transform>(
+            [] { return ::epix::transform::Transform{}; });
+        registrator.template register_required<::epix::camera::Visibility>([] { return ::epix::camera::Visibility{}; });
+        registrator.template register_required<::epix::camera::VisibilityClass>(
+            [] { return ::epix::camera::VisibilityClass{}; });
+    }
 };
 
 /** @brief The cluster factors a view's clusters use (Bevy

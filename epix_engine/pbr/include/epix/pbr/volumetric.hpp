@@ -3,9 +3,11 @@
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
 #include <epix/assets.hpp>
+#include <epix/camera.hpp>
 #include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
+#include <epix/transform.hpp>
 #include <glm/glm.hpp>
 #include <optional>
 #endif
@@ -42,7 +44,7 @@ EPIX_EXPORT struct VolumetricFog {
 
 /** @brief A volume of participating media (Bevy `FogVolume`,
  *  `volumetric.rs:76-159`). Bevy requires `Transform` and `Visibility`, which
- *  Epix registers from the plugin that owns the type.
+ *  this port registers from the type's own hook.
  *
  *  Bevy's own doc comment for `scattering_asymmetry` says the default is 0.8
  *  while its `Default` implementation sets 0.5; the implementation is what is
@@ -76,6 +78,15 @@ EPIX_EXPORT struct FogVolume {
     /** @brief Scales the light by a fixed fraction; 1.0 by default, which is no
      *  adjustment. */
     float light_intensity = 1.0f;
+
+    /** @brief Bevy's `#[require(Transform, Visibility)]` (`volumetric.rs:75`). The
+     *  fog volume is a box placed by the `Transform`, and `Visibility` supplies the
+     *  `ViewVisibility` the extraction stage reads. */
+    static void register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator) {
+        registrator.template register_required<::epix::transform::Transform>(
+            [] { return ::epix::transform::Transform{}; });
+        registrator.template register_required<::epix::camera::Visibility>([] { return ::epix::camera::Visibility{}; });
+    }
 };
 
 }  // namespace epix::pbr
