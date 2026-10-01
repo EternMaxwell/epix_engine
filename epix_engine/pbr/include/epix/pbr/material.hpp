@@ -1,13 +1,9 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
-#include <epix/pbr/mesh_pipeline_resource.hpp>
-#include <epix/pbr/light_markers.hpp>
-#include <epix/pbr/mesh_pipeline_key.hpp>
 #include <epix/render/alpha.hpp>
 #include <epix/camera.hpp>
 #include <epix/mesh.hpp>
-#include <epix/pbr/mesh_material.hpp>
 #include <cstdint>
 #include <epix/assets/id.hpp>
 // `MaterialPlugin` calls `app_register_asset`, which this declares. Without it the
@@ -16,11 +12,16 @@
 #include <epix/assets.hpp>
 #include <epix/common.hpp>
 #include <epix/ecs/core/tick.hpp>
-#include <epix/pbr/material_bindings.hpp>
 #include <epix/render/sync_world.hpp>
 #include <optional>
 #include <unordered_map>
 #endif
+
+#include <epix/pbr/mesh_pipeline_resource.hpp>
+#include <epix/pbr/light_markers.hpp>
+#include <epix/pbr/mesh_pipeline_key.hpp>
+#include <epix/pbr/mesh_material.hpp>
+#include <epix/pbr/material_bindings.hpp>
 
 namespace epix::pbr {
 
@@ -173,6 +174,36 @@ EPIX_EXPORT enum class OpaqueRendererMethod {
     Forward,  /**< Draw it in the forward pass. */
     Deferred, /**< Draw it in the deferred pass. */
     Auto,     /**< Follow the `DefaultOpaqueRendererMethod` resource. */
+};
+
+/** @brief The render method an `OpaqueRendererMethod::Auto` material resolves to
+ *  (Bevy `DefaultOpaqueRendererMethod`, `bevy_pbr/src/material.rs:1330-1351`).
+ *
+ *  A main-world resource that `PbrPlugin` initialises and extracts into the render
+ *  world with `ExtractResourcePlugin<DefaultOpaqueRendererMethod>` (Bevy
+ *  `bevy_pbr/src/lib.rs:220,224`). `Default` is Bevy's `#[derive(Default)]`, which
+ *  leaves the method at `OpaqueRendererMethod::Forward`. */
+EPIX_EXPORT struct DefaultOpaqueRendererMethod {
+   private:
+    /** @brief The method `Auto` resolves to. Bevy's private tuple field. */
+    OpaqueRendererMethod m_method = OpaqueRendererMethod::Forward;
+
+   public:
+    /** @brief The forward renderer (Bevy `DefaultOpaqueRendererMethod::forward`). */
+    static DefaultOpaqueRendererMethod forward() noexcept { return DefaultOpaqueRendererMethod{}; }
+
+    /** @brief The deferred renderer (Bevy `DefaultOpaqueRendererMethod::deferred`). */
+    static DefaultOpaqueRendererMethod deferred() noexcept {
+        DefaultOpaqueRendererMethod method;
+        method.set_to_deferred();
+        return method;
+    }
+
+    /** @brief Switch to the forward renderer (Bevy `set_to_forward`). */
+    void set_to_forward() noexcept { m_method = OpaqueRendererMethod::Forward; }
+
+    /** @brief Switch to the deferred renderer (Bevy `set_to_deferred`). */
+    void set_to_deferred() noexcept { m_method = OpaqueRendererMethod::Deferred; }
 };
 
 /** @brief The specialization key of one 3D material (Bevy `MaterialPipelineKey`,

@@ -10,12 +10,21 @@ namespace epix::pbr {
  *
  *  **Partial by design, and the reason is recorded here.** Bevy's `PbrPlugin` loads
  *  twenty shader libraries, registers `StandardMaterial`, initialises
- *  `DefaultOpaqueRendererMethod`, and aggregates ten plugins. Three of those plugins
- *  exist in this port - `MeshRenderPlugin`, `LightmapPlugin` and `LightPlugin` - and are
- *  added here; the other seven (`MaterialsPlugin`, `MaterialPlugin<StandardMaterial>`,
- *  `ScreenSpaceAmbientOcclusionPlugin`, `FogPlugin`,
- *  `ExtractResourcePlugin<DefaultOpaqueRendererMethod>`, `LightProbePlugin` and
- *  `GpuMeshPreprocessPlugin`) do not, and each is an open row rather than a silent gap.
+ *  `DefaultOpaqueRendererMethod`, and aggregates twenty plugin entries
+ *  (`bevy_pbr/src/lib.rs:193-260`: thirteen, then five `decal`/`SyncComponentPlugin`
+ *  ones, then `ScatteringMediumPlugin` and `AtmospherePlugin`). Four entries exist in
+ *  this port and are added here: `MeshRenderPlugin`,
+ *  `ExtractResourcePlugin<DefaultOpaqueRendererMethod>`, `LightmapPlugin` and
+ *  `LightPlugin`. The rest do not - `MaterialsPlugin`,
+ *  `MaterialPlugin<StandardMaterial>`, `ScreenSpaceAmbientOcclusionPlugin`, `FogPlugin`,
+ *  `SyncComponentPlugin<ShadowFilteringMethod>` and the four that sync the light types,
+ *  `LightProbePlugin`, `GpuMeshPreprocessPlugin`, `VolumetricFogPlugin`,
+ *  `ScreenSpaceReflectionsPlugin`, `ClusteredDecalPlugin`, `ForwardDecalPlugin` and
+ *  `AtmospherePlugin` - and each is an open row rather than a silent gap.
+ *  `StandardMaterial` is not ported, which is what gates the two material plugins;
+ *  `ScatteringMediumPlugin` is declared here
+ *  (`epix_engine/pbr/include/epix/pbr/scattering_medium_plugin.hpp:29`) but Bevy's
+ *  `PbrPlugin` is not its owner in this port yet.
  *
  *  This exists because `LightPlugin` needs an owner: without one, nine finished systems
  *  had no caller. It grows as those plugins land, and the shader libraries stay where
