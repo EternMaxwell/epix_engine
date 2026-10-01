@@ -2,10 +2,10 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <array>
-#include <epix/color/color_ops.hpp>
 #include <epix/common.hpp>
 #include <glm/glm.hpp>
 #endif
+#include <epix/color/color_ops.hpp>
 
 namespace epix::color {
 

@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <expected>
 #include <variant>
+#include <epix/common.hpp>
+#endif
 #include <epix/color/color_ops.hpp>
 #include <epix/color/hsla.hpp>
 #include <epix/color/hsva.hpp>
@@ -17,8 +19,6 @@
 #include <epix/color/oklcha.hpp>
 #include <epix/color/srgba.hpp>
 #include <epix/color/xyza.hpp>
-#include <epix/common.hpp>
-#endif
 
 namespace epix::color {
 

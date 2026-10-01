@@ -1,8 +1,6 @@
 #pragma once
 
-#ifndef EPIX_CXX_MODULE
 #include <epix/color/srgba.hpp>
-#endif
 
 namespace epix::color::palettes {
 

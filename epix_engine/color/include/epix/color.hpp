@@ -15,7 +15,6 @@
  *  in `epix/color/color_ops.hpp` and implemented as members of each space, so it has no header of
  *  its own. */
 
-#ifndef EPIX_CXX_MODULE
 #include <epix/color/color_ops.hpp>
 #include <epix/color/color.hpp>
 #include <epix/color/hsla.hpp>
@@ -29,4 +28,3 @@
 #include <epix/color/palettes/basic.hpp>
 #include <epix/color/srgba.hpp>
 #include <epix/color/xyza.hpp>
-#endif
