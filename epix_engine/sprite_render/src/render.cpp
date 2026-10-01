@@ -432,7 +432,7 @@ void sprite_render::extract_sprites(ResMut<ExtractedSprites> extracted_sprites,
             .main_entity     = main_entity,
             .render_entity   = render_entity.id(),
             .transform       = transform,
-            .color           = value.color,
+            .color           = value.color.linear().vec4(),
             .image_handle_id = value.image.id(),
             .flip_x          = value.flip_x,
             .flip_y          = value.flip_y,
@@ -671,8 +671,13 @@ void SpriteRenderPlugin::attach(App& app) {
     // Bevy `SpriteRenderPlugin::build` (`lib.rs:71-76`) adds this tuple; Epix's
     // plugin registry skips an already-added type, so an application may still
     // add any of them itself.
-    app.add_plugins(Mesh2dRenderPlugin{}, ColorMaterialPlugin{}, TilemapChunkPlugin{}, TilemapChunkMaterialPlugin{},
-                    render::SyncComponentPlugin<sprite::Sprite>{});
+    app.add_plugins(Mesh2dRenderPlugin{}, ColorMaterialPlugin{}, TilemapChunkPlugin{}, TilemapChunkMaterialPlugin{});
+    // Bevy `SpriteRenderPlugin::build` (`bevy_sprite_render/src/lib.rs:86`)
+    // registers only the required component for sprites: the removal half of
+    // `SyncComponentPlugin` is applied to the material and wireframe types but
+    // never to `Sprite`, so removing `Sprite` leaves the render entity in place.
+    app.world_mut().register_required_components_with<sprite::Sprite>(
+        [] { return render::sync_world::SyncToRenderWorld{}; });
     app.add_systems(app::PostUpdate, into(sprite_render::compute_slices_on_asset_event)
                                          .in_set(SpriteSystems::ComputeSlices)
                                          .before(assets::AssetSystems::WriteEvents)

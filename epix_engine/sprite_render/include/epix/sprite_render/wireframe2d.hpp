@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/color.hpp>
 #include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
@@ -23,16 +24,13 @@
 
 namespace epix::sprite_render {
 /** @brief Resource controlling global 2D wireframing (Bevy `Wireframe2dConfig`,
- *  `bevy_sprite_render/src/mesh2d/wireframe2d.rs:436-446`).
- *
- *  Epix has no `bevy_color`, so colours are linear `glm::vec4` here, exactly as
- *  `ColorMaterial` carries them. */
+ *  `bevy_sprite_render/src/mesh2d/wireframe2d.rs:436-446`). */
 EPIX_EXPORT struct Wireframe2dConfig {
     /** @brief Whether to show wireframes for all meshes (Bevy `global`). */
     bool global = false;
     /** @brief The colour used for globally enabled wireframes (Bevy
      *  `default_color`, `Color::WHITE`). */
-    glm::vec4 default_color{1.0f, 1.0f, 1.0f, 1.0f};
+    ::epix::color::Color default_color = ::epix::color::Color::WHITE;
 };
 
 /** @brief Enables wireframe rendering for the entity it is attached to,
@@ -47,7 +45,7 @@ EPIX_EXPORT struct NoWireframe2d {};
  *  `Wireframe2dConfig::default_color` (Bevy `Wireframe2dColor`, `:411-421`). */
 EPIX_EXPORT struct Wireframe2dColor {
     /** @brief The wireframe colour. */
-    glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
+    ::epix::color::Color color = ::epix::color::Color::WHITE;
 };
 
 /** @brief Extracted wireframe colour (Bevy `ExtractedWireframeColor`,
@@ -61,8 +59,8 @@ EPIX_EXPORT struct ExtractedWireframeColor {
 /** @brief The material a wireframe draws with (Bevy `Wireframe2dMaterial`,
  *  `:448-452`). */
 EPIX_EXPORT struct Wireframe2dMaterial {
-    /** @brief The wireframe colour, in linear RGBA. */
-    glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
+    /** @brief The wireframe colour. */
+    ::epix::color::Color color = ::epix::color::Color::WHITE;
 };
 
 /** @brief The prepared wireframe material: the 16 bytes the fragment shader's
@@ -96,8 +94,8 @@ static_assert(AsAssetIdImpl<epix::sprite_render::Mesh2dWireframe>);
 
 namespace epix::render {
 /** @brief `RenderAsset<RenderWireframeMaterial>` (Bevy
- *  `wireframe2d.rs:470-484`): Bevy converts the colour to linear here, while
- *  Epix colours are already linear `glm::vec4`, so preparation copies it. */
+ *  `wireframe2d.rs:470-484`), which converts the colour to linear RGBA for the
+ *  shader's push constant. */
 template <>
 struct RenderAsset<epix::sprite_render::RenderWireframeMaterial> {
     using SourceAsset    = epix::sprite_render::Wireframe2dMaterial;
@@ -110,7 +108,7 @@ struct RenderAsset<epix::sprite_render::RenderWireframeMaterial> {
                   assets::AssetId<epix::sprite_render::Wireframe2dMaterial>,
                   Param,
                   const epix::sprite_render::RenderWireframeMaterial*) {
-        return epix::sprite_render::RenderWireframeMaterial{.color = source_asset.color};
+        return epix::sprite_render::RenderWireframeMaterial{.color = source_asset.color.linear().vec4()};
     }
 
     /** @brief Bevy's `RenderWireframeMaterial` does not override

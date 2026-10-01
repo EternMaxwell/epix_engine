@@ -83,7 +83,7 @@ struct AnnulusRhombusTriangleCapsuleExamplePlugin {
             world.spawn(mesh::Mesh2d{handle},
                         sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                             materials.emplace(sprite_render::ColorMaterial{
-                                .color = color, .mode = sprite_render::AlphaMode2dOpaque{}})},
+                                .color = ::epix::color::Color::linear_rgba(color.r, color.g, color.b, color.a), .mode = sprite_render::AlphaMode2dOpaque{}})},
                         transform::Transform{.translation = translation});
         };
         place(annulus_handle, {-1.30f, 0.0f, 0.0f}, glm::vec4(0.98f, 0.72f, 0.30f, 1.0f));

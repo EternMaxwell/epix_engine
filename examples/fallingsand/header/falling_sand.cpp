@@ -695,7 +695,7 @@ void freefall_overlay_system(
                 cmd.spawn(FreefallOverlay{}, mesh::Mesh2d{handle},
                           sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                               materials->emplace(sprite_render::ColorMaterial{
-                                  .color = {0.0f, 0.9f, 1.0f, 0.45f},
+                                  .color = ::epix::color::Color::linear_rgba(0.0f, 0.9f, 1.0f, 0.45f),
                                   .mode  = sprite_render::AlphaMode2dBlend{},
                               })},
                           transform::Transform{.translation = tf.translation + glm::vec3{0.0f, 0.0f, 0.5f}},
@@ -778,7 +778,7 @@ void dirty_rect_overlay_system(Commands cmd,
                 auto overlay_ent = cmd.spawn(DirtyRectOverlay{}, mesh::Mesh2d{handle},
                                              sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                                                  materials->emplace(sprite_render::ColorMaterial{
-                                                     .color = {1.0f, 0.3f, 0.1f, 0.35f},
+                                                     .color = ::epix::color::Color::linear_rgba(1.0f, 0.3f, 0.1f, 0.35f),
                                                      .mode  = sprite_render::AlphaMode2dBlend{},
                                                  })},
                                              transform::Transform{.translation = {center_x, center_y, 1.0f},

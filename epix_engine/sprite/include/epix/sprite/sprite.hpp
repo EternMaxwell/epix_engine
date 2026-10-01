@@ -4,6 +4,7 @@
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
 #include <epix/camera.hpp>
+#include <epix/color.hpp>
 #include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
@@ -90,7 +91,7 @@ EPIX_EXPORT namespace epix::sprite {
     struct EPIX_API Sprite {
         assets::Handle<image::Image> image{image::DEFAULT_IMAGE_HANDLE};
         std::optional<image::TextureAtlas> texture_atlas;
-        glm::vec4 color{1.0f};
+        ::epix::color::Color color = ::epix::color::Color::WHITE;
         bool flip_x = false;
         bool flip_y = false;
         std::optional<glm::vec2> custom_size;
@@ -100,7 +101,7 @@ EPIX_EXPORT namespace epix::sprite {
         static Sprite sized(glm::vec2 custom_size);
         static Sprite from_image(assets::Handle<image::Image> image);
         static Sprite from_atlas_image(assets::Handle<image::Image> image, image::TextureAtlas atlas);
-        static Sprite from_color(glm::vec4 color, glm::vec2 size);
+        static Sprite from_color(::epix::color::Color color, glm::vec2 size);
 
         /** @brief Appends `Sprite` to this entity's `VisibilityClass`, keeping any
          * class already there (Bevy

@@ -51,7 +51,7 @@ struct AlphaMaskVisualTestPlugin {
                     sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                         materials.emplace(sprite_render::ColorMaterial{
                             .mode  = sprite_render::AlphaMode2dOpaque{},
-                            .color = glm::vec4(0.98f, 0.35f, 0.08f, 1.0f),
+                            .color = ::epix::color::Color::linear_rgba(0.98f, 0.35f, 0.08f, 1.0f),
                         })},
                     transform::Transform{.translation = glm::vec3(0.0f, 0.0f, -0.1f)});
         world.spawn(mesh::Mesh2d{foreground},

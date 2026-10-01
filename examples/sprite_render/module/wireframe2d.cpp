@@ -46,7 +46,7 @@ struct Wireframe2dVisualTestPlugin {
 
         world.insert_resource(sprite_render::Wireframe2dConfig{
             .global        = true,
-            .default_color = glm::vec4{0.65f, 0.65f, 0.65f, 1.0f},
+            .default_color = ::epix::color::Color::linear_rgba(0.65f, 0.65f, 0.65f, 1.0f),
         });
 
         world.spawn(camera::Camera2d{}, transform::Transform{});
@@ -58,21 +58,21 @@ struct Wireframe2dVisualTestPlugin {
         // Global wireframes: the configured default colour applies.
         world.spawn(mesh::Mesh2d{triangle},
                     sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
-                        materials.emplace(sprite_render::ColorMaterial{.color = glm::vec4{0.20f, 0.40f, 0.80f, 1.0f}})},
+                        materials.emplace(sprite_render::ColorMaterial{.color = ::epix::color::Color::linear_rgba(0.20f, 0.40f, 0.80f, 1.0f)})},
                     transform::Transform{.translation = glm::vec3{-260.0f, 0.0f, 0.0f}});
 
         // `Wireframe2dColor` overrides the global colour for its entity.
         world.spawn(mesh::Mesh2d{rectangle},
                     sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
-                        materials.emplace(sprite_render::ColorMaterial{.color = glm::vec4{0.20f, 0.80f, 0.40f, 1.0f}})},
+                        materials.emplace(sprite_render::ColorMaterial{.color = ::epix::color::Color::linear_rgba(0.20f, 0.80f, 0.40f, 1.0f)})},
                     sprite_render::Wireframe2d{},
-                    sprite_render::Wireframe2dColor{.color = glm::vec4{1.0f, 0.20f, 0.20f, 1.0f}},
+                    sprite_render::Wireframe2dColor{.color = ::epix::color::Color::linear_rgba(1.0f, 0.20f, 0.20f, 1.0f)},
                     transform::Transform{});
 
         // `NoWireframe2d` opts this entity out of the global setting.
         world.spawn(mesh::Mesh2d{circle},
                     sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
-                        materials.emplace(sprite_render::ColorMaterial{.color = glm::vec4{0.80f, 0.60f, 0.20f, 1.0f}})},
+                        materials.emplace(sprite_render::ColorMaterial{.color = ::epix::color::Color::linear_rgba(0.80f, 0.60f, 0.20f, 1.0f)})},
                     sprite_render::NoWireframe2d{},
                     transform::Transform{.translation = glm::vec3{260.0f, 0.0f, 0.0f}});
     }

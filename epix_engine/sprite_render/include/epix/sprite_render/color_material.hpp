@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <epix/assets.hpp>
+#include <epix/color.hpp>
 #include <epix/common.hpp>
 #include <epix/image.hpp>
 #include <epix/sprite_render/material2d.hpp>
@@ -31,8 +32,8 @@ EPIX_EXPORT struct ColorMaterialFlags {
 };
 
 /** @brief The GPU representation of a `ColorMaterial`'s uniform (Bevy
- *  `ColorMaterialUniform`, `color_material.rs:112-119`).  Epix has no
- *  `bevy_color`, so the colour is a `glm::vec4`, exactly as the plan records. */
+ *  `ColorMaterialUniform`, `color_material.rs:112-119`), whose colour is the
+ *  material's `Color` converted to a linear `Vec4`. */
 EPIX_EXPORT struct ColorMaterialUniform {
     /** @brief The tint, in linear RGBA. */
     glm::vec4 color{1.0f};
@@ -73,8 +74,8 @@ namespace epix::sprite_render {
  *  name in C++, so the field is `mode` here and `alpha_mode()` remains the
  *  accessor the pipeline calls. */
 EPIX_EXPORT struct ColorMaterial : Material2d<ColorMaterial> {
-    /** @brief The tint, in linear RGBA. */
-    glm::vec4 color{1.0f};
+    /** @brief The tint. */
+    ::epix::color::Color color = ::epix::color::Color::WHITE;
     /** @brief How the material's output is composited. */
     AlphaMode2d mode = AlphaMode2d{AlphaMode2dBlend{}};
     /** @brief The UV transform applied before sampling. */
@@ -95,10 +96,10 @@ EPIX_EXPORT struct ColorMaterial : Material2d<ColorMaterial> {
     AlphaMode2d alpha_mode() const { return mode; }
 
     /** @brief A material tinted by @p color (Bevy `ColorMaterial::from_color`). */
-    static ColorMaterial from_color(const glm::vec4& color) {
+    static ColorMaterial from_color(::epix::color::Color color) {
         ColorMaterial material;
         material.color = color;
-        material.mode  = color.a < 1.0f ? AlphaMode2d{AlphaMode2dBlend{}} : AlphaMode2d{AlphaMode2dOpaque{}};
+        material.mode  = color.alpha() < 1.0f ? AlphaMode2d{AlphaMode2dBlend{}} : AlphaMode2d{AlphaMode2dOpaque{}};
         return material;
     }
 };
@@ -146,7 +147,7 @@ struct AsBindGroupShaderType<epix::sprite_render::ColorMaterial, epix::sprite_re
             material.mode);
 
         return epix::sprite_render::ColorMaterialUniform{
-            .color        = material.color,
+            .color        = material.color.linear().vec4(),
             .uv_transform = {glm::vec4{glm::row(material.uv_transform, 0), 0.0f},
                              glm::vec4{glm::row(material.uv_transform, 1), 0.0f},
                              glm::vec4{glm::row(material.uv_transform, 2), 0.0f}},

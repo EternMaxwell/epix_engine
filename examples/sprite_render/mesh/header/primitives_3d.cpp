@@ -116,7 +116,7 @@ struct Primitives3dExamplePlugin {
             world.spawn(mesh::Mesh2d{handle},
                         sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                             materials.emplace(sprite_render::ColorMaterial{
-                                .color = color, .mode = sprite_render::AlphaMode2dOpaque{}})},
+                                .color = ::epix::color::Color::linear_rgba(color.r, color.g, color.b, color.a), .mode = sprite_render::AlphaMode2dOpaque{}})},
                         transform::Transform{.translation = translation});
         };
         // Upper row: cuboid, plane, triangle, tetrahedron, segment.

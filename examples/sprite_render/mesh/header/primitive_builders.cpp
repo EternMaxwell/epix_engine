@@ -43,25 +43,25 @@ struct PrimitiveBuildersExamplePlugin {
         world.spawn(mesh::Mesh2d{circle_handle},
                     sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                         materials.emplace(sprite_render::ColorMaterial{
-                            .color = glm::vec4(0.98f, 0.43f, 0.36f, 1.0f),
+                            .color = ::epix::color::Color::linear_rgba(0.98f, 0.43f, 0.36f, 1.0f),
                             .mode = sprite_render::AlphaMode2dOpaque{}})},
                     transform::Transform{.translation = {-390.0f, 0.0f, 0.0f}});
         world.spawn(mesh::Mesh2d{ellipse_handle},
                     sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                         materials.emplace(sprite_render::ColorMaterial{
-                            .color = glm::vec4(0.98f, 0.72f, 0.27f, 1.0f),
+                            .color = ::epix::color::Color::linear_rgba(0.98f, 0.72f, 0.27f, 1.0f),
                             .mode = sprite_render::AlphaMode2dOpaque{}})},
                     transform::Transform{.translation = {-130.0f, 0.0f, 0.0f}});
         world.spawn(mesh::Mesh2d{hexagon_handle},
                     sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                         materials.emplace(sprite_render::ColorMaterial{
-                            .color = glm::vec4(0.30f, 0.82f, 0.58f, 1.0f),
+                            .color = ::epix::color::Color::linear_rgba(0.30f, 0.82f, 0.58f, 1.0f),
                             .mode = sprite_render::AlphaMode2dOpaque{}})},
                     transform::Transform{.translation = {130.0f, 0.0f, 0.0f}});
         world.spawn(mesh::Mesh2d{rectangle_handle},
                     sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                         materials.emplace(sprite_render::ColorMaterial{
-                            .color = glm::vec4(0.36f, 0.61f, 0.96f, 1.0f),
+                            .color = ::epix::color::Color::linear_rgba(0.36f, 0.61f, 0.96f, 1.0f),
                             .mode = sprite_render::AlphaMode2dOpaque{}})},
                     transform::Transform{.translation = {390.0f, 0.0f, 0.0f}});
     }

@@ -94,7 +94,7 @@ std::vector<std::optional<sprite_render::TileData>> make_tiles() {
     invisible.visible = false;
     tiles[2] = invisible;
     auto tinted    = sprite_render::TileData::from_tileset_index(3);
-    tinted.color   = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+    tinted.color   = ::epix::color::Color::linear_rgba(1.0f, 0.0f, 0.0f, 1.0f);
     tiles[3]       = tinted;
     return tiles;
 }
@@ -232,7 +232,7 @@ TEST(PackedTileData, MatchesTheShaderAbi) {
     // The tint is linear in Epix, so it is encoded to sRGB before packing:
     // Bevy's `Color::to_srgba().to_u8_array()` on `LinearRgba(0.5)` is 188.
     auto tint      = Tile::from_tileset_index(3);
-    tint.color     = glm::vec4(0.5f, 0.5f, 0.5f, 0.5f);
+    tint.color     = ::epix::color::Color::linear_rgba(0.5f, 0.5f, 0.5f, 0.5f);
     tint.visible   = false;
     const Packed packed{tint};
     EXPECT_EQ(packed.tileset_index, 3u);

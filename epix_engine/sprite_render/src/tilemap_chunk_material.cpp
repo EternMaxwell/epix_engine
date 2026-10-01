@@ -106,8 +106,8 @@ epix::sprite_render::PackedTileData epix::sprite_render::PackedTileData::empty()
 epix::sprite_render::PackedTileData::PackedTileData(const TileData& tile) noexcept
     : tileset_index(tile.tileset_index),
       // Bevy 0.18 packs `color.to_srgba().to_u8_array()`
-      // (`tilemap_chunk_material.rs:81`); Epix tile colours are linear `glm::vec4`.
-      color(epix::color::Srgba(epix::color::LinearRgba(tile.color)).u8_array()),
+      // (`tilemap_chunk_material.rs:81`).
+      color(tile.color.srgba().u8_array()),
       flags(tile.visible ? 1u : 0u) {}
 
 epix::sprite_render::PackedTileData::PackedTileData(const std::optional<TileData>& maybe_tile) noexcept {

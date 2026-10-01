@@ -77,17 +77,17 @@ struct LinearPolygonPrimitivesExamplePlugin {
         world.spawn(mesh::Mesh2d{segment_handle},
                     sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                         materials.emplace(sprite_render::ColorMaterial{
-                            .color = glm::vec4(0.98f, 0.52f, 0.34f, 1.0f), .mode = sprite_render::AlphaMode2dOpaque{}})},
+                            .color = ::epix::color::Color::linear_rgba(0.98f, 0.52f, 0.34f, 1.0f), .mode = sprite_render::AlphaMode2dOpaque{}})},
                     transform::Transform{.translation = {-320.0f, 0.0f, 0.0f}});
         world.spawn(mesh::Mesh2d{polygon_handle},
                     sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                         materials.emplace(sprite_render::ColorMaterial{
-                            .color = glm::vec4(0.39f, 0.84f, 0.62f, 1.0f), .mode = sprite_render::AlphaMode2dOpaque{}})},
+                            .color = ::epix::color::Color::linear_rgba(0.39f, 0.84f, 0.62f, 1.0f), .mode = sprite_render::AlphaMode2dOpaque{}})},
                     transform::Transform{.translation = {0.0f, 0.0f, 0.0f}});
         world.spawn(mesh::Mesh2d{polyline_handle},
                     sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                         materials.emplace(sprite_render::ColorMaterial{
-                            .color = glm::vec4(0.40f, 0.67f, 1.0f, 1.0f), .mode = sprite_render::AlphaMode2dOpaque{}})},
+                            .color = ::epix::color::Color::linear_rgba(0.40f, 0.67f, 1.0f, 1.0f), .mode = sprite_render::AlphaMode2dOpaque{}})},
                     transform::Transform{.translation = {320.0f, 0.0f, 0.0f}});
     }
 };

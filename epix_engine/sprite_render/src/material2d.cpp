@@ -291,7 +291,7 @@ void epix::sprite_render::ColorMaterialPlugin::attach(epix::app::App& app) {
     // `Handle` has no default constructor (see `DEFAULT_COLOR_MATERIAL_HANDLE`).
     (void)app.world_mut()
         .resource_mut<epix::assets::Assets<ColorMaterial>>()
-        .insert(DEFAULT_COLOR_MATERIAL_HANDLE.id(), ColorMaterial{.color = glm::vec4(1.0f, 0.0f, 1.0f, 1.0f)});
+        .insert(DEFAULT_COLOR_MATERIAL_HANDLE.id(), ColorMaterial{.color = ::epix::color::Color::srgb(1.0f, 0.0f, 1.0f)});
 }
 
 template <typename M>

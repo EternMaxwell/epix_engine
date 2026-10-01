@@ -36,7 +36,7 @@ sprite::Sprite sprite::Sprite::from_atlas_image(assets::Handle<image::Image> han
     return sprite;
 }
 
-sprite::Sprite sprite::Sprite::from_color(glm::vec4 tint, glm::vec2 size) {
+sprite::Sprite sprite::Sprite::from_color(::epix::color::Color tint, glm::vec2 size) {
     Sprite sprite;
     sprite.color       = tint;
     sprite.custom_size = size;

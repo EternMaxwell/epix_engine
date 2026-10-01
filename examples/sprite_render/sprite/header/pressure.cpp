@@ -36,7 +36,7 @@ struct SpritePressureVisualTestPlugin {
 
         for ([[maybe_unused]] auto i : std::views::iota(0, 5000)) {
             auto sprite        = sprite::Sprite::from_image(handle);
-            sprite.color       = glm::vec4(tint(generator), tint(generator), tint(generator), 1.0f);
+            sprite.color       = ::epix::color::Color::linear_rgba(tint(generator), tint(generator), tint(generator), 1.0f);
             sprite.custom_size = glm::vec2(24.0f, 24.0f);
             world.spawn(std::move(sprite),
                         transform::Transform::from_xyz(position(generator), position(generator), 0.0f));

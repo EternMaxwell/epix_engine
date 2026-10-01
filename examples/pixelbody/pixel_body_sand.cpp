@@ -516,7 +516,7 @@ void dirty_rect_overlay_system(
                 auto e                    = cmd.spawn(DirtyRectOverlay{}, mesh::Mesh2d{handle},
                                                       sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                                                           materials->emplace(sprite_render::ColorMaterial{
-                                                              .color = {1.0f, 0.3f, 0.1f, 0.30f},
+                                                              .color = ::epix::color::Color::linear_rgba(1.0f, 0.3f, 0.1f, 0.30f),
                                                               .mode  = sprite_render::AlphaMode2dBlend{},
                                                           })},
                                                       transform::Transform{.translation = center, .scaler = scaler})
@@ -589,7 +589,7 @@ void freefall_overlay_system(Commands cmd,
             auto e = cmd.spawn(FreefallOverlay{}, mesh::Mesh2d{handle},
                                sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                                    materials->emplace(sprite_render::ColorMaterial{
-                                       .color = {0.0f, 0.9f, 1.0f, 0.45f},
+                                       .color = ::epix::color::Color::linear_rgba(0.0f, 0.9f, 1.0f, 0.45f),
                                        .mode  = sprite_render::AlphaMode2dBlend{},
                                    })},
                                transform::Transform{.translation = tf.translation + glm::vec3{0.0f, 0.0f, -0.5f}})
@@ -680,7 +680,7 @@ void chunk_chain_overlay_system(
                 auto e      = cmd.spawn(ChunkChainOverlay{}, mesh::Mesh2d{handle},
                                         sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                                             materials->emplace(sprite_render::ColorMaterial{
-                                                .color = color,
+                                                .color = ::epix::color::Color::linear_rgba(color.r, color.g, color.b, color.a),
                                                 .mode  = sprite_render::AlphaMode2dBlend{},
                                             })},
                                         transform::Transform{.translation = overlay_tr})
@@ -779,7 +779,7 @@ void body_outline_overlay_system(
                 auto e      = cmd.spawn(BodyOutlineOverlay{}, mesh::Mesh2d{handle},
                                         sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                                             materials->emplace(sprite_render::ColorMaterial{
-                                                .color = color,
+                                                .color = ::epix::color::Color::linear_rgba(color.r, color.g, color.b, color.a),
                                                 .mode  = sprite_render::AlphaMode2dBlend{},
                                             })},
                                         transform::Transform{.translation = t, .rotation = entry.rotation})

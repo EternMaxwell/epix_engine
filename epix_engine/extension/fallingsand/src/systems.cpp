@@ -442,7 +442,7 @@ void update_chunk_outlines(
                                     .spawn(SandChunkOutline{}, mesh::Mesh2d{outline_mesh},
                                            sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                                                materials->emplace(sprite_render::ColorMaterial{
-                                                   .color = glm::vec4(1.0f, 1.0f, 1.0f, 0.55f),
+                                                   .color = ::epix::color::Color::linear_rgba(1.0f, 1.0f, 1.0f, 0.55f),
                                                    .mode  = sprite_render::AlphaMode2dBlend{},
                                                }),
                                            },

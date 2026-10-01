@@ -78,17 +78,17 @@ struct MeshAlgorithmsExamplePlugin {
         world.spawn(mesh::Mesh2d{indexed_handle},
                     sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                         materials.emplace(sprite_render::ColorMaterial{
-                            .color = glm::vec4(1.0f, 0.78f, 0.72f, 1.0f), .mode = sprite_render::AlphaMode2dOpaque{}})},
+                            .color = ::epix::color::Color::linear_rgba(1.0f, 0.78f, 0.72f, 1.0f), .mode = sprite_render::AlphaMode2dOpaque{}})},
                     transform::Transform{.translation = {-280.0f, 0.0f, 0.0f}});
         world.spawn(mesh::Mesh2d{duplicated_handle},
                     sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                         materials.emplace(sprite_render::ColorMaterial{
-                            .color = glm::vec4(0.78f, 1.0f, 0.88f, 1.0f), .mode = sprite_render::AlphaMode2dOpaque{}})},
+                            .color = ::epix::color::Color::linear_rgba(0.78f, 1.0f, 0.88f, 1.0f), .mode = sprite_render::AlphaMode2dOpaque{}})},
                     transform::Transform{.translation = {0.0f, 0.0f, 0.0f}});
         world.spawn(mesh::Mesh2d{inverted_handle},
                     sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                         materials.emplace(sprite_render::ColorMaterial{
-                            .color = glm::vec4(0.76f, 0.86f, 1.0f, 1.0f), .mode = sprite_render::AlphaMode2dOpaque{}})},
+                            .color = ::epix::color::Color::linear_rgba(0.76f, 0.86f, 1.0f, 1.0f), .mode = sprite_render::AlphaMode2dOpaque{}})},
                     transform::Transform{.translation = {280.0f, 0.0f, 0.0f}});
 
         std::println(

@@ -14,9 +14,11 @@
 #include <epix/shader.hpp>
 #include <epix/sprite.hpp>
 #include <epix/sprite_render.hpp>
+#include <epix/task.hpp>
 #include <epix/transform.hpp>
 #include <ranges>
 #include <string_view>
+#include <variant>
 
 namespace assets        = epix::assets;
 namespace camera        = epix::camera;
@@ -285,7 +287,7 @@ TEST(SpriteExtraction, RebuildsResourcesAndPreservesMainRenderIdentity) {
     const auto render_entity = render_world.spawn().id();
     camera::ViewVisibility visible;
     visible.set_visible();
-    sprite::Sprite visible_sprite = sprite::Sprite::from_color({0.25f, 0.5f, 0.75f, 1.0f}, {32.0f, 16.0f});
+    sprite::Sprite visible_sprite = sprite::Sprite::from_color(::epix::color::Color::linear_rgba(0.25f, 0.5f, 0.75f, 1.0f), {32.0f, 16.0f});
     visible_sprite.flip_x         = true;
     const transform::GlobalTransform global{
         .matrix = glm::mat4{1.0f},
@@ -319,7 +321,7 @@ TEST(SpriteExtraction, RebuildsResourcesAndPreservesMainRenderIdentity) {
     });
     ASSERT_NE(found, extracted.end());
     EXPECT_EQ(found->render_entity, render_entity);
-    EXPECT_EQ(found->color, visible_sprite.color);
+    EXPECT_EQ(found->color, visible_sprite.color.linear().vec4());
     EXPECT_TRUE(found->flip_x);
     ASSERT_TRUE(std::holds_alternative<sprite_render::ExtractedSpriteSingle>(found->kind));
     const auto& single = std::get<sprite_render::ExtractedSpriteSingle>(found->kind);
@@ -427,7 +429,7 @@ TEST(Material2dRenderCommand, SkipsWhenTheInstanceOrPreparedMaterialIsMissing) {
     // that no `PreparedMaterial2d` was registered for.
     assets::Assets<Material> materials;
     const auto unprepared =
-        materials.emplace(sprite_render::ColorMaterial::from_color(glm::vec4{1.0f})).id();
+        materials.emplace(sprite_render::ColorMaterial::from_color(::epix::color::Color::linear_rgba(1.0f, 1.0f, 1.0f, 1.0f))).id();
     world.resource_mut<Instances>().instances.insert_or_assign(
         render::sync_world::MainEntity{ecs::Entity::from_index(1)}, unprepared);
     observed.reset();
@@ -454,11 +456,43 @@ TEST(Material2dPlugin, DefaultColorMaterialResolvesAtItsWellKnownHandle) {
         << "nothing is there before the plugin inserts it";
 
     const auto inserted = materials.insert(sprite_render::DEFAULT_COLOR_MATERIAL_HANDLE.id(),
-                                           Material{.color = glm::vec4(1.0f, 0.0f, 1.0f, 1.0f)});
+                                           Material{.color = ::epix::color::Color::linear_rgba(1.0f, 0.0f, 1.0f, 1.0f)});
     ASSERT_TRUE(inserted.has_value()) << "the plugin inserts rather than re-allocating";
 
     const auto resolved = materials.get(sprite_render::DEFAULT_COLOR_MATERIAL_HANDLE);
     ASSERT_TRUE(resolved.has_value()) << "and the well-known handle resolves it";
-    const glm::vec4 expected_magenta{1.0f, 0.0f, 1.0f, 1.0f};
+    const ::epix::color::Color expected_magenta = ::epix::color::Color::linear_rgba(1.0f, 0.0f, 1.0f, 1.0f);
     EXPECT_EQ(resolved->get().color, expected_magenta) << "the default is Bevy's magenta";
+}
+
+/** @brief `Sprite` gets `SyncToRenderWorld` as a required component and nothing
+ *  else. Bevy's `SpriteRenderPlugin::build` registers the required component
+ *  (`bevy_sprite_render/src/lib.rs:86`) and never the on-remove hook of
+ *  `SyncComponentPlugin` - that plugin is applied to the material and wireframe
+ *  types only, and its own documentation warns that removing a synced component
+ *  wipes every component of the render entity. Epix used
+ *  `SyncComponentPlugin<sprite::Sprite>`, so removing a `Sprite` recorded a
+ *  removal and had `entity_sync_system` despawn and respawn the render entity. */
+TEST(SpriteRenderPlugin, RemovingSpriteLeavesTheRenderEntityAlone) {
+    epix::task::IoTaskPool::get_or_init(epix::task::TaskPool{epix::task::TaskPoolBuilder{}.num_threads(4)});
+    auto app = epix::app::App::create();
+    assets::AssetPlugin asset_plugin;
+    asset_plugin.mode = assets::AssetServerMode::Unprocessed;
+    app.add_plugins(asset_plugin);
+    app.add_plugins(shader::ShaderPlugin{});
+    app.add_plugins(sprite_render::SpriteRenderPlugin{});
+    app.world_mut().init_resource<render::sync_world::PendingSyncEntity>();
+
+    const ecs::Entity entity = app.world_mut().spawn(sprite::Sprite{}).id();
+    EXPECT_TRUE(app.world().entity(entity).contains<render::sync_world::SyncToRenderWorld>())
+        << "the required component is registered";
+
+    app.world_mut().entity_mut(entity).remove<sprite::Sprite>();
+    // `SyncToRenderWorld::on_add` records the spawn; only a `ComponentRemoved`
+    // record would make `entity_sync_system` despawn and respawn the render
+    // entity, which is what the sprite plugin must not register for `Sprite`.
+    const auto& records = app.world().resource<render::sync_world::PendingSyncEntity>().records;
+    EXPECT_TRUE(std::ranges::none_of(records, [](const render::sync_world::EntityRecord& record) {
+        return std::holds_alternative<render::sync_world::ComponentRemoved>(record);
+    })) << "no component-removal record, so the render entity survives the removal";
 }

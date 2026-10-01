@@ -87,7 +87,7 @@ void setup(Commands commands, ResMut<assets::Assets<image::Image>> images) {
     const auto texture_handle = images->emplace(std::move(texture));
     auto value                = sprite::Sprite::from_image(texture_handle);
     value.custom_size         = glm::vec2{250.0f, 250.0f};
-    value.color               = glm::vec4{6.0f, 3.5f, 2.0f, 1.0f};
+    value.color               = ::epix::color::Color::linear_rgba(6.0f, 3.5f, 2.0f, 1.0f);
     commands.spawn(std::move(value), transform::Transform{});
 }
 

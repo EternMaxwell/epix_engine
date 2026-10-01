@@ -77,7 +77,7 @@ struct MeshRenderingVisualTestPlugin {
         world.spawn(mesh::Mesh2d{solid_box},
                     sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                         materials.emplace(sprite_render::ColorMaterial{
-                            .color = glm::vec4(0.95f, 0.31f, 0.20f, 1.0f),
+                            .color = ::epix::color::Color::linear_rgba(0.95f, 0.31f, 0.20f, 1.0f),
                             .mode  = sprite_render::AlphaMode2dOpaque{},
                         })},
                     transform::Transform{
@@ -94,7 +94,7 @@ struct MeshRenderingVisualTestPlugin {
         world.spawn(mesh::Mesh2d{transparent_circle},
                     sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                         materials.emplace(sprite_render::ColorMaterial{
-                            .color = glm::vec4(0.16f, 0.62f, 0.96f, 0.55f),
+                            .color = ::epix::color::Color::linear_rgba(0.16f, 0.62f, 0.96f, 0.55f),
                             .mode  = sprite_render::AlphaMode2dBlend{},
                         })},
                     transform::Transform{
@@ -104,7 +104,7 @@ struct MeshRenderingVisualTestPlugin {
         world.spawn(mesh::Mesh2d{transparent_box},
                     sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                         materials.emplace(sprite_render::ColorMaterial{
-                            .color = glm::vec4(0.99f, 0.68f, 0.20f, 0.50f),
+                            .color = ::epix::color::Color::linear_rgba(0.99f, 0.68f, 0.20f, 0.50f),
                             .mode  = sprite_render::AlphaMode2dBlend{},
                         })},
                     transform::Transform{

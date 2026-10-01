@@ -94,7 +94,7 @@ struct MeshBatchingTestPlugin {
             world.spawn(mesh::Mesh2d{shape_handles[i % 3]},
                         sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                             materials.emplace(sprite_render::ColorMaterial{
-                                .color = color, .mode = sprite_render::AlphaMode2dOpaque{}})},
+                                .color = ::epix::color::Color::linear_rgba(color.r, color.g, color.b, color.a), .mode = sprite_render::AlphaMode2dOpaque{}})},
                         transform::Transform{.translation = translation});
         }
 
@@ -106,7 +106,7 @@ struct MeshBatchingTestPlugin {
             world.spawn(mesh::Mesh2d{box_handle},
                         sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                             materials.emplace(sprite_render::ColorMaterial{
-                                .color = color, .mode = sprite_render::AlphaMode2dBlend{}})},
+                                .color = ::epix::color::Color::linear_rgba(color.r, color.g, color.b, color.a), .mode = sprite_render::AlphaMode2dBlend{}})},
                         transform::Transform{.translation = translation});
         }
     }

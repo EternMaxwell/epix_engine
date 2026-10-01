@@ -41,12 +41,12 @@ struct CircularPrimitivesExamplePlugin {
         world.spawn(mesh::Mesh2d{sector_handle},
                     sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                         materials.emplace(sprite_render::ColorMaterial{
-                            .color = glm::vec4(0.98f, 0.55f, 0.30f, 1.0f), .mode = sprite_render::AlphaMode2dOpaque{}})},
+                            .color = ::epix::color::Color::linear_rgba(0.98f, 0.55f, 0.30f, 1.0f), .mode = sprite_render::AlphaMode2dOpaque{}})},
                     transform::Transform{.translation = {-190.0f, 0.0f, 0.0f}});
         world.spawn(mesh::Mesh2d{segment_handle},
                     sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
                         materials.emplace(sprite_render::ColorMaterial{
-                            .color = glm::vec4(0.35f, 0.75f, 0.98f, 1.0f), .mode = sprite_render::AlphaMode2dOpaque{}})},
+                            .color = ::epix::color::Color::linear_rgba(0.35f, 0.75f, 0.98f, 1.0f), .mode = sprite_render::AlphaMode2dOpaque{}})},
                     transform::Transform{.translation = {190.0f, 0.0f, 0.0f}});
     }
 };

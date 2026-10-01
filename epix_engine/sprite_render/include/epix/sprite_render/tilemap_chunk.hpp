@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/color.hpp>
 #include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
@@ -50,14 +51,14 @@ EPIX_EXPORT struct TilemapChunkMeshCache {
 };
 
 /** @brief Data for a single tile in the tilemap chunk (Bevy `TileData`,
- *  `mod.rs:88-118`). Bevy stores a tagged `Color`; Epix has no `bevy_color`, so
- *  the tint is a linear `glm::vec4`, exactly as `ColorMaterial` carries it. */
+ *  `mod.rs:88-118`). Bevy stores a tagged `Color`; this port stores an
+ *  `epix::color::Color`. */
 EPIX_EXPORT struct EPIX_API TileData {
     /** @brief The index of the tile in the corresponding tileset array texture. */
     std::uint16_t tileset_index = 0;
-    /** @brief The colour tint of the tile, in linear RGBA. White leaves the
-     *  sampled texture colour unchanged. */
-    glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
+    /** @brief The colour tint of the tile. White leaves the sampled texture
+     *  colour unchanged. */
+    ::epix::color::Color color = ::epix::color::Color::WHITE;
     /** @brief The visibility of the tile. */
     bool visible = true;
 

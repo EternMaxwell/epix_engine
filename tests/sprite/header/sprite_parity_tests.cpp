@@ -127,7 +127,7 @@ TEST(Sprite, ConstructorsOwnImageAndAtlas) {
     const auto atlas = sprite::Sprite::from_atlas_image(source, image::TextureAtlas{layout, 0});
     ASSERT_TRUE(atlas.texture_atlas.has_value());
     EXPECT_EQ(atlas.texture_atlas->layout.id(), layout.id());
-    const auto colored = sprite::Sprite::from_color(glm::vec4(0.25f), glm::vec2(50.0f, 100.0f));
+    const auto colored = sprite::Sprite::from_color(::epix::color::Color::linear_rgba(0.25f, 0.25f, 0.25f, 0.25f), glm::vec2(50.0f, 100.0f));
     EXPECT_EQ(colored.custom_size, glm::vec2(50.0f, 100.0f));
 }
 

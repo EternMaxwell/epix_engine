@@ -229,7 +229,7 @@ struct TilemapChunkVisualTestPlugin {
         // example uses `RED_400`; white stays legible over this fixture's four
         // tile colours.
         const auto marker_material = materials.emplace(sprite_render::ColorMaterial{
-            .color = glm::vec4(1.0f),
+            .color = ::epix::color::Color::linear_rgba(1.0f, 1.0f, 1.0f, 1.0f),
             .mode  = sprite_render::AlphaMode2d{sprite_render::AlphaMode2dOpaque{}}});
         const auto marker_mesh = meshes.emplace(mesh::make_box2d(static_cast<float>(kTileDisplaySize.x),
                                                                  static_cast<float>(kTileDisplaySize.y)));

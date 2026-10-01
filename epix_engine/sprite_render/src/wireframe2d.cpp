@@ -47,7 +47,7 @@ std::span<const std::byte> shader_bytes(std::string_view source) {
  *  `Wireframe2dColor` allocates a material, everything else reuses the global
  *  one, which already carries `Wireframe2dConfig::default_color`. */
 epix::assets::Handle<epix::sprite_render::Wireframe2dMaterial> get_wireframe_material(
-    std::optional<glm::vec4> maybe_color,
+    std::optional<::epix::color::Color> maybe_color,
     epix::ecs::ResMut<epix::assets::Assets<epix::sprite_render::Wireframe2dMaterial>>& wireframe_materials,
     const epix::sprite_render::GlobalWireframeMaterial& global_material) {
     if (maybe_color) {
@@ -207,7 +207,7 @@ void epix::sprite_render::apply_wireframe_material(
 
     std::vector<std::pair<ecs::Entity, Mesh2dWireframe>> material_to_spawn;
     for (auto&& [entity, maybe_color] : wireframes.iter()) {
-        const auto color = maybe_color ? std::optional<glm::vec4>{maybe_color->get().color} : std::nullopt;
+        const auto color = maybe_color ? std::optional<::epix::color::Color>{maybe_color->get().color} : std::nullopt;
         material_to_spawn.emplace_back(
             entity, Mesh2dWireframe{.handle = get_wireframe_material(color, materials, global_material.get())});
     }
@@ -235,7 +235,7 @@ void epix::sprite_render::apply_global_wireframe_material(
     if (config->global) {
         std::vector<std::pair<ecs::Entity, Mesh2dWireframe>> material_to_spawn;
         for (auto&& [entity, maybe_color] : meshes_without_material.iter()) {
-            const auto color = maybe_color ? std::optional<glm::vec4>{maybe_color->get().color} : std::nullopt;
+            const auto color = maybe_color ? std::optional<::epix::color::Color>{maybe_color->get().color} : std::nullopt;
             material_to_spawn.emplace_back(
                 entity, Mesh2dWireframe{.handle = get_wireframe_material(color, materials, global_material.get())});
         }

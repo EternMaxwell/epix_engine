@@ -34,7 +34,7 @@ struct SharedMaterialBinsVisualTestPlugin {
 
         // One material, shared by every entity below.
         const auto shared_material = materials.emplace(
-            sprite_render::ColorMaterial{.color = glm::vec4(0.25f, 0.65f, 0.95f, 1.0f),
+            sprite_render::ColorMaterial{.color = ::epix::color::Color::linear_rgba(0.25f, 0.65f, 0.95f, 1.0f),
                                          .mode  = sprite_render::AlphaMode2dOpaque{}});
 
         const auto box    = meshes.emplace(mesh::make_box2d(220.0f, 220.0f));

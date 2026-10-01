@@ -88,7 +88,7 @@ TEST(Wireframe2dPlugin, RegistersItsResourcesAssetsAndEmbeddedShader) {
     const auto& config = app.resource<sprite_render::Wireframe2dConfig>();
     // Bevy's `Default` derive: `global = false`, `default_color = Color::WHITE`.
     EXPECT_FALSE(config.global);
-    EXPECT_EQ(config.default_color, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    EXPECT_EQ(config.default_color, ::epix::color::Color::linear_rgba(1.0f, 1.0f, 1.0f, 1.0f));
 
     EXPECT_TRUE(app.world().get_resource<sprite_render::WireframeEntitiesNeedingSpecialization>().has_value());
     EXPECT_TRUE(app.world().get_resource<Assets<sprite_render::Wireframe2dMaterial>>().has_value());
@@ -213,7 +213,7 @@ TEST(Wireframe2dPhaseItem, ReadsDrawFunctionAndPipelineFromTheBatchSetKey) {
 // (`wireframe2d.rs:470-484`).
 TEST(RenderWireframeMaterial, PreparationCopiesTheColour) {
     auto prepared = render::RenderAsset<sprite_render::RenderWireframeMaterial>::prepare_asset(
-        sprite_render::Wireframe2dMaterial{.color = glm::vec4{0.25f, 0.5f, 0.75f, 1.0f}},
+        sprite_render::Wireframe2dMaterial{.color = ::epix::color::Color::linear_rgba(0.25f, 0.5f, 0.75f, 1.0f)},
         AssetId<sprite_render::Wireframe2dMaterial>::invalid(), std::tuple<>{}, nullptr);
     ASSERT_TRUE(prepared.has_value());
     EXPECT_EQ(prepared->color, glm::vec4(0.25f, 0.5f, 0.75f, 1.0f));
@@ -231,7 +231,7 @@ TEST(Mesh2dWireframe, ExposesItsMaterialAssetId) {
 
     Assets<sprite_render::Wireframe2dMaterial> materials;
     const auto handle =
-        materials.emplace(sprite_render::Wireframe2dMaterial{.color = glm::vec4{0.1f, 0.2f, 0.3f, 1.0f}});
+        materials.emplace(sprite_render::Wireframe2dMaterial{.color = ::epix::color::Color::linear_rgba(0.1f, 0.2f, 0.3f, 1.0f)});
     const sprite_render::Mesh2dWireframe wireframe{.handle = handle};
 
     EXPECT_EQ(AsAssetId<sprite_render::Mesh2dWireframe>::as_asset_id(wireframe), handle.id());
@@ -274,7 +274,7 @@ TEST(Wireframe2dPlugin, GlobalColourChangedOnlyRunsWhenTheConfigChanged) {
         << "global_color_changed only runs when Wireframe2dConfig changed";
 
     app.world_mut().resource_mut<sprite_render::Wireframe2dConfig>().default_color =
-        glm::vec4(0.0f, 1.0f, 0.0f, 1.0f);
+        ::epix::color::Color::linear_rgba(0.0f, 1.0f, 0.0f, 1.0f);
     app.update();
     EXPECT_GT(app.resource<WireframeMaterialEvents>().modified, baseline)
         << "a changed config still reaches the global material";
@@ -282,5 +282,5 @@ TEST(Wireframe2dPlugin, GlobalColourChangedOnlyRunsWhenTheConfigChanged) {
     const auto& handle = app.resource<sprite_render::GlobalWireframeMaterial>().handle;
     const auto& global = app.resource<Assets<sprite_render::Wireframe2dMaterial>>().get(handle);
     ASSERT_TRUE(global.has_value());
-    EXPECT_EQ(global->get().color, glm::vec4(0.0f, 1.0f, 0.0f, 1.0f));
+    EXPECT_EQ(global->get().color, ::epix::color::Color::linear_rgba(0.0f, 1.0f, 0.0f, 1.0f));
 }
