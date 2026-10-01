@@ -2,6 +2,7 @@
 #include <epix/mesh/mesh.hpp>
 #include <epix/mesh/vertex_buffer_layout.hpp>
 #include <epix/render.hpp>
+#include <stdexcept>
 
 using namespace epix;
 using namespace epix::ecs;
@@ -17,25 +18,23 @@ void epix::render::mesh::MeshAllocator::allocate_meshes(
     for (const auto& [id, source_mesh] : extracted_meshes.extracted) {
         const auto vertex_bytes = static_cast<std::uint64_t>(source_mesh.get_vertex_buffer_size());
         if (vertex_bytes == 0) continue;
-        const auto vertex_layout = source_mesh.get_mesh_vertex_buffer_layout(mesh_vertex_buffer_layouts);
-        if (!vertex_layout.value) continue;
-        const auto vertex_stride = vertex_layout.value->layout().array_stride;
-
-        const auto element_layout = detail::ElementLayout::make(detail::ElementClass::Vertex, vertex_stride);
+        // Bevy's `ElementLayout::vertex` unwraps this lookup, so a mesh without a vertex buffer layout is a hard
+        // failure rather than a mesh silently left unallocated.
+        if (!source_mesh.get_mesh_vertex_buffer_layout(mesh_vertex_buffer_layouts).value) {
+            throw std::runtime_error("A mesh in the extracted set has no vertex buffer layout");
+        }
+        const auto vertex_element_layout = detail::ElementLayout::vertex(mesh_vertex_buffer_layouts, source_mesh);
         if (general_vertex_slabs_supported) {
-            allocate(id, vertex_bytes, element_layout, slabs_to_reallocate, settings);
+            allocate(id, vertex_bytes, vertex_element_layout, slabs_to_reallocate, settings);
         } else {
-            allocate_large(id, element_layout);
+            allocate_large(id, vertex_element_layout);
         }
 
-        if (const auto indices = source_mesh.indices()) {
-            const auto& index                = indices->get();
-            const std::uint32_t element_size = static_cast<wgpu::IndexFormat>(index) == wgpu::IndexFormat::eUint16
-                                                   ? sizeof(std::uint16_t)
-                                                   : sizeof(std::uint32_t);
-            allocate(id, static_cast<std::uint64_t>(index.len()) * element_size,
-                     detail::ElementLayout::make(detail::ElementClass::Index, element_size), slabs_to_reallocate,
-                     settings);
+        if (const auto index_bytes = source_mesh.get_index_buffer_bytes()) {
+            if (const auto index_element_layout = detail::ElementLayout::index(source_mesh)) {
+                allocate(id, static_cast<std::uint64_t>(index_bytes->size()), *index_element_layout, slabs_to_reallocate,
+                         settings);
+            }
         }
     }
 

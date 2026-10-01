@@ -92,6 +92,23 @@ struct ElementLayout {
         return ElementLayout{element_class, size, eps[size & 3]};
     }
     std::uint64_t slot_size() const noexcept { return size * elements_per_slot; }
+    /** @brief Layout of a mesh's vertices as packed in the vertex buffer (Bevy
+     *  `ElementLayout::vertex`).
+     *  @param mesh_vertex_buffer_layouts The world's vertex buffer layout cache.
+     *  @param mesh The mesh to derive the vertex element size from. */
+    static ElementLayout vertex(::epix::mesh::MeshVertexBufferLayouts& mesh_vertex_buffer_layouts,
+                                const ::epix::mesh::Mesh& mesh) {
+        return make(ElementClass::Vertex,
+                    mesh.get_mesh_vertex_buffer_layout(mesh_vertex_buffer_layouts).value->layout().array_stride);
+    }
+    /** @brief Layout of a mesh's indices, or no value when the mesh has none
+     *  (Bevy `ElementLayout::index`).
+     *  @param mesh The mesh to derive the index element size from. */
+    static std::optional<ElementLayout> index(const ::epix::mesh::Mesh& mesh) {
+        const auto indices = mesh.indices();
+        if (!indices) return std::nullopt;
+        return make(ElementClass::Index, indices->get().as_u16() ? sizeof(std::uint16_t) : sizeof(std::uint32_t));
+    }
     bool operator==(const ElementLayout&) const noexcept = default;
 };
 
