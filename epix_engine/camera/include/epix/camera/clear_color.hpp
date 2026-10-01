@@ -1,6 +1,7 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <epix/color.hpp>
 #include <epix/common.hpp>
 #include <glm/glm.hpp>
 #include <variant>
@@ -22,7 +23,10 @@ EPIX_EXPORT struct ClearColor : public glm::vec4 {
 namespace detail {
 struct ClearColorConfigDefault {};
 struct ClearColorConfigCustom {
-    ClearColor color;
+    /** The color to clear with. Bevy's `Custom` variant holds a
+     *  `bevy_color::Color` (`clear_color.rs:18`), so this is a full color and
+     *  not the linear-only `ClearColor` resource. */
+    epix::color::Color color;
 };
 struct ClearColorConfigNone {};
 }  // namespace detail
@@ -39,6 +43,9 @@ EPIX_EXPORT struct ClearColorConfig
    public:
     using Base::Base;
     ClearColorConfig() noexcept : Base(Default{}) {}
+    /** @brief A color converts into a `Custom` config (Bevy derives
+     *  `From<Color> for ClearColorConfig`, `clear_color.rs:11`). */
+    ClearColorConfig(const epix::color::Color& value) noexcept : Base(Custom{value}) {}
 };
 
 /** @brief Controls when a camera copies the prior target contents back into

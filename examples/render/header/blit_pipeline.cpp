@@ -4,6 +4,7 @@
 // and output fallback clear are red, so a blue window proves the blit ran.
 
 #include <epix/camera.hpp>
+#include <epix/color.hpp>
 #include <epix/core_graph.hpp>
 #include <epix/ecs.hpp>
 #include <epix/sdl3/core.hpp>
@@ -130,7 +131,7 @@ int main() {
     app.add_systems(Startup, into([](Commands commands) {
                         camera::Camera camera;
                         camera.clear_color = camera::ClearColorConfig::Custom{
-                            camera::ClearColor{0.90f, 0.04f, 0.08f, 1.0f}};
+                            epix::color::Color::linear_rgba(0.90f, 0.04f, 0.08f, 1.0f)};
                         commands.spawn(std::move(camera), camera::Projection{},
                                        render::camera::CameraRenderGraph(kBlitGraph), render::view::Msaa::Off,
                                        transform::Transform{});

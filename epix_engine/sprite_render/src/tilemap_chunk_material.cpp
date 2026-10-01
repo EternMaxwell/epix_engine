@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <epix/color.hpp>
 #include <epix/sprite_render/tilemap_chunk.hpp>
 #include <expected>
 #include <limits>
@@ -94,18 +95,6 @@ float4 fragment(epix::mesh2d_vertex_output::VertexOutput mesh) : SV_Target {
 std::span<const std::byte> shader_bytes(std::string_view source) {
     return std::span<const std::byte>(reinterpret_cast<const std::byte*>(source.data()), source.size());
 }
-
-/** @brief Bevy `ColorToPacked for Srgba::to_u8_array`'s per-channel rounding. */
-std::uint8_t color_component_to_u8(float value) noexcept {
-    return static_cast<std::uint8_t>(std::round(std::clamp(value, 0.0f, 1.0f) * 255.0f));
-}
-
-/** @brief Bevy `Srgba::gamma_function_inverse`. Epix colours are linear
- *  `glm::vec4`, so packing the tint applies the same linear-to-sRGB transfer
- *  Bevy's `Color::to_srgba()` does before `to_u8_array()`. */
-float linear_to_srgb(float value) noexcept {
-    return value <= 0.0031308f ? value * 12.92f : 1.055f * std::pow(value, 1.0f / 2.4f) - 0.055f;
-}
 }  // namespace
 
 epix::sprite_render::PackedTileData epix::sprite_render::PackedTileData::empty() noexcept {
@@ -116,8 +105,9 @@ epix::sprite_render::PackedTileData epix::sprite_render::PackedTileData::empty()
 
 epix::sprite_render::PackedTileData::PackedTileData(const TileData& tile) noexcept
     : tileset_index(tile.tileset_index),
-      color{color_component_to_u8(linear_to_srgb(tile.color.r)), color_component_to_u8(linear_to_srgb(tile.color.g)),
-            color_component_to_u8(linear_to_srgb(tile.color.b)), color_component_to_u8(tile.color.a)},
+      // Bevy 0.18 packs `color.to_srgba().to_u8_array()`
+      // (`tilemap_chunk_material.rs:81`); Epix tile colours are linear `glm::vec4`.
+      color(epix::color::Srgba(epix::color::LinearRgba(tile.color)).u8_array()),
       flags(tile.visible ? 1u : 0u) {}
 
 epix::sprite_render::PackedTileData::PackedTileData(const std::optional<TileData>& maybe_tile) noexcept {

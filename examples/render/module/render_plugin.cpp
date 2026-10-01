@@ -57,7 +57,7 @@ struct ClearPassNode : render::graph::Node {
         const auto clear_color = [&]() -> std::optional<glm::vec4> {
             if (std::holds_alternative<::epix::camera::ClearColorConfig::None>(camera.clear_color)) return std::nullopt;
             if (const auto* custom = std::get_if<::epix::camera::ClearColorConfig::Custom>(&camera.clear_color)) {
-                return custom->color.to_vec4();
+                return ::epix::color::LinearRgba(custom->color).vec4();
             }
             return world.get_resource<::epix::camera::ClearColor>().transform(
                 [](const auto& color) { return color.get().to_vec4(); });

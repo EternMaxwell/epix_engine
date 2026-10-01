@@ -73,7 +73,8 @@ void setup(Commands commands, ResMut<assets::Assets<image::Image>> images) {
             .physical_position = tile.position,
             .physical_size     = kTileSize,
         };
-        view.clear_color = camera::ClearColorConfig::Custom{camera::ClearColor{0.015f, 0.015f, 0.02f, 1.0f}};
+        view.clear_color = camera::ClearColorConfig::Custom{
+            epix::color::Color::linear_rgba(0.015f, 0.015f, 0.02f, 1.0f)};
 
         commands.spawn(camera::Camera2d{}, std::move(view), tile.method, core_graph::DebandDither::Disabled,
                        transform::Transform{});

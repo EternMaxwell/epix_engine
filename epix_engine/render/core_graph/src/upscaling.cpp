@@ -1,4 +1,5 @@
 #include <array>
+#include <epix/color.hpp>
 #include <epix/core_graph.hpp>
 #include <optional>
 #include <unordered_set>
@@ -48,7 +49,7 @@ std::optional<glm::vec4> output_clear_color(const render::camera::ExtractedCamer
     const auto* write = std::get_if<camera::CameraOutputMode::Write>(&camera->output_mode);
     if (!write) return std::nullopt;
     if (const auto* custom = std::get_if<camera::ClearColorConfig::Custom>(&write->clear_color)) {
-        return custom->color.to_vec4();
+        return ::epix::color::LinearRgba(custom->color).vec4();
     }
     if (!std::holds_alternative<camera::ClearColorConfig::None>(write->clear_color)) {
         if (auto clear = world.get_resource<camera::ClearColor>()) return clear->get().to_vec4();

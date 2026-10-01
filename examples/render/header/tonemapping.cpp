@@ -8,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <epix/camera.hpp>
+#include <epix/color.hpp>
 #include <epix/core_graph.hpp>
 #include <epix/ecs.hpp>
 #include <epix/sdl3/core.hpp>
@@ -56,17 +57,17 @@ constexpr std::array kTiles{
     Tile{core_graph::Tonemapping::BlenderFilmic, {3 * kTileSize.x, 1 * kTileSize.y}},
 };
 
-camera::ClearColor animated_hdr_color(float seconds) {
+epix::color::Color animated_hdr_color(float seconds) {
     // Deliberately exceed display-referred 1.0 so each operator has meaningful
     // highlight information to compress. The incommensurate rates continually
     // change both hue and luminance while every tile receives the exact same
     // source value.
-    return camera::ClearColor{
+    return epix::color::Color::linear_rgba(
         0.15f + 5.85f * (0.5f + 0.5f * std::sin(seconds * 0.43f)),
         0.10f + 3.90f * (0.5f + 0.5f * std::sin(seconds * 0.67f + 2.1f)),
         0.05f + 2.95f * (0.5f + 0.5f * std::sin(seconds * 0.89f + 4.2f)),
-        1.0f,
-    };
+        1.0f
+    );
 }
 
 void setup(Commands commands) {
@@ -94,7 +95,8 @@ void animate_source_color(Res<time::Time<>> time,
 
     static float last_log = -2.0f;
     if (time->elapsed_secs() - last_log >= 2.0f) {
-        spdlog::info("Shared changing HDR input: ({:.2f}, {:.2f}, {:.2f}); {}", color.r, color.g, color.b,
+        const glm::vec4 linear = ::epix::color::LinearRgba(color).vec4();
+        spdlog::info("Shared changing HDR input: ({:.2f}, {:.2f}, {:.2f}); {}", linear.r, linear.g, linear.b,
                      kGridDescription);
         last_log = time->elapsed_secs();
     }

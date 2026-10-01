@@ -9,6 +9,7 @@
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
 #include <epix/camera.hpp>
+#include <epix/color.hpp>
 #include <epix/core_graph.hpp>
 #include <epix/ecs.hpp>
 #include <epix/sdl3/core.hpp>
@@ -69,7 +70,8 @@ void setup(Commands commands, ResMut<assets::Assets<image::Image>> images) {
             .physical_position = tile.position,
             .physical_size     = kTileSize,
         };
-        view.clear_color = camera::ClearColorConfig::Custom{camera::ClearColor{0.015f, 0.015f, 0.02f, 1.0f}};
+        view.clear_color = camera::ClearColorConfig::Custom{
+            epix::color::Color::linear_rgba(0.015f, 0.015f, 0.02f, 1.0f)};
 
         // Deliberately no render::view::Hdr component: the sprite pipeline
         // must select TONEMAP_IN_SHADER for this LDR view.

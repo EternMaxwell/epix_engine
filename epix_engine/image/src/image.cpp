@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <epix/color.hpp>
 #include <epix/image/image.hpp>
 #include <epix/image/image_loader.hpp>
 #include <expected>
@@ -907,18 +908,18 @@ std::uint32_t to_u32_via_f32(float value) noexcept {
 }
 
 float luminance(const glm::vec4& color) noexcept {
-    // `Xyza::from(LinearRgba).y` in Bevy 0.18.
-    return color.r * 0.2126729f + color.g * 0.7151522f + color.b * 0.0721750f;
+    // `Xyza::from(LinearRgba).y` in Bevy 0.18 (`image.rs:1851-1853`).
+    return epix::color::Xyza(epix::color::LinearRgba(color)).y;
 }
 
 float srgb_to_linear(float value) noexcept {
-    // Bevy 0.18 `Srgba::gamma_function`.
-    return value <= 0.04045f ? value / 12.92f : std::pow((value + 0.055f) / 1.055f, 2.4f);
+    // Bevy 0.18 `Srgba::gamma_function` (`srgba.rs:215-224`).
+    return epix::color::Srgba::gamma_function(value);
 }
 
 float linear_to_srgb(float value) noexcept {
-    // Bevy 0.18 `Srgba::gamma_function_inverse`.
-    return value <= 0.0031308f ? value * 12.92f : 1.055f * std::pow(value, 1.0f / 2.4f) - 0.055f;
+    // Bevy 0.18 `Srgba::gamma_function_inverse` (`srgba.rs:227-237`).
+    return epix::color::Srgba::gamma_function_inverse(value);
 }
 
 /** @brief Read exactly the texture formats supported by Bevy's color accessor. */

@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <epix/app.hpp>
 #include <epix/camera.hpp>
+#include <epix/color.hpp>
 #include <epix/ecs.hpp>
 #include <epix/transform.hpp>
 #include <epix/window.hpp>
@@ -141,7 +142,7 @@ TEST(CameraOutput, ModesAndWritebackMatchBevy) {
     EXPECT_TRUE(std::holds_alternative<::epix::camera::ClearColorConfig::Default>(write.clear_color));
     EXPECT_TRUE(std::holds_alternative<::epix::camera::ClearColorConfig::Default>(::epix::camera::ClearColorConfig{}));
     EXPECT_TRUE(std::holds_alternative<::epix::camera::ClearColorConfig::Custom>(::epix::camera::ClearColorConfig{
-        ::epix::camera::ClearColorConfig::Custom{::epix::camera::ClearColor{1.0f, 0.0f, 0.0f, 1.0f}}}));
+        ::epix::camera::ClearColorConfig::Custom{::epix::color::Color::linear_rgba(1.0f, 0.0f, 0.0f, 1.0f)}}));
     EXPECT_TRUE(std::holds_alternative<::epix::camera::ClearColorConfig::None>(
         ::epix::camera::ClearColorConfig{::epix::camera::ClearColorConfig::None{}}));
     EXPECT_TRUE(std::holds_alternative<::epix::camera::CameraOutputMode::Skip>(

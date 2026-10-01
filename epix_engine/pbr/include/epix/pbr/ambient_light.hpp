@@ -13,8 +13,9 @@ namespace epix::pbr {
  *  it overrides `GlobalAmbientLight`; Bevy expresses that with a required
  *  `Camera` component, which Epix registers from the plugin that owns the type.
  *
- *  Bevy stores a `bevy_color::Color`; Epix has no colour crate, so the colour is
- *  a linear `glm::vec4`, the convention the tilemap material already uses. */
+ *  Bevy stores a `bevy_color::Color`; Epix keeps the linear `glm::vec4` the light uniform
+ *  consumes, a documented representation divergence left for a later pass now that
+ *  `epix::color` exists. */
 EPIX_EXPORT struct AmbientLight {
     /** @brief The light's colour, linear. Bevy's default is white. */
     glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
