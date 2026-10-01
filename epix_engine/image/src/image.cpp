@@ -1111,6 +1111,32 @@ std::expected<glm::vec4, TextureAccessError> read_color_at(const Image& image, c
     return *color;
 }
 
+/** @brief Read the pixel at `coords` as the `Color` Bevy's accessor returns: the
+ * two 8-bit sRGB formats keep their encoded bytes as a `Color::Srgba` and every
+ * other supported format is linear RGBA (`image.rs:1632-1758`). `read_pixel_color`
+ * decodes straight to linear for the conversion paths, so the accessor decodes the
+ * encoded bytes itself and only that pair differs from it. */
+std::expected<::epix::color::Color, TextureAccessError> read_accessor_color_at(const Image& image,
+                                                                              const glm::uvec3& coords) {
+    const auto bytes = image.pixel_bytes(coords);
+    if (!bytes) {
+        return std::unexpected(TextureAccessError{TextureAccessError::OutOfBounds{coords.x, coords.y, coords.z}});
+    }
+    const auto format = image.texture_descriptor.format;
+    if (format == wgpu::TextureFormat::eRGBA8UnormSrgb || format == wgpu::TextureFormat::eBGRA8UnormSrgb) {
+        const auto* raw   = reinterpret_cast<const std::uint8_t*>(bytes->data());
+        const bool bgra   = format == wgpu::TextureFormat::eBGRA8UnormSrgb;
+        const auto normalize = [raw](std::size_t index) { return static_cast<float>(raw[index]) / 255.0f; };
+        return ::epix::color::Color::srgba(normalize(bgra ? 2 : 0), normalize(1), normalize(bgra ? 0 : 2),
+                                          normalize(3));
+    }
+    const auto color = read_pixel_color(format, *bytes);
+    if (!color) {
+        return std::unexpected(TextureAccessError{TextureAccessError::UnsupportedTextureFormat{format}});
+    }
+    return ::epix::color::Color::linear_rgba(color->r, color->g, color->b, color->a);
+}
+
 /** @brief Write the pixel at `coords`, mapping the failure to a typed access error. */
 std::expected<void, TextureAccessError> write_color_at(Image& image, const glm::uvec3& coords, const glm::vec4& color) {
     const auto bytes = image.pixel_bytes_mut(coords);
@@ -1150,50 +1176,54 @@ std::string to_string(const TextureAccessError& error) {
         error.value);
 }
 
-std::expected<glm::vec4, TextureAccessError> Image::get_color_at(std::uint32_t x, std::uint32_t y) const {
+std::expected<::epix::color::Color, TextureAccessError> Image::get_color_at(std::uint32_t x, std::uint32_t y) const {
     // Bevy checks the dimension only and reads layer 0, so a layered 2D image is
     // readable here (`image.rs:1535-1540`).
     if (texture_descriptor.dimension != wgpu::TextureDimension::e2D) {
         return std::unexpected(TextureAccessError{TextureAccessError::WrongDimension{}});
     }
-    return read_color_at(*this, glm::uvec3{x, y, 0});
+    return read_accessor_color_at(*this, glm::uvec3{x, y, 0});
 }
 
-std::expected<glm::vec4, TextureAccessError> Image::get_color_at_1d(std::uint32_t x) const {
+std::expected<::epix::color::Color, TextureAccessError> Image::get_color_at_1d(std::uint32_t x) const {
     if (texture_descriptor.dimension != wgpu::TextureDimension::e1D) {
         return std::unexpected(TextureAccessError{TextureAccessError::WrongDimension{}});
     }
-    return read_color_at(*this, glm::uvec3{x, 0, 0});
+    return read_accessor_color_at(*this, glm::uvec3{x, 0, 0});
 }
 
-std::expected<glm::vec4, TextureAccessError> Image::get_color_at_3d(std::uint32_t x,
-                                                                    std::uint32_t y,
-                                                                    std::uint32_t z) const {
+std::expected<::epix::color::Color, TextureAccessError> Image::get_color_at_3d(std::uint32_t x,
+                                                                              std::uint32_t y,
+                                                                              std::uint32_t z) const {
     if (!is_3d_or_layered(*this)) return std::unexpected(TextureAccessError{TextureAccessError::WrongDimension{}});
-    return read_color_at(*this, glm::uvec3{x, y, z});
+    return read_accessor_color_at(*this, glm::uvec3{x, y, z});
 }
 
-std::expected<void, TextureAccessError> Image::set_color_at(std::uint32_t x, std::uint32_t y, const glm::vec4& color) {
+std::expected<void, TextureAccessError> Image::set_color_at(std::uint32_t x, std::uint32_t y, ::epix::color::Color color) {
     // Same dimension-only rule as `get_color_at` (`image.rs:1591-1596`).
     if (texture_descriptor.dimension != wgpu::TextureDimension::e2D) {
         return std::unexpected(TextureAccessError{TextureAccessError::WrongDimension{}});
     }
-    return write_color_at(*this, glm::uvec3{x, y, 0}, color);
+    // Bevy encodes `LinearRgba::from(color)` for the linear formats and
+    // `Srgba::from(color)` for the sRGB ones (`image.rs:1780-1808`); passing the
+    // linear components into a writer that re-encodes through `linear_to_srgb`
+    // is those same two conversions.
+    return write_color_at(*this, glm::uvec3{x, y, 0}, ::epix::color::LinearRgba(color).vec4());
 }
 
-std::expected<void, TextureAccessError> Image::set_color_at_1d(std::uint32_t x, const glm::vec4& color) {
+std::expected<void, TextureAccessError> Image::set_color_at_1d(std::uint32_t x, ::epix::color::Color color) {
     if (texture_descriptor.dimension != wgpu::TextureDimension::e1D) {
         return std::unexpected(TextureAccessError{TextureAccessError::WrongDimension{}});
     }
-    return write_color_at(*this, glm::uvec3{x, 0, 0}, color);
+    return write_color_at(*this, glm::uvec3{x, 0, 0}, ::epix::color::LinearRgba(color).vec4());
 }
 
 std::expected<void, TextureAccessError> Image::set_color_at_3d(std::uint32_t x,
                                                                std::uint32_t y,
                                                                std::uint32_t z,
-                                                               const glm::vec4& color) {
+                                                               ::epix::color::Color color) {
     if (!is_3d_or_layered(*this)) return std::unexpected(TextureAccessError{TextureAccessError::WrongDimension{}});
-    return write_color_at(*this, glm::uvec3{x, y, z}, color);
+    return write_color_at(*this, glm::uvec3{x, y, z}, ::epix::color::LinearRgba(color).vec4());
 }
 
 Image Image::create2d(std::uint32_t w, std::uint32_t h, wgpu::TextureFormat format) {

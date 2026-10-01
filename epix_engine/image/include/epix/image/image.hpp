@@ -10,6 +10,7 @@
 #include <cstring>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/color.hpp>
 #include <epix/common.hpp>
 #include <exception>
 #include <expected>
@@ -1134,8 +1135,8 @@ EPIX_EXPORT class EPIX_API Image {
     /** @brief Returns the aspect ratio (width / height) of a 2D image (Bevy
      * `Image::aspect_ratio`).
      *
-     * Bevy returns an `AspectRatio` value type; Epix has no color/aspect value
-     * types, so the ratio is returned as the equivalent `f32`. */
+     * Bevy returns an `AspectRatio` value type; Epix has no such type, so the
+     * ratio is returned as the equivalent `f32`. */
     float aspect_ratio() const;
 
     /** @brief Resizes the image to the new size, removing data or appending zeros.
@@ -1179,32 +1180,32 @@ EPIX_EXPORT class EPIX_API Image {
      * (Bevy `Image::clear`). */
     void clear(std::span<const std::byte> pixel);
 
-    /** @brief Read a pixel as linear RGBA (Bevy `Image::get_color_at`, which
-     * returns a `Color`).
+    /** @brief Read a pixel as a `Color` (Bevy `Image::get_color_at`).
      *
-     * Epix has no `Color` value type and uses `glm::vec4` for colors throughout,
-     * so the components are returned directly as linear RGBA. */
-    std::expected<glm::vec4, TextureAccessError> get_color_at(std::uint32_t x, std::uint32_t y) const;
+     * As in Bevy, the two 8-bit sRGB formats come back as a `Color::Srgba` and
+     * every other supported format as linear RGBA; `Color::linear()` converts
+     * either to linear components (`image.rs:1632-1758`). */
+    std::expected<::epix::color::Color, TextureAccessError> get_color_at(std::uint32_t x, std::uint32_t y) const;
     /** @brief Read a pixel from a layered 2D or 3D texture (Bevy
      * `Image::get_color_at_3d`). */
-    std::expected<glm::vec4, TextureAccessError> get_color_at_3d(std::uint32_t x,
-                                                                 std::uint32_t y,
-                                                                 std::uint32_t z) const;
+    std::expected<::epix::color::Color, TextureAccessError> get_color_at_3d(std::uint32_t x,
+                                                                            std::uint32_t y,
+                                                                            std::uint32_t z) const;
     /** @brief Read a pixel from a 1D texture (Bevy `Image::get_color_at_1d`). */
-    std::expected<glm::vec4, TextureAccessError> get_color_at_1d(std::uint32_t x) const;
+    std::expected<::epix::color::Color, TextureAccessError> get_color_at_1d(std::uint32_t x) const;
 
-    /** @brief Write linear RGBA into a pixel, encoded into the image's texture
-     * format (Bevy `Image::set_color_at`). */
-    std::expected<void, TextureAccessError> set_color_at(std::uint32_t x, std::uint32_t y, const glm::vec4& color);
-    /** @brief Write linear RGBA into a pixel of a layered 2D or 3D texture (Bevy
+    /** @brief Write a `Color` into a pixel, encoded into the image's texture
+     * format (Bevy `Image::set_color_at`, `image.rs:1780-1868`). */
+    std::expected<void, TextureAccessError> set_color_at(std::uint32_t x, std::uint32_t y, ::epix::color::Color color);
+    /** @brief Write a `Color` into a pixel of a layered 2D or 3D texture (Bevy
      * `Image::set_color_at_3d`). */
     std::expected<void, TextureAccessError> set_color_at_3d(std::uint32_t x,
                                                             std::uint32_t y,
                                                             std::uint32_t z,
-                                                            const glm::vec4& color);
-    /** @brief Write linear RGBA into a pixel of a 1D texture (Bevy
+                                                            ::epix::color::Color color);
+    /** @brief Write a `Color` into a pixel of a 1D texture (Bevy
      * `Image::set_color_at_1d`). */
-    std::expected<void, TextureAccessError> set_color_at_1d(std::uint32_t x, const glm::vec4& color);
+    std::expected<void, TextureAccessError> set_color_at_1d(std::uint32_t x, ::epix::color::Color color);
 };
 
 /** @brief The persistent opaque-white fallback image installed by

@@ -103,12 +103,16 @@ std::optional<image::Image> decode_with(const assets::AssetServer& server,
     // The palette's column 1 (pure green) is the sample this example reports, so
     // the log contains the decorative `is_srgb` difference as numbers instead of
     // only as pixels.
-    const auto sample = decoded->get_color_at(1, 0);
+    const auto sample       = decoded->get_color_at(1, 0);
+    const auto sample_red   = sample ? sample->linear().red : -1.0f;
+    const auto sample_green = sample ? sample->linear().green : -1.0f;
+    const auto sample_blue  = sample ? sample->linear().blue : -1.0f;
+    const auto sample_alpha = sample ? sample->linear().alpha : -1.0f;
     spdlog::info("[loader_settings] {}: {}x{} texture format {} dimension {} depth_or_layers {}; pixel(1,0) = "
                  "({:.3f}, {:.3f}, {:.3f}, {:.3f})",
                  name, decoded->width(), decoded->height(), static_cast<int>(decoded->texture_descriptor.format),
-                 static_cast<int>(decoded->type()), decoded->depth_or_layers(), sample ? sample->r : -1.0f,
-                 sample ? sample->g : -1.0f, sample ? sample->b : -1.0f, sample ? sample->a : -1.0f);
+                 static_cast<int>(decoded->type()), decoded->depth_or_layers(), sample_red, sample_green, sample_blue,
+                 sample_alpha);
     return std::move(*decoded);
 }
 
@@ -139,10 +143,12 @@ struct LoaderSettingsVisualTestPlugin {
         for (std::uint32_t y = 0; y < 8; ++y) {
             for (std::uint32_t x = 0; x < 8; ++x) {
                 const auto& rgb = palette[x];
-                (void)fixture.set_color_at(x, y,
-                                           glm::vec4(static_cast<float>(rgb[0]) / 255.0f,
-                                                     static_cast<float>(rgb[1]) / 255.0f,
-                                                     static_cast<float>(rgb[2]) / 255.0f, 1.0f));
+                (void)fixture.set_color_at(x,
+                                           y,
+                                           ::epix::color::Color::linear_rgba(static_cast<float>(rgb[0]) / 255.0f,
+                                                                             static_cast<float>(rgb[1]) / 255.0f,
+                                                                             static_cast<float>(rgb[2]) / 255.0f,
+                                                                             1.0f));
             }
         }
         if (!image::Image::save(std::string(kFixturePath), fixture).has_value()) {

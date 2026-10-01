@@ -252,12 +252,13 @@ TEST(Image, ResizeReplacesSizeAndReallocsData) {
 TEST(Image, ColorAccessAcceptsLayered2dImages) {
     auto layered = epix::image::Image::create2d_array(2, 2, 3, wgpu::TextureFormat::eRGBA8Unorm);
 
-    ASSERT_TRUE(layered.set_color_at(1, 0, glm::vec4(0.25f, 0.5f, 0.75f, 1.0f)).has_value());
+    ASSERT_TRUE(layered.set_color_at(1, 0, ::epix::color::Color::linear_rgba(0.25f, 0.5f, 0.75f, 1.0f)).has_value());
     const auto color = layered.get_color_at(1, 0);
     ASSERT_TRUE(color.has_value());
-    EXPECT_NEAR(color->r, 0.25f, 0.01f);
-    EXPECT_NEAR(color->g, 0.5f, 0.01f);
-    EXPECT_NEAR(color->b, 0.75f, 0.01f);
+    const auto linear = color->linear();
+    EXPECT_NEAR(linear.red, 0.25f, 0.01f);
+    EXPECT_NEAR(linear.green, 0.5f, 0.01f);
+    EXPECT_NEAR(linear.blue, 0.75f, 0.01f);
 
     // The dimension check stays: a 3D texture is still the wrong dimension here,
     // and a layered 2D image is still what the `*_at_3d` forms want.
@@ -443,14 +444,15 @@ TEST(Image, ClearCopiesOneCompletePixelAcrossPayload) {
 // typed access errors (Bevy Image::get_color_at / set_color_at, image.rs:1504-1610).
 TEST(Image, ColorAccessorsRoundTripAndReportTypedErrors) {
     auto image = epix::image::Image::create2d(2, 2, wgpu::TextureFormat::eRGBA8Unorm);
-    ASSERT_TRUE(image.set_color_at(1, 1, glm::vec4(1.0f, 0.5f, 0.25f, 1.0f)).has_value());
+    ASSERT_TRUE(image.set_color_at(1, 1, ::epix::color::Color::linear_rgba(1.0f, 0.5f, 0.25f, 1.0f)).has_value());
 
     const auto read_back = image.get_color_at(1, 1);
     ASSERT_TRUE(read_back.has_value());
-    EXPECT_NEAR((*read_back)[0], 1.0f, 1.0f / 255.0f);
-    EXPECT_NEAR((*read_back)[1], 0.5f, 1.0f / 255.0f);
-    EXPECT_NEAR((*read_back)[2], 0.25f, 1.0f / 255.0f);
-    EXPECT_NEAR((*read_back)[3], 1.0f, 1.0f / 255.0f);
+    const auto linear = read_back->linear();
+    EXPECT_NEAR(linear.red, 1.0f, 1.0f / 255.0f);
+    EXPECT_NEAR(linear.green, 0.5f, 1.0f / 255.0f);
+    EXPECT_NEAR(linear.blue, 0.25f, 1.0f / 255.0f);
+    EXPECT_NEAR(linear.alpha, 1.0f, 1.0f / 255.0f);
 
     // Out-of-range coordinates report the offending coordinate in the error.
     const auto out_of_bounds = image.get_color_at(9, 0);
@@ -468,10 +470,11 @@ TEST(Image, ColorAccessorsRoundTripAndReportTypedErrors) {
 
     // The 3D accessor works on layered 2D images and 3D images alike. The last
     // valid layer index is depth - 1, so this exercises the boundary.
-    ASSERT_TRUE(volumetric.set_color_at_3d(1, 1, 1, glm::vec4(0.0f, 1.0f, 0.0f, 1.0f)).has_value());
+    ASSERT_TRUE(
+        volumetric.set_color_at_3d(1, 1, 1, ::epix::color::Color::linear_rgba(0.0f, 1.0f, 0.0f, 1.0f)).has_value());
     const auto layer_read = volumetric.get_color_at_3d(1, 1, 1);
     ASSERT_TRUE(layer_read.has_value());
-    EXPECT_NEAR((*layer_read)[1], 1.0f, 1.0f / 255.0f);
+    EXPECT_NEAR(layer_read->linear().green, 1.0f, 1.0f / 255.0f);
     // One layer past the end is reported as out of bounds.
     const auto beyond = volumetric.get_color_at_3d(0, 0, 2);
     ASSERT_FALSE(beyond.has_value());
@@ -485,7 +488,7 @@ TEST(Image, ColorAccessorsRoundTripAndReportTypedErrors) {
 TEST(Image, ColorAccessorsHandleBgraChannelOrder) {
     auto image                      = epix::image::Image::create2d(1, 1, wgpu::TextureFormat::eRGBA8Unorm);
     image.texture_descriptor.format = wgpu::TextureFormat::eBGRA8Unorm;
-    ASSERT_TRUE(image.set_color_at(0, 0, glm::vec4(1.0f, 0.0f, 0.5f, 1.0f)).has_value());
+    ASSERT_TRUE(image.set_color_at(0, 0, ::epix::color::Color::linear_rgba(1.0f, 0.0f, 0.5f, 1.0f)).has_value());
 
     const auto bytes = image.pixel_bytes({0u, 0u, 0u});
     ASSERT_TRUE(bytes.has_value());
@@ -494,13 +497,16 @@ TEST(Image, ColorAccessorsHandleBgraChannelOrder) {
     EXPECT_EQ((*bytes)[2], std::byte(255));  // red
     const auto read_back = image.get_color_at(0, 0);
     ASSERT_TRUE(read_back.has_value());
-    EXPECT_NEAR((*read_back)[0], 1.0f, 1.0f / 255.0f);
-    EXPECT_NEAR((*read_back)[2], 0.5f, 1.0f / 255.0f);
+    EXPECT_NEAR(read_back->linear().red, 1.0f, 1.0f / 255.0f);
+    EXPECT_NEAR(read_back->linear().blue, 0.5f, 1.0f / 255.0f);
 }
 
-TEST(Image, ColorAccessorsConvertLinearRgbaForSrgbFormats) {
+// Bevy's setter encodes `Srgba::from(color)` for an sRGB format and its getter returns
+// the encoded bytes as a tagged `Color::Srgba` rather than a linear one
+// (`image.rs:1780-1808`, `:1632-1656`).
+TEST(Image, ColorAccessorsTagSrgbFormats) {
     auto image = epix::image::Image::create2d(1, 1, wgpu::TextureFormat::eBGRA8UnormSrgb);
-    ASSERT_TRUE(image.set_color_at(0, 0, glm::vec4{1.0f, 0.0f, 0.5f, 1.0f}).has_value());
+    ASSERT_TRUE(image.set_color_at(0, 0, ::epix::color::Color::linear_rgba(1.0f, 0.0f, 0.5f, 1.0f)).has_value());
 
     const auto bytes = image.pixel_bytes({0u, 0u, 0u});
     ASSERT_TRUE(bytes.has_value());
@@ -510,13 +516,15 @@ TEST(Image, ColorAccessorsConvertLinearRgbaForSrgbFormats) {
 
     const auto read_back = image.get_color_at(0, 0);
     ASSERT_TRUE(read_back.has_value());
-    EXPECT_NEAR(read_back->r, 0.9911022f, 1.0e-6f);
-    EXPECT_NEAR(read_back->b, 0.4969330f, 1.0e-6f);
+    EXPECT_TRUE(std::holds_alternative<epix::color::Srgba>(read_back->color));
+    const auto srgb = read_back->srgba();
+    EXPECT_NEAR(srgb.red, 254.0f / 255.0f, 1.0e-6f);
+    EXPECT_NEAR(srgb.blue, 187.0f / 255.0f, 1.0e-6f);
 }
 
 TEST(Image, ColorAccessorsMatchBevyIntegerHalfFloatAndUnsupportedFormats) {
     auto rgba_uint = epix::image::Image::create2d(1, 1, wgpu::TextureFormat::eRGBA8Uint);
-    ASSERT_TRUE(rgba_uint.set_color_at(0, 0, glm::vec4{0.5f, 0.25f, 0.75f, 1.0f}).has_value());
+    ASSERT_TRUE(rgba_uint.set_color_at(0, 0, ::epix::color::Color::linear_rgba(0.5f, 0.25f, 0.75f, 1.0f)).has_value());
     const auto rgba_bytes = rgba_uint.pixel_bytes({0u, 0u, 0u});
     ASSERT_TRUE(rgba_bytes.has_value());
     EXPECT_EQ((*rgba_bytes)[0], std::byte{127});
@@ -524,7 +532,7 @@ TEST(Image, ColorAccessorsMatchBevyIntegerHalfFloatAndUnsupportedFormats) {
     EXPECT_EQ((*rgba_bytes)[2], std::byte{191});
 
     auto rgba_u32 = epix::image::Image::create2d(1, 1, wgpu::TextureFormat::eRGBA32Uint);
-    ASSERT_TRUE(rgba_u32.set_color_at(0, 0, glm::vec4{0.5f, 0.0f, 0.0f, 1.0f}).has_value());
+    ASSERT_TRUE(rgba_u32.set_color_at(0, 0, ::epix::color::Color::linear_rgba(0.5f, 0.0f, 0.0f, 1.0f)).has_value());
     const auto rgba_u32_bytes = rgba_u32.pixel_bytes({0u, 0u, 0u});
     ASSERT_TRUE(rgba_u32_bytes.has_value());
     std::uint32_t rgba_u32_red{};
@@ -532,7 +540,8 @@ TEST(Image, ColorAccessorsMatchBevyIntegerHalfFloatAndUnsupportedFormats) {
     EXPECT_EQ(rgba_u32_red, 0x80000000u);  // Bevy multiplies this format in f32.
 
     auto rgba_unorm16 = epix::image::Image::create2d(1, 1, wgpu::TextureFormat::eRGBA16Unorm);
-    ASSERT_TRUE(rgba_unorm16.set_color_at(0, 0, glm::vec4{0.5f, 0.25f, 0.75f, 1.0f}).has_value());
+    ASSERT_TRUE(
+        rgba_unorm16.set_color_at(0, 0, ::epix::color::Color::linear_rgba(0.5f, 0.25f, 0.75f, 1.0f)).has_value());
     const auto rgba_unorm16_bytes = rgba_unorm16.pixel_bytes({0u, 0u, 0u});
     ASSERT_TRUE(rgba_unorm16_bytes.has_value());
     std::uint16_t rgba_unorm16_red{};
@@ -540,25 +549,27 @@ TEST(Image, ColorAccessorsMatchBevyIntegerHalfFloatAndUnsupportedFormats) {
     EXPECT_EQ(rgba_unorm16_red, 32767u);
     const auto rgba_unorm16_read = rgba_unorm16.get_color_at(0, 0);
     ASSERT_TRUE(rgba_unorm16_read.has_value());
-    EXPECT_NEAR(rgba_unorm16_read->r, 0.5f, 1.0f / 65535.0f);
+    EXPECT_NEAR(rgba_unorm16_read->linear().red, 0.5f, 1.0f / 65535.0f);
 
     auto half_float = epix::image::Image::create2d(1, 1, wgpu::TextureFormat::eRG16Float);
-    ASSERT_TRUE(half_float.set_color_at(0, 0, glm::vec4{0.5f, -2.0f, 0.0f, 1.0f}).has_value());
+    ASSERT_TRUE(
+        half_float.set_color_at(0, 0, ::epix::color::Color::linear_rgba(0.5f, -2.0f, 0.0f, 1.0f)).has_value());
     const auto half_read = half_float.get_color_at(0, 0);
     ASSERT_TRUE(half_read.has_value());
-    EXPECT_FLOAT_EQ(half_read->r, 0.5f);
-    EXPECT_FLOAT_EQ(half_read->g, -2.0f);
+    EXPECT_FLOAT_EQ(half_read->linear().red, 0.5f);
+    EXPECT_FLOAT_EQ(half_read->linear().green, -2.0f);
 
     auto r_uint = epix::image::Image::create2d(1, 1, wgpu::TextureFormat::eR32Uint);
-    ASSERT_TRUE(r_uint.set_color_at(0, 0, glm::vec4{1.0f, 0.0f, 0.0f, 1.0f}).has_value());
+    ASSERT_TRUE(r_uint.set_color_at(0, 0, ::epix::color::Color::linear_rgba(1.0f, 0.0f, 0.0f, 1.0f)).has_value());
     const auto grayscale = r_uint.get_color_at(0, 0);
     ASSERT_TRUE(grayscale.has_value());
-    EXPECT_NEAR(grayscale->r, 0.2126729f, 1.0e-6f);
-    EXPECT_EQ(grayscale->r, grayscale->g);
-    EXPECT_EQ(grayscale->g, grayscale->b);
+    EXPECT_NEAR(grayscale->linear().red, 0.2126729f, 1.0e-6f);
+    EXPECT_EQ(grayscale->linear().red, grayscale->linear().green);
+    EXPECT_EQ(grayscale->linear().green, grayscale->linear().blue);
 
     auto r_u32_half = epix::image::Image::create2d(1, 1, wgpu::TextureFormat::eR32Uint);
-    ASSERT_TRUE(r_u32_half.set_color_at(0, 0, glm::vec4{0.5f, 0.5f, 0.5f, 1.0f}).has_value());
+    ASSERT_TRUE(
+        r_u32_half.set_color_at(0, 0, ::epix::color::Color::linear_rgba(0.5f, 0.5f, 0.5f, 1.0f)).has_value());
     const auto r_u32_bytes = r_u32_half.pixel_bytes({0u, 0u, 0u});
     ASSERT_TRUE(r_u32_bytes.has_value());
     std::uint32_t r_u32_value{};
@@ -573,7 +584,8 @@ TEST(Image, ColorAccessorsMatchBevyIntegerHalfFloatAndUnsupportedFormats) {
     EXPECT_NE(std::get_if<epix::image::TextureAccessError::UnsupportedTextureFormat>(
                   &unsupported_read.error().value),
               nullptr);
-    const auto unsupported_write = unsupported.set_color_at(0, 0, glm::vec4{1.0f});
+    const auto unsupported_write =
+        unsupported.set_color_at(0, 0, ::epix::color::Color::linear_rgba(1.0f, 1.0f, 1.0f, 1.0f));
     ASSERT_FALSE(unsupported_write.has_value());
     EXPECT_NE(std::get_if<epix::image::TextureAccessError::UnsupportedTextureFormat>(
                   &unsupported_write.error().value),

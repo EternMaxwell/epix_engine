@@ -97,8 +97,12 @@ bool write_tileset_fixture() {
         for (std::uint32_t y = 0; y < kTilesetTileSize; ++y) {
             for (std::uint32_t x = 0; x < kTilesetTileSize; ++x) {
                 const auto bright = ((x / 2u + y / 2u) % 2u) == 0u ? 1.0f : 0.55f;
-                (void)fixture.set_color_at(x, tile * kTilesetTileSize + y,
-                                           glm::vec4(kTileColors[tile] * bright, 1.0f));
+                (void)fixture.set_color_at(x,
+                                           tile * kTilesetTileSize + y,
+                                           ::epix::color::Color::linear_rgba(kTileColors[tile].r * bright,
+                                                                             kTileColors[tile].g * bright,
+                                                                             kTileColors[tile].b * bright,
+                                                                             1.0f));
             }
         }
     }

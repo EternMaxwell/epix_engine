@@ -151,8 +151,10 @@ TEST(DynamicTextureAtlasBuilder, PlacesTexturesWithGuillotierePlacementsAndCopie
         image::Image image = image::Image::create2d(width, height, wgpu::TextureFormat::eRGBA8Unorm);
         for (std::uint32_t y = 0; y < height; ++y) {
             for (std::uint32_t x = 0; x < width; ++x) {
-                image.set_color_at(x, y,
-                                   glm::vec4{red, static_cast<float>(x) / 16.0f, static_cast<float>(y) / 16.0f, 1.0f});
+                image.set_color_at(x,
+                                   y,
+                                   ::epix::color::Color::linear_rgba(
+                                       red, static_cast<float>(x) / 16.0f, static_cast<float>(y) / 16.0f, 1.0f));
             }
         }
         return image;

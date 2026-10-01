@@ -68,8 +68,11 @@ std::filesystem::path write_png_fixture() {
     auto image = image::Image::create2d(4, 2, wgpu::TextureFormat::eRGBA8Unorm);
     for (std::uint32_t y = 0; y < 2; ++y) {
         for (std::uint32_t x = 0; x < 4; ++x) {
-            const auto written =
-                image.set_color_at(x, y, glm::vec4(static_cast<float>(x) / 3.0f, static_cast<float>(y), 0.25f, 1.0f));
+            const auto written = image.set_color_at(
+                x,
+                y,
+                ::epix::color::Color::linear_rgba(
+                    static_cast<float>(x) / 3.0f, static_cast<float>(y), 0.25f, 1.0f));
             EXPECT_TRUE(written.has_value());
         }
     }
@@ -236,19 +239,17 @@ TEST(ImageLoad, WidensThreeChannelImagesToFourChannels) {
     EXPECT_EQ(widened->width(), 4u);
     EXPECT_EQ(widened->height(), 2u);
     EXPECT_EQ(widened->raw_view().size(), 4u * 2u * 4u);
-    // Every pixel gained an opaque alpha channel. `get_color_at` adapts Bevy's
-    // tagged sRGB Color result to Epix's linear-RGBA vec4 API.
-    const auto srgb_to_linear = [](float value) {
-        return value <= 0.04045f ? value / 12.92f : std::pow((value + 0.055f) / 1.055f, 2.4f);
-    };
+    // Every pixel gained an opaque alpha channel. `get_color_at` returns Bevy's
+    // tagged sRGB `Color` for an sRGB format, so the components are the encoded
+    // byte values rather than their linearized counterparts.
     for (std::uint32_t y = 0; y < 2; ++y) {
         for (std::uint32_t x = 0; x < 4; ++x) {
             const auto color = widened->get_color_at(x, y);
             ASSERT_TRUE(color.has_value());
-            EXPECT_FLOAT_EQ(color->a, 1.0f) << "at " << x << "," << y;
-            EXPECT_NEAR(color->r, srgb_to_linear(static_cast<float>(x) / 3.0f), 0.01f)
-                << "at " << x << "," << y;
-            EXPECT_NEAR(color->g, srgb_to_linear(static_cast<float>(y)), 0.01f) << "at " << x << "," << y;
+            const auto srgb = color->srgba();
+            EXPECT_FLOAT_EQ(srgb.alpha, 1.0f) << "at " << x << "," << y;
+            EXPECT_NEAR(srgb.red, static_cast<float>(x) / 3.0f, 0.01f) << "at " << x << "," << y;
+            EXPECT_NEAR(srgb.green, static_cast<float>(y), 0.01f) << "at " << x << "," << y;
         }
     }
 
@@ -265,7 +266,7 @@ TEST(ImageLoad, WidensThreeChannelImagesToFourChannels) {
     EXPECT_EQ(hdr->raw_view().size(), 1024u * 512u * 4u * sizeof(float));
     const auto hdr_color = hdr->get_color_at(0, 0);
     ASSERT_TRUE(hdr_color.has_value());
-    EXPECT_FLOAT_EQ(hdr_color->a, 1.0f);
+    EXPECT_FLOAT_EQ(hdr_color->linear().alpha, 1.0f);
 
     // The invariant that broke: no loaded image may keep an undefined format.
     for (const auto* loaded : {&*widened, &*hdr}) {
