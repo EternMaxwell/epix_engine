@@ -74,19 +74,7 @@ EPIX_EXPORT enum class GpuAssetCreationError {
     CreateBuffer,
 };
 
-[[nodiscard]] inline std::string_view gpu_asset_creation_error_message(GpuAssetCreationError error) noexcept {
-    switch (error) {
-        case GpuAssetCreationError::CreateTexture:
-            return "failed to create texture";
-        case GpuAssetCreationError::CreateTextureView:
-            return "failed to create texture view";
-        case GpuAssetCreationError::CreateSampler:
-            return "failed to create sampler";
-        case GpuAssetCreationError::CreateBuffer:
-            return "failed to create buffer";
-    }
-    return "unknown GPU asset creation failure";
-}
+[[nodiscard]] EPIX_API std::string_view gpu_asset_creation_error_message(GpuAssetCreationError error) noexcept;
 
 /** @brief Bevy-shaped preparation failure. The variant itself is the tagged
  * union: no parallel enum discriminator is required. The separate compact
