@@ -235,7 +235,7 @@ Every non-✅ row from every merged section, grouped by module and, inside a mod
 | Module | ID | Status | One-line summary | Epix file that must change |
 | --- | --- | --- | --- | --- |
 | `mesh` | MSH-1010 | ⛔ | `bevy_solari` raytracing toggle. Epix has no `bevy_solari` counterpart, so the field has nothing to control. | `none` |
-| `mesh` | PRT-1 | ❌ | `PARENT: render`. Epix packs into a fresh `std::vector` and uploads it with `queue.write_buffer`. The mesh-side API now matches Bevy, but the allocator's staging-belt write path is still the old shape; it needs its own `render` audit row before it can be … | `epix_engine/render/render/src/mesh_allocator.cpp` |
+| `mesh` | PRT-1 | ❌ | `PARENT: render`. **Batch 252: the row's premise was wrong in two places and is corrected here.** (a) There is… | `none` |
 | `mesh` | MSH-100 | 🚫 | Not in Epix. No reader anywhere under `crates/` in 0.18 (legacy asset-index constant); add only for literal API surface parity. | `none` |
 | `mesh` | MSH-101 | 🚫 | Same as MSH-100; also unused inside Bevy 0.18. | `none` |
 | `mesh` | MSH-112 | ⚠️ | No named counterpart. Bevy's `Some/None -> Data/NoData` conversion (used by `indices: serialized_mesh.indices.into()` and `Mesh::new`) is inlined into `replace(std::optional<T>)` and the `data()` factory. | `epix_engine/mesh/include/epix/mesh/mesh.hpp` |
