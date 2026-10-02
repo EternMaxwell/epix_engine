@@ -378,15 +378,33 @@ TEST(MeshPipeline, SpecializedDescriptorsCompileOnADevice) {
         limits, wgpu::BufferBindingType::eStorage, handles.mesh, pbr::MeshPipelineViewLayouts{layouts}, false, false);
 
     // A real mesh's layout, so the vertex-aware definitions are the ones a
-    // renderer would ask for.
+    // renderer would ask for, plus the skinned variant: whether a mesh is skinned
+    // is read off the layout (the joint attributes), not the key, exactly as
+    // Bevy's `is_skinned(layout)` does.
     mesh::MeshVertexBufferLayouts mesh_layouts;
     const auto source = mesh::make_box2d(1.0f, 1.0f);
     const auto layout = source.get_mesh_vertex_buffer_layout(mesh_layouts);
     ASSERT_TRUE(layout.value);
+    // The skinned variant is a real skinned mesh, not a hand-built layout: a
+    // layout whose vertex buffer carries no strides crashes specialization,
+    // which is a defect, but not the one this test is about.
+    mesh::Mesh skinned_mesh = mesh::make_box2d(1.0f, 1.0f);
+    skinned_mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_JOINT_INDEX,
+                                  mesh::VertexAttributeValues::Uint16x4{{{0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}});
+    skinned_mesh.insert_attribute(
+        mesh::Mesh::ATTRIBUTE_JOINT_WEIGHT,
+        mesh::VertexAttributeValues::Float32x4{{{1.0f, 0.0f, 0.0f, 0.0f},
+                                                {1.0f, 0.0f, 0.0f, 0.0f},
+                                                {1.0f, 0.0f, 0.0f, 0.0f},
+                                                {1.0f, 0.0f, 0.0f, 0.0f}}});
+    const auto skinned_layout = skinned_mesh.get_mesh_vertex_buffer_layout(mesh_layouts);
+    ASSERT_TRUE(skinned_layout.value);
 
     auto& server = app.resource<render::PipelineServer>();
-    const auto compile = [&app, &server, &pipeline, &layout](pbr::MeshPipelineKey key, std::string_view name) {
-        auto descriptor = pipeline.specialize(key, layout);
+    const auto compile = [&app, &server, &pipeline](pbr::MeshPipelineKey key,
+                                                    const mesh::MeshVertexBufferLayoutRef& mesh_layout,
+                                                    std::string_view name) {
+        auto descriptor = pipeline.specialize(key, mesh_layout);
         ASSERT_TRUE(descriptor.has_value()) << name;
         const auto id = server.queue_render_pipeline(std::move(*descriptor));
         for (int attempt = 0; attempt < 400 && !server.get_render_pipeline(id).has_value(); ++attempt) {
@@ -396,7 +414,8 @@ TEST(MeshPipeline, SpecializedDescriptorsCompileOnADevice) {
         EXPECT_TRUE(server.get_render_pipeline(id).has_value())
             << name
             << ": the specialized pipeline never became ready. A shader-def branch that compiles to a module the "
-               "backend rejects (an unsupported SPIR-V capability, for instance) fails here and nowhere else.";
+               "backend rejects (an unsupported SPIR-V capability or matrix stride, for instance) fails here and "
+               "nowhere else.";
     };
 
     const auto key_with = [](std::initializer_list<pbr::MeshPipelineKey> bits) {
@@ -404,8 +423,17 @@ TEST(MeshPipeline, SpecializedDescriptorsCompileOnADevice) {
         for (const auto& bit : bits) key = key | bit;
         return key;
     };
-    compile(key_with({}), "plain");
-    compile(key_with({pbr::MeshPipelineKey::MORPH_TARGETS}), "MORPH_TARGETS");
-    compile(key_with({pbr::MeshPipelineKey::MORPH_TARGETS, pbr::MeshPipelineKey::MOTION_VECTOR_PREPASS}),
+    // Every definition family the key and the layout can select, because each one
+    // is a separate Slang compilation and a separate chance to emit something the
+    // backend rejects.
+    compile(key_with({}), layout, "plain");
+    compile(key_with({pbr::MeshPipelineKey::MORPH_TARGETS}), layout, "MORPH_TARGETS");
+    compile(key_with({pbr::MeshPipelineKey::MORPH_TARGETS, pbr::MeshPipelineKey::MOTION_VECTOR_PREPASS}), layout,
             "MORPH_TARGETS+MOTION_VECTOR_PREPASS");
+    compile(key_with({pbr::MeshPipelineKey::MOTION_VECTOR_PREPASS}), layout, "MOTION_VECTOR_PREPASS");
+    compile(key_with({pbr::MeshPipelineKey::LIGHTMAPPED}), layout, "LIGHTMAPPED");
+    compile(key_with({pbr::MeshPipelineKey::BLEND_ALPHA}), layout, "BLEND_ALPHA");
+    compile(key_with({}), skinned_layout, "SKINNED");
+    compile(key_with({pbr::MeshPipelineKey::MOTION_VECTOR_PREPASS}), skinned_layout, "SKINNED+MOTION_VECTOR_PREPASS");
+    compile(key_with({pbr::MeshPipelineKey::MORPH_TARGETS}), skinned_layout, "MORPH_TARGETS+SKINNED");
 }
