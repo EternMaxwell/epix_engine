@@ -1,3 +1,5 @@
+#include <spdlog/spdlog.h>
+
 #include <epix/app.hpp>
 #include <epix/mesh/mesh.hpp>
 #include <epix/mesh/vertex_buffer_layout.hpp>
@@ -204,6 +206,14 @@ void MeshAllocator::copy_element_data(const wgpu::Device& device,
                                         .setMappedAtCreation(true));
             if (auto* range = static_cast<std::uint8_t*>(large->buffer.getMappedRange(0, bytes))) {
                 std::memcpy(range, data, bytes);
+            } else {
+                // The same failure `create_buffer_with_data` reports: a failed creation still
+                // yields a handle in this wrapper and then `getMappedRange` is null, so copying
+                // would be a null write and the mesh would silently upload nothing.
+                spdlog::error(
+                    "[render.mesh_allocator] large mesh slab: no mapped range for a {} byte buffer; the buffer or "
+                    "device is invalid",
+                    bytes);
             }
             large->buffer.unmap();
         }
