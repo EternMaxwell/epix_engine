@@ -108,12 +108,6 @@ struct ScreenshotDeliverySenders {
     async_channel::Sender<ScreenshotCaptured> component;
 };
 
-/** @brief Retains delivered request entities for exactly one main-world frame. */
-struct ScreenshotCleanupState {
-    std::vector<Entity> delivered_this_frame;
-    std::vector<Entity> pending_cleanup;
-};
-
 static void collect_completed_readbacks(ResMut<ScreenshotState> state,
                                         ResMut<readback::GpuReadbacks> readbacks,
                                         ResMut<readback::GpuReadbackBufferPool> buffer_pool);
@@ -145,19 +139,18 @@ static void request_component_screenshots(
 
 static void trigger_component_screenshots(Commands commands,
                                           Res<CapturedScreenshots> completed,
-                                          ResMut<ScreenshotCleanupState> cleanup,
                                           ResMut<Events<ScreenshotCaptured>> events) {
     while (auto screenshot = completed->try_recv()) {
         commands.entity(screenshot->entity).insert(Captured{});
-        cleanup->delivered_this_frame.push_back(screenshot->entity);
         events->push(std::move(*screenshot));
     }
 }
 
-static void clear_captured_screenshots(Commands commands, ResMut<ScreenshotCleanupState> cleanup) {
-    for (Entity entity : cleanup->pending_cleanup) commands.entity(entity).despawn();
-    cleanup->pending_cleanup = std::move(cleanup->delivered_this_frame);
-    cleanup->delivered_this_frame.clear();
+/** @brief Despawn the request entities whose screenshot has been delivered
+ * (Bevy `clear_screenshots`, screenshot.rs:192-196). Bevy schedules it in
+ * `First`, after the message update and before `ApplyDeferred` (:410-415). */
+static void clear_screenshots(Commands commands, Query<Item<Entity>, Filter<With<Captured>>> captured) {
+    for (auto&& [entity] : captured.iter()) commands.entity(entity).despawn();
 }
 
 std::function<void(const ScreenshotCaptured&)> save_to_disk(std::filesystem::path path) {
@@ -442,7 +435,6 @@ static void submit_screenshot_commands(World& world, wgpu::CommandEncoder& encod
 void ScreenshotPlugin::attach(epix::app::App& app) {
     app.add_event<ScreenshotCaptured>();
     app.world_mut().insert_resource(ScreenshotRequests{});
-    app.world_mut().insert_resource(ScreenshotCleanupState{});
 
     auto [component_sender, component_receiver] = async_channel::unbounded<ScreenshotCaptured>();
     app.world_mut().insert_resource(CapturedScreenshots{std::move(component_receiver)});
@@ -478,6 +470,6 @@ void ScreenshotPlugin::attach(epix::app::App& app) {
     app.add_systems(PreUpdate,
                     into(request_component_screenshots, trigger_component_screenshots)
                         .set_names(std::array{"screenshot: component request", "screenshot: component delivery"}));
-    app.add_systems(Last, into(clear_captured_screenshots).set_name("screenshot: cleanup captured requests"));
+    app.add_systems(First, into(clear_screenshots).set_name("screenshot: clear captured requests"));
 }
 }  // namespace epix::render::screenshot

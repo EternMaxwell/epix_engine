@@ -98,4 +98,12 @@ TEST(ScreenshotPlugin, WindowRenderPluginInstallsAndCapturesComponentRequest) {
     EXPECT_EQ(captured->image.texture_format(), wgpu::TextureFormat::eRGBA8Unorm);
     EXPECT_EQ(captured->image.usage(), epix::assets::RenderAssetUsages::RENDER_WORLD);
     EXPECT_TRUE(app.world().entity(request).contains<Captured>());
+
+    // Bevy despawns the request entity in `First` (`clear_screenshots`,
+    // bevy_render/src/view/window/screenshot.rs:192-196, scheduled :410-415),
+    // i.e. before that frame's `Update`. The port used to despawn in `Last`
+    // through a two-list cleanup, which kept the entity alive for the whole
+    // following frame.
+    app.run_schedule(First);
+    EXPECT_FALSE(app.world().get_entity(request).has_value());
 }
