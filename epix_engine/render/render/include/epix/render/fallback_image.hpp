@@ -8,8 +8,10 @@
 #include <functional>
 #include <glm/glm.hpp>
 #include <optional>
+#include <stdexcept>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 #include <webgpu/webgpu.hpp>
 #endif
 
@@ -40,8 +42,15 @@ EPIX_EXPORT struct GpuImage {
 
     /** @brief Aspect ratio (width / height) of a 2D image (Bevy
      * GpuImage::aspect_ratio, gpu_image.rs:142-146). epix returns a float
-     * ratio; Bevy returns an AspectRatio type. */
-    float aspect_ratio() const { return static_cast<float>(size.width) / static_cast<float>(size.height); }
+     * ratio; Bevy returns an AspectRatio type. A zero dimension is rejected
+     * in both. */
+    float aspect_ratio() const {
+        if (size.width == 0 || size.height == 0) {
+            throw std::invalid_argument(
+                "Failed to calculate aspect ratio: Image dimensions must be positive, non-zero values");
+        }
+        return static_cast<float>(size.width) / static_cast<float>(size.height);
+    }
     /** @brief Size of a 2D image as (width, height) (Bevy
      * GpuImage::size_2d, gpu_image.rs:150-152). */
     glm::uvec2 size_2d() const { return glm::uvec2(size.width, size.height); }
@@ -52,59 +61,7 @@ EPIX_EXPORT struct GpuImage {
  * texture asset is missing, one per texture view dimension (Bevy
  * `FallbackImage`, fallback_image.rs:23-47).
  */
-namespace detail {
-/** @brief Create a 1x1 solid-color fallback texture (Bevy
- * fallback_image_new, fallback_image.rs:76-120). `value` is the per-channel
- * byte value (255 = white, 0 = transparent black). */
-inline GpuImage create_fallback_image(epix::ecs::World& world,
-                                      wgpu::TextureDimension dimension,
-                                      wgpu::TextureViewDimension view_dimension,
-                                      std::uint32_t layers,
-                                      std::uint8_t value) {
-    auto device  = world.get_resource<wgpu::Device>();
-    auto queue   = world.get_resource<wgpu::Queue>();
-    auto sampler = world.get_resource<render::DefaultImageSampler>();
-    if (!device || !queue || !sampler) {
-        return {};
-    }
-    wgpu::Texture texture =
-        device->get().createTexture(wgpu::TextureDescriptor()
-                                        .setSize({1, 1, layers})
-                                        .setFormat(wgpu::TextureFormat::eRGBA8Unorm)
-                                        .setUsage(wgpu::TextureUsage::eTextureBinding | wgpu::TextureUsage::eCopyDst)
-                                        .setDimension(dimension)
-                                        .setSampleCount(1)
-                                        .setMipLevelCount(1)
-                                        .setLabel("fallback_image"));
-    const std::array<std::uint8_t, 4> color{value, value, value, value};
-    for (std::uint32_t layer = 0; layer < layers; ++layer) {
-        wgpu::TexelCopyTextureInfo dest;
-        dest.setTexture(texture).setMipLevel(0).setOrigin(wgpu::Origin3D{0, 0, layer});
-        queue->get().writeTexture(dest, color.data(), color.size(),
-                                  wgpu::TexelCopyBufferLayout().setBytesPerRow(4).setRowsPerImage(1),
-                                  wgpu::Extent3D{1, 1, 1});
-    }
-    GpuImage image;
-    image.texture = texture;
-    // wgpu-native requires the view's explicit ranges to be non-zero.  This
-    // is Bevy's default view range: its one mip level and every created layer.
-    wgpu::TextureViewDescriptor view_descriptor{};
-    view_descriptor.dimension       = view_dimension;
-    view_descriptor.baseMipLevel    = 0;
-    view_descriptor.mipLevelCount   = 1;
-    view_descriptor.baseArrayLayer  = 0;
-    view_descriptor.arrayLayerCount = layers;
-    image.texture_view              = texture.createView(view_descriptor);
-    image.texture_format            = wgpu::TextureFormat::eRGBA8Unorm;
-    image.sampler                   = sampler->get().sampler;
-    image.size                      = wgpu::Extent3D{1, 1, layers};
-    image.mip_level_count           = 1;
-    image.had_data                  = true;
-    return image;
-}
-}  // namespace detail
-
-EPIX_EXPORT struct FallbackImage {
+EPIX_EXPORT struct EPIX_API FallbackImage {
     /** @brief Fallback for TextureViewDimension::eD1. */
     GpuImage d1;
     /** @brief Fallback for TextureViewDimension::e2D. */
@@ -120,22 +77,7 @@ EPIX_EXPORT struct FallbackImage {
 
     /** @brief Create the 1x1 white fallback images (Bevy fallback_image.rs
      * FromWorld, created by TexturePlugin::finish). */
-    static FallbackImage from_world(epix::ecs::World& world) {
-        FallbackImage image;
-        image.d1 =
-            detail::create_fallback_image(world, wgpu::TextureDimension::e1D, wgpu::TextureViewDimension::e1D, 1, 255);
-        image.d2 =
-            detail::create_fallback_image(world, wgpu::TextureDimension::e2D, wgpu::TextureViewDimension::e2D, 1, 255);
-        image.d2_array   = detail::create_fallback_image(world, wgpu::TextureDimension::e2D,
-                                                         wgpu::TextureViewDimension::e2DArray, 1, 255);
-        image.cube       = detail::create_fallback_image(world, wgpu::TextureDimension::e2D,
-                                                         wgpu::TextureViewDimension::eCube, 6, 255);
-        image.cube_array = detail::create_fallback_image(world, wgpu::TextureDimension::e2D,
-                                                         wgpu::TextureViewDimension::eCubeArray, 6, 255);
-        image.d3 =
-            detail::create_fallback_image(world, wgpu::TextureDimension::e3D, wgpu::TextureViewDimension::e3D, 1, 255);
-        return image;
-    }
+    static FallbackImage from_world(epix::ecs::World& world);
 
     /** @brief The fallback image for the given dimension, or nullptr for
      * unknown dimensions (Bevy FallbackImage::get). */
@@ -160,29 +102,23 @@ EPIX_EXPORT struct FallbackImage {
 };
 
 /** @brief Fallback image whose texture is filled with zeroes (Bevy `FallbackImageZero`). */
-EPIX_EXPORT struct FallbackImageZero {
+EPIX_EXPORT struct EPIX_API FallbackImageZero {
     /** @brief The zero-filled GPU image. */
     GpuImage image;
 
     /** @brief Create the 1x1 transparent-black fallback (Bevy
      * fallback_image.rs FromWorld). */
-    static FallbackImageZero from_world(epix::ecs::World& world) {
-        return FallbackImageZero{
-            detail::create_fallback_image(world, wgpu::TextureDimension::e2D, wgpu::TextureViewDimension::e2D, 1, 0)};
-    }
+    static FallbackImageZero from_world(epix::ecs::World& world);
 };
 
 /** @brief Fallback cubemap image (Bevy `FallbackImageCubemap`). */
-EPIX_EXPORT struct FallbackImageCubemap {
+EPIX_EXPORT struct EPIX_API FallbackImageCubemap {
     /** @brief The cubemap GPU image. */
     GpuImage image;
 
     /** @brief Create the 1x1 white cubemap fallback (Bevy
      * fallback_image.rs FromWorld). */
-    static FallbackImageCubemap from_world(epix::ecs::World& world) {
-        return FallbackImageCubemap{detail::create_fallback_image(world, wgpu::TextureDimension::e2D,
-                                                                  wgpu::TextureViewDimension::eCube, 6, 255)};
-    }
+    static FallbackImageCubemap from_world(epix::ecs::World& world);
 };
 
 /** @brief Hash for (samples, format) keys. */
@@ -226,12 +162,12 @@ struct epix::render::RenderAsset<epix::render::texture::GpuImage> {
     using SourceAsset    = epix::image::Image;
     using ExtractedAsset = epix::image::Image;
 
-    std::expected<epix::render::texture::GpuImage, epix::render::PrepareAssetError<epix::image::Image>> prepare_asset(
-        epix::image::Image&& asset,
-        epix::assets::AssetId<epix::image::Image> id,
-        Param param,
-        const epix::render::texture::GpuImage* previous);
-    epix::assets::RenderAssetUsages asset_usage(const epix::image::Image& asset) noexcept;
+    EPIX_API std::expected<epix::render::texture::GpuImage, epix::render::PrepareAssetError<epix::image::Image>>
+    prepare_asset(epix::image::Image&& asset,
+                  epix::assets::AssetId<epix::image::Image> id,
+                  Param param,
+                  const epix::render::texture::GpuImage* previous);
+    EPIX_API epix::assets::RenderAssetUsages asset_usage(const epix::image::Image& asset) noexcept;
     std::optional<std::size_t> byte_len(const epix::image::Image& asset) const noexcept {
         return asset.has_data() ? std::optional{asset.raw_view().size_bytes()} : std::nullopt;
     }
