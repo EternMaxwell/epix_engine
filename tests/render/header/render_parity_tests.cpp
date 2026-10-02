@@ -687,6 +687,39 @@ TEST(GpuReadback, AlignmentUtils) {
     EXPECT_EQ(readback::texture_format_pixel_size(wgpu::TextureFormat::eBC1RGBAUnorm), 0u);  // compressed
 }
 
+// `layout_data` is Bevy's (`gpu_readback.rs:387-414`): `bytes_per_row` is written
+// only when the copy is not tightly packed *and* the format reports a pixel size -
+// Bevy's `pixel_size()` is `Err` for compressed formats, and its `None` is this
+// API's `WGPU_COPY_STRIDE_UNDEFINED` - and `rows_per_image` only for array/3D
+// copies.
+//
+// The sentinel is asserted rather than assumed, because it settles open question 1:
+// wgpu-native spells "unset" as `0xFFFF_FFFF`, not `0`, so leaving the field alone
+// is what maps Bevy's `None`, while writing a computed zero would be a real value.
+TEST(GpuReadback, LayoutDataLeavesUnsetFieldsAlone) {
+    constexpr std::uint32_t kUnset = 0xFFFFFFFFu;
+
+    // One row, one layer: nothing is required, so neither field is written.
+    const auto single_row = readback::layout_data(wgpu::Extent3D{4, 1, 1}, wgpu::TextureFormat::eRGBA8Unorm);
+    EXPECT_EQ(single_row.bytesPerRow, kUnset) << "Bevy leaves this None for a single-row copy";
+    EXPECT_EQ(single_row.rowsPerImage, kUnset);
+
+    // Multiple rows of an uncompressed format: the aligned row stride, no rows_per_image.
+    const auto multi_row = readback::layout_data(wgpu::Extent3D{4, 4, 1}, wgpu::TextureFormat::eRGBA8Unorm);
+    EXPECT_EQ(multi_row.bytesPerRow, 256u) << "16 bytes a row, padded to the copy alignment";
+    EXPECT_EQ(multi_row.rowsPerImage, kUnset);
+
+    // A 3D/array copy sets both, the row count being the extent's height.
+    const auto layered = readback::layout_data(wgpu::Extent3D{64, 1, 3}, wgpu::TextureFormat::eRGBA8Unorm);
+    EXPECT_EQ(layered.bytesPerRow, 256u);
+    EXPECT_EQ(layered.rowsPerImage, 1u);
+
+    // A compressed format reports no pixel size, so the stride is left unset rather
+    // than written as a zero-length row: this is the case Bevy's `None` covers.
+    const auto compressed = readback::layout_data(wgpu::Extent3D{8, 8, 1}, wgpu::TextureFormat::eBC1RGBAUnorm);
+    EXPECT_EQ(compressed.bytesPerRow, kUnset) << "Bevy leaves bytes_per_row None when pixel_size() errs";
+}
+
 // Pool eviction matches Bevy: taken buffers never age; unused buffers are
 // evicted once idle for max_unused_frames; empty size buckets are removed.
 TEST(GpuReadback, BufferPoolEviction) {

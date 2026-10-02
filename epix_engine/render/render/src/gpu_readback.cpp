@@ -121,14 +121,23 @@ std::uint32_t texture_format_pixel_size(wgpu::TextureFormat format) {
 }
 
 wgpu::TexelCopyBufferLayout layout_data(const wgpu::Extent3D& extent, wgpu::TextureFormat format) {
-    // Bevy (gpu_readback.rs:387-414): bytes_per_row is only required when the
-    // copy is not tightly packed (height > 1 or multiple layers); rows_per_image
-    // is only set for array/3D copies (block dimension 1 for non-compressed).
+    // Bevy (`gpu_readback.rs:387-414`): `bytes_per_row` is only required when the
+    // copy is not tightly packed (height > 1 or multiple layers), and it is left
+    // **unset** when the format reports no pixel size at all - `pixel_size()` is
+    // `Err` for every block-compressed format, which is the case that produced
+    // Bevy's `None`. This API spells "unset" as the default 0, so the value is only
+    // written when there is a size to write.
     wgpu::TexelCopyBufferLayout layout;
-    if (extent.height > 1 || extent.depthOrArrayLayers > 1) {
-        layout.setBytesPerRow(align_byte_size(extent.width * texture_format_pixel_size(format)));
+    const std::uint32_t pixel_size = texture_format_pixel_size(format);
+    if ((extent.height > 1 || extent.depthOrArrayLayers > 1) && pixel_size != 0) {
+        layout.setBytesPerRow(align_byte_size(extent.width * pixel_size));
     }
     if (extent.depthOrArrayLayers > 1) {
+        // Bevy divides by the format's `block_dimensions().1`, which is 1 for every
+        // format this path can see: the readback sources are `GpuImage`s, and the
+        // image module refuses block-compressed formats outright
+        // (`texture_format_pixel_size` returns `UnsupportedTextureFormat`,
+        // `epix_engine/image/include/epix/image/image.hpp:208-220`).
         layout.setRowsPerImage(extent.height);
     }
     return layout;
