@@ -60,6 +60,16 @@ struct VertexAttributeDescriptor {
     std::uint32_t shader_location = 0;
     MeshVertexAttributeId id;
     std::string_view name;
+
+    /** @brief Bevy's `VertexAttributeDescriptor::new` (`bevy_mesh/src/vertex.rs:161-169`).
+     *  Spelled `make` because `new` is a keyword in C++; the port's call sites
+     *  build this value with designated initialisers and may keep doing so, so this
+     *  is an addition rather than a replacement. */
+    static constexpr VertexAttributeDescriptor make(std::uint32_t shader_location,
+                                                    MeshVertexAttributeId id,
+                                                    std::string_view name) noexcept {
+        return VertexAttributeDescriptor{shader_location, id, name};
+    }
 };
 
 /** @brief Error returned when a pipeline requests an attribute absent from a mesh layout. */
@@ -67,6 +77,21 @@ struct MissingVertexAttributeError {
     std::optional<std::string_view> pipeline_type;
     MeshVertexAttributeId id;
     std::string_view name;
+
+    /** @brief Bevy's `thiserror` Display (`bevy_mesh/src/vertex.rs:147-153`):
+     *  `Mesh is missing requested attribute: {name} ({id:?}, pipeline type: {pipeline_type:?})`.
+     *  The `{:?}` renderings are Rust's, so the id prints as its newtype and the
+     *  optional pipeline type as `Some("…")` or `None`. */
+    std::string to_string() const {
+        std::string result = "Mesh is missing requested attribute: ";
+        result += name;
+        result += " (MeshVertexAttributeId(";
+        result += std::to_string(id.value);
+        result += "), pipeline type: ";
+        result += pipeline_type ? "Some(\"" + std::string(*pipeline_type) + "\")" : std::string("None");
+        result += ")";
+        return result;
+    }
 };
 
 /** @brief A vertex buffer layout: interleaved attribute strides + attributes

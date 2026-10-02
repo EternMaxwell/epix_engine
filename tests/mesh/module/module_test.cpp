@@ -2410,6 +2410,34 @@ TEST(MeshModule, GetMeshVertexBufferLayoutMatchesBevy) {
     EXPECT_EQ(remapped->attributes[1].shader_location, 1u);
 }
 
+// Bevy's `VertexAttributeDescriptor::new` (`bevy_mesh/src/vertex.rs:161-169`) and
+// `MissingVertexAttributeError`'s `thiserror` Display (`:147-153`). The message is
+// asserted verbatim, including the Rust `{:?}` renderings the port has to
+// reproduce: the id as its newtype and the pipeline type as `Some("…")`/`None`.
+TEST(MeshModule, VertexAttributeDescriptorFactoryAndMissingAttributeMessage) {
+    const auto factory = mesh::VertexAttributeDescriptor::make(2, mesh::Mesh::ATTRIBUTE_POSITION.id, "position");
+    const mesh::VertexAttributeDescriptor designated{
+        .shader_location = 2, .id = mesh::Mesh::ATTRIBUTE_POSITION.id, .name = "position"};
+    EXPECT_EQ(factory.shader_location, designated.shader_location);
+    EXPECT_EQ(factory.id.value, designated.id.value);
+    EXPECT_EQ(factory.name, designated.name);
+
+    const mesh::MissingVertexAttributeError with_pipeline{
+        .pipeline_type = std::string_view{"StandardMaterial"},
+        .id            = mesh::Mesh::ATTRIBUTE_POSITION.id,
+        .name          = "Vertex_Position"};
+    EXPECT_EQ(with_pipeline.to_string(),
+              std::string("Mesh is missing requested attribute: Vertex_Position (MeshVertexAttributeId(") +
+                  std::to_string(mesh::Mesh::ATTRIBUTE_POSITION.id.value) +
+                  "), pipeline type: Some(\"StandardMaterial\"))");
+
+    const mesh::MissingVertexAttributeError without_pipeline{
+        .pipeline_type = std::nullopt, .id = mesh::Mesh::ATTRIBUTE_POSITION.id, .name = "Vertex_Position"};
+    EXPECT_EQ(without_pipeline.to_string(),
+              std::string("Mesh is missing requested attribute: Vertex_Position (MeshVertexAttributeId(") +
+                  std::to_string(mesh::Mesh::ATTRIBUTE_POSITION.id.value) + "), pipeline type: None)");
+}
+
 TEST(MeshModule, EmptyMeshDataExtractsOnceAndPreservesAccessState) {
     mesh::Mesh source(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::RENDER_WORLD);
     const auto missing_indices = source.try_indices();
