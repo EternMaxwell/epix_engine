@@ -45,23 +45,7 @@ struct ColorAttachment {
     /** @brief Build the wgpu color attachment (clears on first call when a
      * clear color is set; honors the resolve target like Bevy
      * texture_attachment.rs). */
-    wgpu::RenderPassColorAttachment get_attachment() const {
-        if (resolve_target) {
-            const bool first_call = is_first_call->exchange(false);
-            wgpu::LoadOp load_op  = (clear_color && first_call) ? wgpu::LoadOp::eClear : wgpu::LoadOp::eLoad;
-            wgpu::RenderPassColorAttachment attachment;
-            attachment.setView(resolve_target->default_view)
-                .setResolveTarget(texture.default_view)
-                .setDepthSlice(~0u)
-                .setLoadOp(load_op)
-                .setStoreOp(wgpu::StoreOp::eStore);
-            if (clear_color && first_call) {
-                attachment.setClearValue(wgpu::Color(clear_color->r, clear_color->g, clear_color->b, clear_color->a));
-            }
-            return attachment;
-        }
-        return get_unsampled_attachment();
-    }
+    EPIX_API wgpu::RenderPassColorAttachment get_attachment() const;
 
     /** @brief Build the attachment without a resolve target. */
     wgpu::RenderPassColorAttachment get_unsampled_attachment() const {

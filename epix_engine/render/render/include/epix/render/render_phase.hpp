@@ -220,41 +220,12 @@ EPIX_EXPORT struct DrawError {
     }
 };
 
-inline std::string_view to_str(DrawError error) noexcept {
-    switch (error.type) {
-        case DrawError::ErrorType::Skip:
-            return "Skipped";
-        case DrawError::ErrorType::RenderCommandFailure:
-            return "Render command execution failed";
-        case DrawError::ErrorType::InvalidViewQuery:
-            return "Invalid view query";
-        case DrawError::ErrorType::ViewEntityMissing:
-            return "View entity missing in view query";
-        case DrawError::ErrorType::InvalidEntityQuery:
-            return "Invalid entity query";
-        default:
-            return "Unknown error";
-    }
-}
+EPIX_API std::string_view to_str(DrawError error) noexcept;
 
 /** @brief The error as a log line, the counterpart of Bevy's `Display` impl for
  *  `DrawError` (`render_phase/draw.rs:42-50`): the command's own message when it
  *  has one, otherwise the variant's. */
-inline std::string to_string(const DrawError& error) {
-    switch (error.type) {
-        case DrawError::ErrorType::RenderCommandFailure:
-            return error.message.empty() ? std::string{"Failed to execute render command"} : error.message;
-        case DrawError::ErrorType::InvalidViewQuery:
-            return "Failed to get execute view query";
-        case DrawError::ErrorType::InvalidEntityQuery:
-            return "Failed to get execute entity query";
-        case DrawError::ErrorType::ViewEntityMissing:
-            return "View entity not found";
-        case DrawError::ErrorType::Skip:
-        default:
-            return std::string(to_str(error));
-    }
-}
+EPIX_API std::string to_string(const DrawError& error);
 
 /** @brief Concept for a draw function that can prepare and draw phase
  * items.
@@ -1075,20 +1046,7 @@ EPIX_EXPORT class TrackedRenderPass {
 
    private:
     /** @brief Clear all tracked state (Bevy DrawState::reset_tracking). */
-    void reset_tracking() noexcept {
-        if (!m_stores_state) return;
-        m_pipeline = nullptr;
-        for (auto& [group, offsets] : m_bind_groups) {
-            (void)group;
-            group = nullptr;
-            offsets.clear();
-        }
-        for (auto& buffer : m_vertex_buffers) {
-            buffer.reset();
-        }
-        m_index_buffer.reset();
-        m_stores_state = false;
-    }
+    EPIX_API void reset_tracking() noexcept;
 
     wgpu::RenderPassEncoder m_pass;
     /** @brief Currently bound pipeline handle (Bevy DrawState::pipeline). */

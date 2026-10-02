@@ -58,25 +58,7 @@ EPIX_EXPORT struct RenderVisibilityRanges {
 
     /** @brief Inserts an entity's range, deduplicating identical ranges into
      * one GPU slot (Bevy RenderVisibilityRanges::insert). */
-    void insert(sync_world::MainEntity entity, const ::epix::camera::VisibilityRange& visibility_range) {
-        std::uint16_t buffer_index = 0;
-        if (auto it = range_to_index.find(visibility_range); it != range_to_index.end()) {
-            buffer_index = it->second;
-        } else {
-            // Indices are assigned from range_to_index.size() and never reused
-            // (Bevy range.rs:115-146); the buffer slot at that index holds the
-            // range vec4 and is stable for the app lifetime.
-            if (range_to_index.size() >= std::numeric_limits<std::uint16_t>::max()) {
-                spdlog::warn("[render] Too many distinct visibility ranges; index truncated.");
-            }
-            buffer_index = static_cast<std::uint16_t>(range_to_index.size());
-            buffer.push(glm::vec4(visibility_range.start_margin_start, visibility_range.start_margin_end,
-                                  visibility_range.end_margin_start, visibility_range.end_margin_end));
-            range_to_index.emplace(visibility_range, buffer_index);
-            buffer_dirty = true;
-        }
-        entities.emplace(entity, detail::RenderVisibilityEntityInfo{buffer_index, visibility_range.is_abrupt()});
-    }
+    EPIX_API void insert(sync_world::MainEntity entity, const ::epix::camera::VisibilityRange& visibility_range);
 
     /** @brief GPU buffer index of the entity's visible range, if any (Bevy
      * lod_index_for_entity). */
