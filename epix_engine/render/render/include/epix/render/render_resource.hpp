@@ -151,6 +151,76 @@ EPIX_EXPORT EPIX_API wgpu::Buffer create_buffer_with_data(const wgpu::Device& de
                                                           wgpu::BufferUsage usage,
                                                           std::string_view label = {});
 
+/** @brief A mapped staging buffer whose copies are submitted in one batch (Bevy's
+ *  `Queue::write_buffer_with`, which wgpu implements over its `util::StagingBelt`).
+ *
+ *  Bevy's mesh allocator uploads through it: `copy_element_data` asks for a mapped
+ *  slice of the rounded size and fills it with a closure, so no intermediate buffer
+ *  exists and the rounded tail is simply left as it is
+ *  (`bevy_render/src/mesh/allocator.rs:578-611`). The port's wrapper exposes only
+ *  `wgpuQueueWriteBuffer`, so the mapped slice and the copy are built here.
+ *
+ *  A chunk is taken from the pool and mapped at creation; `write_buffer` fills a
+ *  slice of it and records the copy, `finish` submits every recorded copy, and a
+ *  chunk that has been submitted is released rather than reused - re-mapping one
+ *  needs `mapAsync` and a poll, which is a separate piece of work this port has not
+ *  done (see PRT-1). */
+EPIX_EXPORT struct EPIX_API StagingBelt {
+    /** @brief A staging chunk, mapped for writing until it is submitted. */
+    struct Chunk {
+        wgpu::Buffer buffer;
+        std::uint64_t capacity = 0;
+        std::uint64_t cursor   = 0;
+    };
+    /** @brief One recorded copy: a region of a chunk into a destination buffer. */
+    struct PendingCopy {
+        wgpu::Buffer source;
+        std::uint64_t source_offset = 0;
+        wgpu::Buffer destination;
+        std::uint64_t destination_offset = 0;
+        std::uint64_t size               = 0;
+    };
+
+    StagingBelt() = default;
+    /** @param chunk_size Bytes each staging chunk holds; a larger request gets its
+     *  own chunk, as wgpu's belt does. */
+    explicit StagingBelt(const wgpu::Device& device, const wgpu::Queue& queue, std::uint64_t chunk_size = 64 * 1024);
+    /** @brief Whether a chunk and a queue are available to write through. */
+    [[nodiscard]] bool is_usable() const noexcept { return static_cast<bool>(m_queue) && m_queue_is_set; }
+
+    /** @brief Copy @p size bytes into @p destination at @p destination_offset, filling a
+     *  mapped staging slice through @p fill (Bevy's `fill_data(slice)`).
+     *
+     *  @p size is expected to be a multiple of `COPY_BUFFER_ALIGNMENT` (4), which the
+     *  allocator guarantees by rounding to the slot size. Returns false when no staging
+     *  memory could be mapped, in which case nothing was recorded. */
+    bool write_buffer(const wgpu::Buffer& destination,
+                      std::uint64_t destination_offset,
+                      std::uint64_t size,
+                      const std::function<void(std::span<std::byte>)>& fill);
+
+    /** @brief Submit every recorded copy in one command buffer and release the chunks
+     *  they came from. */
+    void finish();
+
+    /** @brief Copies recorded since the last `finish`; for tests and diagnostics. */
+    [[nodiscard]] std::size_t pending_copy_count() const noexcept { return m_pending.size(); }
+
+   private:
+    /** @brief A chunk with room for @p size, allocating one when the current chunk is
+     *  full or too small. */
+    Chunk* acquire_chunk(std::uint64_t size);
+
+    wgpu::Device m_device;
+    wgpu::Queue m_queue;
+    bool m_queue_is_set = false;
+    std::uint64_t m_chunk_size = 64 * 1024;
+    std::vector<Chunk> m_chunks;
+    std::vector<Chunk> m_used_chunks;
+    std::vector<PendingCopy> m_pending;
+    std::size_t m_current_chunk = 0;
+};
+
 /**
  * @brief Stores a single value to be transferred to the GPU and made
  * accessible to shaders as a uniform buffer (Bevy `UniformBuffer<T>`).
