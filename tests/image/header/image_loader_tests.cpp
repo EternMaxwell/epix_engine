@@ -301,6 +301,50 @@ TEST(ImageSave, RefusesAFormatWithoutAChannelDescription) {
     std::filesystem::remove(path);
 }
 
+// `Image::save_rgb8` is Bevy's `try_into_dynamic().to_rgb8()`, which the
+// screenshot path applies before saving: three channels, with alpha discarded
+// rather than composited into the colour.
+//
+// Reloading is what proves it here. This loader widens what it reads back to four
+// channels and fills the alpha it did not find with 255, so a saved file that
+// still carried the source's alpha would come back with that alpha - and a file
+// whose RGB had been premultiplied would come back with darker samples.
+TEST(ImageSave, Rgb8DropsAlphaWithoutCompositing) {
+    // Two pixels whose alpha differs, so a file that kept alpha, or that
+    // premultiplied the colour by it, cannot look like the correct result.
+    const std::array<std::uint8_t, 8> pixels{10, 20, 30, 0, 40, 50, 60, 255};
+    const auto source = image::Image::create2d(2, 1, wgpu::TextureFormat::eRGBA8Unorm, pixels);
+    ASSERT_TRUE(source.has_value());
+
+    const auto path = fixture_dir() / "core_loader_rgb8.png";
+    // Hermetic: a previous run may have left the file behind.
+    std::filesystem::remove(path);
+
+    ASSERT_TRUE(image::Image::save_rgb8(path, *source).has_value());
+    ASSERT_TRUE(std::filesystem::exists(path));
+
+    const auto reloaded = image::Image::load(path);
+    ASSERT_TRUE(reloaded.has_value()) << image::to_string(reloaded.error());
+    const auto bytes = reloaded->raw_view();
+    ASSERT_EQ(bytes.size(), 8u) << "the loader widens what it reads to four channels";
+    EXPECT_EQ(std::to_integer<std::uint8_t>(bytes[0]), 10u);
+    EXPECT_EQ(std::to_integer<std::uint8_t>(bytes[1]), 20u);
+    EXPECT_EQ(std::to_integer<std::uint8_t>(bytes[2]), 30u);
+    EXPECT_EQ(std::to_integer<std::uint8_t>(bytes[3]), 255u)
+        << "the source's alpha was dropped, not carried and not composited";
+    EXPECT_EQ(std::to_integer<std::uint8_t>(bytes[4]), 40u);
+    EXPECT_EQ(std::to_integer<std::uint8_t>(bytes[6]), 60u);
+    EXPECT_EQ(std::to_integer<std::uint8_t>(bytes[7]), 255u);
+
+    std::filesystem::remove(path);
+
+    // Bevy's `to_rgb8` is an 8-bit conversion, so a float source has no RGB8 form
+    // and is refused rather than written as garbage.
+    const auto float_image = image::Image::create2d(2, 1, wgpu::TextureFormat::eR32Float);
+    EXPECT_FALSE(image::Image::save_rgb8(path, float_image).has_value());
+    EXPECT_FALSE(std::filesystem::exists(path));
+}
+
 // Both entry points share one decode path, so a filesystem load and an
 // asset-server load agree on format and payload.
 TEST(ImageLoad, FilesystemAndAssetServerLoadsAgree) {

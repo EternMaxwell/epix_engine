@@ -179,7 +179,10 @@ static void clear_screenshots(Commands commands, Query<Item<Entity>, Filter<With
 
 std::function<void(const ScreenshotCaptured&)> save_to_disk(std::filesystem::path path) {
     return [path = std::move(path)](const ScreenshotCaptured& captured) {
-        if (auto result = image::Image::save(path, captured.image); !result) {
+        // Bevy saves the RGB conversion, not the captured RGBA image:
+        // `try_into_dynamic().to_rgb8().save_with_format(...)`
+        // (`bevy_render/src/view/window/screenshot.rs:129-189`).
+        if (auto result = image::Image::save_rgb8(path, captured.image); !result) {
             spdlog::warn("[render.screenshot] Failed to save screenshot to '{}'", path.string());
         } else {
             spdlog::info("[render.screenshot] Screenshot saved to '{}'", path.string());

@@ -972,6 +972,21 @@ EPIX_EXPORT class EPIX_API Image {
      * @return Void on success or an ImageSaveError. */
     static std::expected<void, ImageSaveError> save(const std::filesystem::path& path, const Image& image);
 
+    /** @brief Save the image as three 8-bit samples per pixel, dropping alpha.
+     *
+     * Bevy's screenshot path converts before saving: `to_rgb8()` produces three
+     * channels and `save_with_format` writes those
+     * (`bevy_render/src/view/window/screenshot.rs:129-189`), because the file it
+     * writes has no alpha channel. The conversion lives here for the same reason
+     * Bevy's does - a 3-channel buffer is not an `Image` this port can build
+     * (wgpu has no 3-channel 8-bit texture format), while `save` derives its
+     * channel count from the buffer it is handed.
+     *
+     * @param path Destination file path.
+     * @param image The image to write; must be an 8-bit RGBA or RGB format.
+     * @return Void on success or an ImageSaveError. */
+    static std::expected<void, ImageSaveError> save_rgb8(const std::filesystem::path& path, const Image& image);
+
     /** @brief The texture descriptor that describes this image's GPU texture
      * (Bevy `Image::texture_descriptor`).
      *

@@ -521,6 +521,49 @@ std::expected<void, ImageSaveError> Image::save(const std::filesystem::path& pat
     return {};
 }
 
+std::expected<void, ImageSaveError> Image::save_rgb8(const std::filesystem::path& path, const Image& image) {
+    if (image.type() == ImageType::e2DArray || image.type() == ImageType::e3D) {
+        return std::unexpected(ImageSaveError::SaveFailed);
+    }
+
+    const std::uint8_t components = texture_format_components(image.texture_format());
+    const std::size_t pixel_size  = texture_format_pixel_size(image.texture_format()).value_or(0);
+    const std::size_t sample_size = components == 0 ? 0 : pixel_size / components;
+    // Bevy's `to_rgb8` is an 8-bit conversion, so this path is the 8-bit RGBA/RGB
+    // family only: the float and 16-bit cases `save` handles are not three-byte
+    // samples, and writing them through a 3-channel encoder would produce garbage
+    // rather than a conversion.
+    if ((components != 4 && components != 3) || sample_size != 1) {
+        spdlog::error("[image] Refusing to save '{}' as RGB: the image's format is not 8-bit RGBA or RGB.",
+                      path.string());
+        return std::unexpected(ImageSaveError::SaveFailed);
+    }
+
+    const std::size_t pixel_count = static_cast<std::size_t>(image.width()) * image.height();
+    std::vector<std::uint8_t> rgb(pixel_count * 3u);
+    for (std::size_t pixel = 0; pixel < pixel_count; ++pixel) {
+        rgb[pixel * 3u + 0u] = std::to_integer<std::uint8_t>(image.data[pixel * components + 0u]);
+        rgb[pixel * 3u + 1u] = std::to_integer<std::uint8_t>(image.data[pixel * components + 1u]);
+        rgb[pixel * 3u + 2u] = std::to_integer<std::uint8_t>(image.data[pixel * components + 2u]);
+    }
+
+    auto extension = path.extension().string();
+    std::ranges::transform(extension, extension.begin(), [](unsigned char value) { return std::tolower(value); });
+    const auto path_string = path.string();
+
+    bool success = false;
+    if (extension == ".png") {
+        success = stbi_write_png(path_string.c_str(), image.width(), image.height(), 3, rgb.data(),
+                                 image.width() * 3);
+    } else if (extension == ".jpg" || extension == ".jpeg") {
+        success = stbi_write_jpg(path_string.c_str(), image.width(), image.height(), 3, rgb.data(), 90);
+    } else if (extension == ".bmp") {
+        success = stbi_write_bmp(path_string.c_str(), image.width(), image.height(), 3, rgb.data());
+    }
+    if (!success) return std::unexpected(ImageSaveError::SaveFailed);
+    return {};
+}
+
 std::span<const ImageFormat> ImageLoader::SUPPORTED_FORMATS() noexcept {
     // Bevy's list is `ImageFormat` alternatives whose `image`-crate feature the
     // build enables, minus the two the special-cased loaders (`basis`,
