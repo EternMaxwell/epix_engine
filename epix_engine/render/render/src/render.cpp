@@ -168,6 +168,88 @@ std::optional<WgpuSettingsPriority> epix::render::settings_priority_from_env() n
     return std::nullopt;
 }
 
+InstanceFlags InstanceFlags::with_env() const noexcept {
+    auto result             = *this;
+    const auto set_from_env = [&result](Bit bit, const char* name) {
+        const char* value = std::getenv(name);
+        if (!value) return;
+        if (std::string_view(value) == "0")
+            result.bits_ &= ~static_cast<std::uint32_t>(bit);
+        else
+            result.bits_ |= static_cast<std::uint32_t>(bit);
+    };
+    set_from_env(Validation, "WGPU_VALIDATION");
+    set_from_env(Debug, "WGPU_DEBUG");
+    set_from_env(DiscardHalLabels, "WGPU_DISCARD_HAL_LABELS");
+    set_from_env(AllowUnderlyingNoncompliantAdapter, "WGPU_ALLOW_UNDERLYING_NONCOMPLIANT_ADAPTER");
+    set_from_env(GpuBasedValidation, "WGPU_GPU_BASED_VALIDATION");
+    set_from_env(ValidationIndirectCall, "WGPU_VALIDATION_INDIRECT_CALL");
+    return result;
+}
+
+WgpuSettings::WgpuSettings() {
+    apply_env_overrides();
+    if (priority == WgpuSettingsPriority::WebGL2) {
+        limits.setMaxTextureDimension1D(2048)
+            .setMaxTextureDimension2D(2048)
+            .setMaxTextureDimension3D(256)
+            .setMaxDynamicStorageBuffersPerPipelineLayout(0)
+            .setMaxStorageBuffersPerShaderStage(0)
+            .setMaxStorageTexturesPerShaderStage(0)
+            .setMaxUniformBuffersPerShaderStage(11)
+            .setMaxUniformBufferBindingSize(16ull << 10)
+            .setMaxStorageBufferBindingSize(0)
+            .setMaxVertexBufferArrayStride(255)
+            .setMaxInterStageShaderVariables(15)
+            .setMaxColorAttachments(4)
+            .setMaxComputeWorkgroupStorageSize(0)
+            .setMaxComputeInvocationsPerWorkgroup(0)
+            .setMaxComputeWorkgroupSizeX(0)
+            .setMaxComputeWorkgroupSizeY(0)
+            .setMaxComputeWorkgroupSizeZ(0)
+            .setMaxComputeWorkgroupsPerDimension(0);
+    }
+}
+
+void WgpuSettings::apply_env_overrides() {
+    if (const auto configured_backends = Backends::from_env()) backends = *configured_backends;
+    if (const char* power = std::getenv("WGPU_POWER_PREF")) {
+        std::string p(power);
+        std::ranges::transform(p, p.begin(),
+                               [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
+        if (p == "low")
+            power_preference = wgpu::PowerPreference::eLowPower;
+        else if (p == "high")
+            power_preference = wgpu::PowerPreference::eHighPerformance;
+        else if (p == "none")
+            power_preference = wgpu::PowerPreference::eUndefined;
+    }
+    if (auto configured_priority = settings_priority_from_env()) priority = *configured_priority;
+    if (const char* compiler = std::getenv("WGPU_DX12_COMPILER")) {
+        std::string value(compiler);
+        std::ranges::transform(value, value.begin(),
+                               [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
+        if (value == "dxc" || value == "dynamicdxc" || value == "staticdxc")
+            dx12_shader_compiler = wgpu::Dx12Compiler::eDxc;
+        else if (value == "fxc" || value == "auto")
+            dx12_shader_compiler = wgpu::Dx12Compiler::eFxc;
+    }
+    if (const char* gles = std::getenv("WGPU_GLES_MINOR_VERSION")) {
+        std::string value(gles);
+        std::ranges::transform(value, value.begin(),
+                               [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
+        if (value == "0")
+            gles3_minor_version = wgpu::Gles3MinorVersion::eVersion0;
+        else if (value == "1")
+            gles3_minor_version = wgpu::Gles3MinorVersion::eVersion1;
+        else if (value == "2")
+            gles3_minor_version = wgpu::Gles3MinorVersion::eVersion2;
+        else if (value == "automatic")
+            gles3_minor_version = wgpu::Gles3MinorVersion::eAutomatic;
+    }
+    instance_flags = instance_flags.with_env();
+}
+
 Backends Backends::from_comma_list(std::string_view value) noexcept {
     Backends result = Backends::empty();
     while (!value.empty()) {

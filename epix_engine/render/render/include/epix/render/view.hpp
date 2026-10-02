@@ -672,56 +672,15 @@ EPIX_EXPORT struct MissingRenderTargetInfoError {
  * returns an owned view rather than a borrow into
  * `RenderAssets<GpuImage>`.
  */
-EPIX_EXPORT struct NormalizedRenderTargetExt {
+EPIX_EXPORT struct EPIX_API NormalizedRenderTargetExt {
     static std::optional<wgpu::TextureView> get_texture_view(const ::epix::camera::NormalizedRenderTarget& target,
                                                              const window::ExtractedWindows& windows,
-                                                             const texture::ManualTextureViews& manual_texture_views) {
-        return std::visit(
-            utils::visitor{
-                [&](const ::epix::window::NormalizedWindowRef& window_ref) -> std::optional<wgpu::TextureView> {
-                    auto it = windows.windows.find(window_ref.entity());
-                    return it != windows.windows.end() && it->second.swapchain_texture_view
-                               ? std::optional<wgpu::TextureView>{it->second.swapchain_texture_view}
-                               : std::nullopt;
-                },
-                [](const ::epix::camera::ImageRenderTarget& image) -> std::optional<wgpu::TextureView> {
-                    return image.texture ? std::optional<wgpu::TextureView>{image.texture.createView()} : std::nullopt;
-                },
-                [&](const ::epix::camera::ManualTextureViewHandle& handle) -> std::optional<wgpu::TextureView> {
-                    auto it = manual_texture_views.find(handle);
-                    return it != manual_texture_views.end() && it->second.texture_view
-                               ? std::optional<wgpu::TextureView>{it->second.texture_view}
-                               : std::nullopt;
-                },
-                [](const ::epix::camera::NoColorTarget&) -> std::optional<wgpu::TextureView> { return std::nullopt; },
-            },
-            target);
-    }
+                                                             const texture::ManualTextureViews& manual_texture_views);
 
     static std::optional<wgpu::TextureFormat> get_texture_view_format(
         const ::epix::camera::NormalizedRenderTarget& target,
         const window::ExtractedWindows& windows,
-        const texture::ManualTextureViews& manual_texture_views) {
-        return std::visit(
-            utils::visitor{
-                [&](const ::epix::window::NormalizedWindowRef& window_ref) -> std::optional<wgpu::TextureFormat> {
-                    auto it = windows.windows.find(window_ref.entity());
-                    return it != windows.windows.end() && it->second.swapchain_texture_view
-                               ? std::optional<wgpu::TextureFormat>{it->second.swapchain_texture_view_format}
-                               : std::nullopt;
-                },
-                [](const ::epix::camera::ImageRenderTarget& image) -> std::optional<wgpu::TextureFormat> {
-                    return image.texture ? std::optional<wgpu::TextureFormat>{image.texture.getFormat()} : std::nullopt;
-                },
-                [&](const ::epix::camera::ManualTextureViewHandle& handle) -> std::optional<wgpu::TextureFormat> {
-                    auto it = manual_texture_views.find(handle);
-                    return it != manual_texture_views.end() ? std::optional<wgpu::TextureFormat>{it->second.view_format}
-                                                            : std::nullopt;
-                },
-                [](const ::epix::camera::NoColorTarget&) -> std::optional<wgpu::TextureFormat> { return std::nullopt; },
-            },
-            target);
-    }
+        const texture::ManualTextureViews& manual_texture_views);
 
     /** @brief Resolve physical size and scale factor using a main-world
      * window-info snapshot, direct image
@@ -824,34 +783,9 @@ EPIX_EXPORT struct SortedCameras {
  * targeting the same render target together (Bevy sort_cameras). Also
  * assigns each camera its per-target index.
  */
-EPIX_EXPORT inline void sort_cameras(
+EPIX_EXPORT EPIX_API void sort_cameras(
     epix::ecs::ResMut<SortedCameras> sorted_cameras,
-    epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity, epix::ecs::Mut<ExtractedCamera>>> cameras) {
-    sorted_cameras->cameras.clear();
-    for (auto&& [entity, camera] : cameras.iter()) {
-        sorted_cameras->cameras.push_back(
-            SortedCamera{entity, camera.get().order, camera.get().target, camera.get().hdr});
-    }
-    // Bevy uses a stable sort (sort_by): cameras with equal (order, target)
-    // keep their extraction order.
-    std::ranges::stable_sort(sorted_cameras->cameras,
-                             [](const SortedCamera& a, const SortedCamera& b) { return a.sort_key() < b.sort_key(); });
-    // Assign per-target indices in sorted order, keyed by (target, hdr)
-    // (Bevy camera.rs:744-763). Textures have a distinct identity per handle,
-    // so cameras targeting different textures never share a counter.
-    std::unordered_map<std::uint64_t, std::size_t> counts;
-    std::unordered_map<epix::ecs::Entity, std::size_t> index_for_entity;
-    for (const auto& cam : sorted_cameras->cameras) {
-        if (!cam.target) continue;
-        const std::uint64_t key      = (cam.target->identity().value << 1) | static_cast<std::uint64_t>(cam.hdr);
-        index_for_entity[cam.entity] = counts[key]++;
-    }
-    for (auto&& [entity, camera] : cameras.iter()) {
-        if (auto it = index_for_entity.find(entity); it != index_for_entity.end()) {
-            camera.get_mut().sorted_camera_index_for_target = it->second;
-        }
-    }
-}
+    epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity, epix::ecs::Mut<ExtractedCamera>>> cameras);
 
 /** @brief Per-frame temporal jitter in texels (Bevy TemporalJitter). */
 EPIX_EXPORT struct TemporalJitter {

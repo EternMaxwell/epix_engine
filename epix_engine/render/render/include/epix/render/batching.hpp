@@ -1279,31 +1279,11 @@ namespace epix::render::batching {
  * the render world; phase-specific GPU work is registered by the phase that
  * owns its input/output buffers.
  */
-EPIX_EXPORT struct BatchingPlugin {
+EPIX_EXPORT struct EPIX_API BatchingPlugin {
     /** @brief Debugging flags (Bevy BatchingPlugin::debug_flags). */
     RenderDebugFlags debug_flags{};
 
-    void attach(app::App& app) const noexcept {
-        if (auto render_app = app.get_sub_app_mut(Render)) {
-            auto device = render_app->get().world().get_resource<wgpu::Device>();
-            std::optional<wgpu::BackendType> backend_type;
-            if (auto adapter = render_app->get().world().get_resource<wgpu::Adapter>()) {
-                wgpu::AdapterInfo info;
-                adapter->get().getInfo(&info);
-                backend_type = info.backendType;
-            }
-            auto& world = render_app->get().world_mut();
-            world.insert_resource(IndirectParametersBuffers{debug_flags.allow_copies_from_indirect_parameters()});
-            world.insert_resource(device ? GpuPreprocessingSupport::from_device(device->get(), backend_type)
-                                         : GpuPreprocessingSupport{});
-            render_app->get().add_systems(Render, ecs::into(clear_indirect_parameters_buffers)
-                                                      .in_set(RenderSystems::ManageViews)
-                                                      .set_name("clear indirect parameter buffers"));
-            render_app->get().add_systems(Render, ecs::into(write_indirect_parameters_buffers)
-                                                      .in_set(RenderSystems::PrepareResourcesFlush)
-                                                      .set_name("write indirect parameter buffers"));
-        }
-    }
+    void attach(app::App& app) const noexcept;
 };
 
 }  // namespace epix::render::batching

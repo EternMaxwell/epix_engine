@@ -1205,7 +1205,7 @@ struct CachedTextureMeta {
  * @brief Caches textures that are created repeatedly (each frame) to reduce
  * GPU memory allocations (Bevy `TextureCache`).
  */
-EPIX_EXPORT struct TextureCache {
+EPIX_EXPORT struct EPIX_API TextureCache {
     std::unordered_map<TextureCacheKey, std::vector<detail::CachedTextureMeta>, TextureCacheKeyHash> textures;
 
     /** @brief Retrieve a texture matching the key, creating it from the
@@ -1214,21 +1214,7 @@ EPIX_EXPORT struct TextureCache {
      * the key from the same fields). */
     CachedTexture get(const wgpu::Device& device,
                       const TextureCacheKey& key,
-                      const wgpu::TextureDescriptor& descriptor) {
-        auto& pool = textures[key];
-        for (auto& meta : pool) {
-            if (!meta.taken) {
-                meta.taken                 = true;
-                meta.frames_since_last_use = 0;
-                return CachedTexture{meta.texture, meta.default_view};
-            }
-        }
-
-        wgpu::Texture texture  = device.createTexture(descriptor);
-        wgpu::TextureView view = texture.createView();
-        pool.push_back(detail::CachedTextureMeta{texture, view, true, 0});
-        return CachedTexture{texture, view};
-    }
+                      const wgpu::TextureDescriptor& descriptor);
 
     /** @brief Returns true if the cache contains no textures. */
     bool is_empty() const noexcept { return textures.empty(); }
@@ -1236,17 +1222,7 @@ EPIX_EXPORT struct TextureCache {
     /** @brief Updates the cache and only retains recently used textures
      * (Bevy TextureCache::update): every texture ages one frame and is
      * released; textures unused for 3 or more frames are evicted. */
-    void update() {
-        std::erase_if(textures, [](auto& entry) {
-            auto& pool = entry.second;
-            for (auto& meta : pool) {
-                meta.frames_since_last_use += 1;
-                meta.taken = false;
-            }
-            std::erase_if(pool, [](const detail::CachedTextureMeta& meta) { return meta.frames_since_last_use >= 3; });
-            return pool.empty();
-        });
-    }
+    void update();
 };
 
 /** @brief System that ages and evicts unused cached textures each frame (Bevy

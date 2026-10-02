@@ -27,3 +27,37 @@ wgpu::Buffer epix::render::render_resource::create_buffer_with_data(const wgpu::
     buffer.unmap();
     return buffer;
 }
+
+namespace epix::render::render_resource {
+
+CachedTexture TextureCache::get(const wgpu::Device& device,
+                               const TextureCacheKey& key,
+                               const wgpu::TextureDescriptor& descriptor) {
+    auto& pool = textures[key];
+    for (auto& meta : pool) {
+        if (!meta.taken) {
+            meta.taken                 = true;
+            meta.frames_since_last_use = 0;
+            return CachedTexture{meta.texture, meta.default_view};
+        }
+    }
+
+    wgpu::Texture texture  = device.createTexture(descriptor);
+    wgpu::TextureView view = texture.createView();
+    pool.push_back(detail::CachedTextureMeta{texture, view, true, 0});
+    return CachedTexture{texture, view};
+}
+
+void TextureCache::update() {
+    std::erase_if(textures, [](auto& entry) {
+        auto& pool = entry.second;
+        for (auto& meta : pool) {
+            meta.frames_since_last_use += 1;
+            meta.taken = false;
+        }
+        std::erase_if(pool, [](const detail::CachedTextureMeta& meta) { return meta.frames_since_last_use >= 3; });
+        return pool.empty();
+    });
+}
+
+}  // namespace epix::render::render_resource

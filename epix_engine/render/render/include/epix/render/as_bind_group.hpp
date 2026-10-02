@@ -98,7 +98,7 @@ EPIX_EXPORT using OwnedBindingResource = std::variant<wgpu::Buffer,
 
 /** @brief Ordered binding-index/resource ownership shared by prepared and
  * unprepared bind groups (Bevy's `BindingResources`). */
-EPIX_EXPORT class BindingResources {
+EPIX_EXPORT class EPIX_API BindingResources {
    public:
     using value_type = std::pair<std::uint32_t, OwnedBindingResource>;
 
@@ -125,25 +125,7 @@ EPIX_EXPORT class BindingResources {
     /** @brief Materialize WebGPU entries in preserved input order. `OwnedData`
      * intentionally has no direct entry, so its specialization must use the
      * direct creation path. */
-    [[nodiscard]] std::expected<std::vector<wgpu::BindGroupEntry>, AsBindGroupError> entries() const {
-        std::vector<wgpu::BindGroupEntry> result;
-        result.reserve(m_resources.size());
-        for (const auto& [binding, resource] : m_resources) {
-            if (const auto* buffer = std::get_if<wgpu::Buffer>(&resource)) {
-                result.emplace_back(wgpu::BindGroupEntry().setBinding(binding).setBuffer(*buffer).setOffset(0).setSize(
-                    std::numeric_limits<std::uint64_t>::max()));
-            } else if (const auto* texture =
-                           std::get_if<std::pair<wgpu::TextureViewDimension, wgpu::TextureView>>(&resource)) {
-                result.emplace_back(wgpu::BindGroupEntry().setBinding(binding).setTextureView(texture->second));
-            } else if (const auto* sampler =
-                           std::get_if<std::pair<wgpu::SamplerBindingType, wgpu::Sampler>>(&resource)) {
-                result.emplace_back(wgpu::BindGroupEntry().setBinding(binding).setSampler(sampler->second));
-            } else {
-                return std::unexpected(CreateBindGroupDirectly{});
-            }
-        }
-        return result;
-    }
+    [[nodiscard]] std::expected<std::vector<wgpu::BindGroupEntry>, AsBindGroupError> entries() const;
 
    private:
     std::vector<value_type> m_resources;
