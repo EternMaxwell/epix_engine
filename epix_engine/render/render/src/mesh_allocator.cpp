@@ -46,19 +46,31 @@ void epix::render::mesh::MeshAllocator::allocate_meshes(
 
     for (const auto& [id, source_mesh] : extracted_meshes.extracted) {
         if (const auto vertex_slab = mesh_id_to_vertex_slab.find(id); vertex_slab != mesh_id_to_vertex_slab.end()) {
-            const auto packed = source_mesh.create_packed_vertex_buffer_data();
-            if (!packed.empty()) {
-                copy_element_data(device, queue, vertex_slab->second, id, packed.data(), packed.size(),
-                                  wgpu::BufferUsage::eVertex);
+            const std::size_t vertex_bytes = source_mesh.get_vertex_buffer_size();
+            if (vertex_bytes != 0) {
+                // The packing happens inside the mapped slice, which is Bevy's
+                // `|slice| mesh.write_packed_vertex_buffer_data(slice)` (`allocator.rs:536-542`);
+                // the mesh module has the same slice writer, so no packed vector is built.
+                copy_element_data(
+                    device, queue, vertex_slab->second, id, vertex_bytes, wgpu::BufferUsage::eVertex,
+                    [&source_mesh](std::span<std::byte> slice) {
+                        source_mesh.write_packed_vertex_buffer_data(std::span<std::uint8_t>(
+                            reinterpret_cast<std::uint8_t*>(slice.data()), slice.size()));
+                    });
             }
         }
         if (const auto index_slab = mesh_id_to_index_slab.find(id); index_slab != mesh_id_to_index_slab.end()) {
             if (const auto index_bytes = source_mesh.get_index_buffer_bytes()) {
-                copy_element_data(device, queue, index_slab->second, id, index_bytes->data(), index_bytes->size(),
-                                  wgpu::BufferUsage::eIndex);
+                copy_element_data(device, queue, index_slab->second, id, index_bytes->size(),
+                                  wgpu::BufferUsage::eIndex, [&index_bytes](std::span<std::byte> slice) {
+                                      std::memcpy(slice.data(), index_bytes->data(), index_bytes->size());
+                                  });
             }
         }
     }
+    // Submit the frame's staged copies in one command buffer, which is when wgpu submits
+    // the writes its own `write_buffer_with` staged.
+    if (staging_belt) staging_belt->finish();
 }
 
 epix::render::mesh::MeshAllocator epix::render::mesh::MeshAllocator::from_world(epix::ecs::World& world) {
@@ -189,9 +201,9 @@ void MeshAllocator::copy_element_data(const wgpu::Device& device,
                                       const wgpu::Queue& queue,
                                       SlabId slab_id,
                                       const epix::assets::AssetId<::epix::mesh::Mesh>& id,
-                                      const void* data,
                                       std::size_t bytes,
-                                      wgpu::BufferUsage usage) {
+                                      wgpu::BufferUsage usage,
+                                      const std::function<void(std::span<std::byte>)>& fill) {
     auto it = slabs.find(slab_id);
     if (it == slabs.end()) return;
     if (auto* large = it->second.large()) {
@@ -204,11 +216,11 @@ void MeshAllocator::copy_element_data(const wgpu::Device& device,
                                         .setLabel("large mesh slab")
                                         .setUsage(usage | wgpu::BufferUsage::eCopyDst | extra_buffer_usages)
                                         .setMappedAtCreation(true));
-            if (auto* range = static_cast<std::uint8_t*>(large->buffer.getMappedRange(0, bytes))) {
-                std::memcpy(range, data, bytes);
+            if (auto* range = static_cast<std::byte*>(large->buffer.getMappedRange(0, bytes))) {
+                fill(std::span<std::byte>(range, bytes));
             } else {
                 // The same failure `create_buffer_with_data` reports: a failed creation still
-                // yields a handle in this wrapper and then `getMappedRange` is null, so copying
+                // yields a handle in this wrapper and then `getMappedRange` is null, so filling
                 // would be a null write and the mesh would silently upload nothing.
                 spdlog::error(
                     "[render.mesh_allocator] large mesh slab: no mapped range for a {} byte buffer; the buffer or "
@@ -229,14 +241,12 @@ void MeshAllocator::copy_element_data(const wgpu::Device& device,
     const auto allocation         = pending->second;
     const std::uint64_t slot_size = general->element_layout.slot_size();
     const std::uint64_t aligned   = (bytes + slot_size - 1) / slot_size * slot_size;
-    if (aligned == bytes) {
-        queue.writeBuffer(general->buffer, static_cast<std::uint64_t>(allocation.offset()) * slot_size, data, bytes);
-    } else {
-        std::vector<std::uint8_t> padded(static_cast<std::size_t>(aligned), 0);
-        std::memcpy(padded.data(), data, bytes);
-        queue.writeBuffer(general->buffer, static_cast<std::uint64_t>(allocation.offset()) * slot_size, padded.data(),
-                          padded.size());
-    }
+    // Bevy asks `write_buffer_with` for a mapped slice of the rounded size and fills only
+    // the payload, leaving the rounding tail as it is (`allocator.rs:596-611`); this port's
+    // staging belt does the same, so no padded copy is built.
+    if (!staging_belt) staging_belt.emplace(device, queue);
+    staging_belt->write_buffer(general->buffer, static_cast<std::uint64_t>(allocation.offset()) * slot_size, aligned,
+                               [&fill, bytes](std::span<std::byte> slice) { fill(slice.first(bytes)); });
     general->resident_allocations[id] = allocation;
     general->pending_allocations.erase(pending);
 }

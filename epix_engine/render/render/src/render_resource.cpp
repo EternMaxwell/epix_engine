@@ -34,6 +34,17 @@ namespace {
  *  `COPY_BUFFER_ALIGNMENT`). The allocator's rounded slot size is a multiple. */
 constexpr std::uint64_t kCopyBufferAlignment = 4;
 
+/** @brief The alignment a *mapped* range's offset must satisfy (wgpu's
+ *  `MAP_ALIGNMENT`), which is stricter than a copy's: a cursor that only advanced by
+ *  the copy size would hand `getMappedRange` a 4-byte-aligned offset and fail
+ *  validation ("Error in wgpuBufferGetMappedRange"). */
+constexpr std::uint64_t kMappedRangeAlignment = 8;
+
+/** @brief Round @p value up to the next multiple of @p alignment. */
+constexpr std::uint64_t align_up(std::uint64_t value, std::uint64_t alignment) noexcept {
+    return (value + alignment - 1) / alignment * alignment;
+}
+
 }  // namespace
 
 namespace epix::render::render_resource {
@@ -47,7 +58,13 @@ StagingBelt::Chunk* StagingBelt::acquire_chunk(std::uint64_t size) {
     const std::uint64_t capacity = size > m_chunk_size ? size : m_chunk_size;
     while (m_current_chunk < m_chunks.size()) {
         auto& chunk = m_chunks[m_current_chunk];
-        if (chunk.capacity >= capacity && chunk.cursor + size <= chunk.capacity) return &chunk;
+        // Advance to a mapped-range-aligned cursor before reserving: wgpu rejects a
+        // `getMappedRange` whose offset is only copy-aligned.
+        const std::uint64_t cursor = align_up(chunk.cursor, kMappedRangeAlignment);
+        if (chunk.capacity >= capacity && cursor + size <= chunk.capacity) {
+            chunk.cursor = cursor;
+            return &chunk;
+        }
         ++m_current_chunk;
     }
     auto buffer = m_device.createBuffer(wgpu::BufferDescriptor()

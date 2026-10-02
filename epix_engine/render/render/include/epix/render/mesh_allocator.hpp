@@ -29,6 +29,7 @@
 #include <epix/render/assets.hpp>
 #include <epix/render/mesh/offset_allocator.hpp>
 #include <epix/render/mesh/render_asset.hpp>
+#include <epix/render/render_resource.hpp>
 
 namespace epix::render::mesh {
 
@@ -323,6 +324,13 @@ EPIX_EXPORT struct MeshAllocator {
     /// `mesh_id_to_index_slab`).
     std::unordered_map<epix::assets::AssetId<::epix::mesh::Mesh>, SlabId> mesh_id_to_index_slab;
 
+    /** @brief The mapped staging buffer uploads go through, created from the device on
+     *  the first upload. Bevy has no such object - `Queue::write_buffer_with` owns the
+     *  staging area inside wgpu - so this is the port's stand-in for it
+     *  (`bevy_render/src/mesh/allocator.rs:578-611`); `finish` is called once the frame's
+     *  meshes have been copied, which is when wgpu submits its own writes. */
+    std::optional<render_resource::StagingBelt> staging_belt;
+
     SlabId next_slab_id{};
 
     // wgpu-native's C API does not expose wgpu-core's DownlevelFlags. Epix's
@@ -405,17 +413,20 @@ EPIX_EXPORT struct MeshAllocator {
                          SlabId slab_id,
                          detail::SlabToReallocate slab_to_reallocate);
 
-    /** @brief Upload fixed bytes into a slab allocation, moving it from pending
-     * to resident (Bevy `copy_element_data`). General slabs write into the
-     * existing buffer at the allocation's byte offset; large-object slabs create
-     * their dedicated buffer with mapped-at-creation and fill it in one go. */
+    /** @brief Upload a slab allocation's payload, moving it from pending to resident
+     *  (Bevy `copy_element_data`). General slabs write into the existing buffer at the
+     *  allocation's byte offset through `mesh_allocator`'s staging belt, filling a mapped
+     *  slice of the slot-rounded size - Bevy asks `write_buffer_with` for exactly that
+     *  slice and lets the rounding tail stay as it is; large-object slabs create their
+     *  dedicated buffer with mapped-at-creation and fill it in one go. @p fill writes at
+     *  most @p bytes bytes; the belt leaves the rest of the rounded slot alone. */
     EPIX_API void copy_element_data(const wgpu::Device& device,
                            const wgpu::Queue& queue,
                            SlabId slab_id,
                            const epix::assets::AssetId<::epix::mesh::Mesh>& id,
-                           const void* data,
                            std::size_t bytes,
-                           wgpu::BufferUsage usage);
+                           wgpu::BufferUsage usage,
+                           const std::function<void(std::span<std::byte>)>& fill);
 
     /** @brief Allocate within general slabs, growing an existing one or creating
      * a new one (Bevy `MeshAllocator::allocate_general`). The payload is
