@@ -286,13 +286,11 @@ static void prepare_screenshots(ResMut<ScreenshotState> state,
         }
         std::optional<wgpu::TextureView> output_view;
         glm::uvec2 size{};
-        wgpu::TextureFormat format = wgpu::TextureFormat::eUndefined;
         std::visit(epix::utils::visitor{
                        [&](const ::epix::camera::ImageRenderTarget& image) {
                            if (!image.texture) return;
                            output_view = image.texture.createView();
                            size        = {image.texture.getWidth(), image.texture.getHeight()};
-                           format      = image.texture.getFormat();
                        },
                        [&](const ::epix::window::NormalizedWindowRef& window) {
                            if (auto it = windows->windows.find(window.entity()); it != windows->windows.end()) {
@@ -306,19 +304,30 @@ static void prepare_screenshots(ResMut<ScreenshotState> state,
                                // frame ahead or behind that on a resize.
                                size        = {extracted.swapchain_texture.texture.getWidth(),
                                               extracted.swapchain_texture.texture.getHeight()};
-                               format      = extracted.swapchain_texture_view_format;
                            }
                        },
                        [&](const ::epix::camera::ManualTextureViewHandle& handle) {
                            if (auto it = manual_texture_views->find(handle); it != manual_texture_views->end()) {
                                output_view = it->second.texture_view;
                                size        = it->second.size;
-                               format      = it->second.view_format;
                            }
                        },
                        [&](const ::epix::camera::NoColorTarget&) {},
                    },
                    *target);
+        // The target's view format, read the way every other pass reads it. Bevy
+        // prefers the target's `texture_view_format` over the texture's own format
+        // (`screenshot.rs:308-310`), and this accessor is where the port keeps that
+        // preference - for windows the sRGB-suffixed swapchain view format, for
+        // manual views their own format. An `ImageRenderTarget` answers with the
+        // texture's format, which is **CGR-748**'s accepted divergence: the port's
+        // targets carry a direct `wgpu::Texture` and no `Handle<Image>` to look a
+        // `GpuImage::texture_view_format` up in.
+        wgpu::TextureFormat format = wgpu::TextureFormat::eUndefined;
+        if (const auto view_format = ::epix::render::camera::NormalizedRenderTargetExt::get_texture_view_format(
+                *target, *windows, *manual_texture_views)) {
+            format = *view_format;
+        }
         if (!output_view || size.x == 0 || size.y == 0 || readback::texture_format_pixel_size(format) == 0) {
             spdlog::warn("[render.screenshot] Could not resolve a readable screenshot target");
             continue;
