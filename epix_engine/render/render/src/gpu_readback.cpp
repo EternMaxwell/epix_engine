@@ -151,7 +151,9 @@ void epix::render::sync_readbacks(app::Extract<ecs::ResMut<ecs::Events<ReadbackC
                 // map failed: return the staging buffer so it is not leaked
                 spdlog::warn("[render.gpu_readback] Failed to map readback buffer; returning it to the pool.");
             }
-            buffer_pool.get_mut().return_buffer(buffer);
+            if (readback.pooled_buffer) {
+                buffer_pool.get_mut().return_buffer(buffer);
+            }
             return true;
         }
         return false;

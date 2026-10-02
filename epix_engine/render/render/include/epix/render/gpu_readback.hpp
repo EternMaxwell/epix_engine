@@ -180,6 +180,15 @@ EPIX_EXPORT struct GpuReadback {
     wgpu::Buffer buffer;
     /** @brief Channel the map callback delivers results through. */
     std::shared_ptr<ReadbackChannel> channel;
+    /** @brief Whether `buffer` came from `GpuReadbackBufferPool` and is returned to
+     *  it on completion.
+     *
+     *  Not every staging buffer is pooled: the screenshot path allocates its own
+     *  per-capture transfer buffer, as Bevy's does
+     *  (`bevy_render/src/view/window/screenshot.rs:377-382`), and returning that one
+     *  to a pool that never handed it out is not a reuse, it is a leak of the pool's
+     *  bookkeeping. */
+    bool pooled_buffer = true;
 };
 
 /** @brief Render-world resource holding requested/mapped readbacks (Bevy

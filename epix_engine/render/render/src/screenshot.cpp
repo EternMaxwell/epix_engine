@@ -45,6 +45,12 @@ struct ScreenshotState {
         wgpu::TextureFormat format = wgpu::TextureFormat::eUndefined;
         bool restore_output        = false;
         CachedPipelineId pipeline_id;
+        // Bevy caches both of these in `ScreenshotPreparedState` when the capture
+        // is prepared (`screenshot.rs:108-114`, `:356-400`): the transfer buffer is
+        // a dedicated `screenshot-transfer-buffer`, not one taken from the readback
+        // pool at submit, and the bind group is built once rather than per submit.
+        wgpu::Buffer buffer;
+        wgpu::BindGroup bind_group;
     };
     struct InFlightCapture {
         std::optional<Entity> entity;
@@ -254,7 +260,10 @@ static void collect_completed_readbacks(ResMut<ScreenshotState> state,
                 spdlog::warn("[render.screenshot] Readback data did not describe a supported screenshot image");
             }
         }
-        buffer_pool->return_buffer(buffer);
+        // The capture's transfer buffer is its own (Bevy allocates it per
+        // screenshot and drops it with the readback, screenshot.rs:377-382), so only
+        // a pooled one goes back.
+        if (readback.pooled_buffer) buffer_pool->return_buffer(buffer);
         state->in_flight.erase(pending);
         return true;
     });
@@ -329,8 +338,35 @@ static void prepare_screenshots(ResMut<ScreenshotState> state,
         attachments->attachments.insert_or_assign(target->identity(),
                                                   view::OutputColorAttachment::create(temporary_view, format));
         const CachedPipelineId pipeline_id = blit_pipelines->specialize(*pipeline_server, *blit_pipeline, format);
-        state->prepared.push_back(
-            {readback_entity, request.entity, std::move(temporary), *output_view, size, format, true, pipeline_id});
+        // Bevy allocates the transfer buffer here, per screenshot and dedicated to
+        // it (`screenshot-transfer-buffer`, screenshot.rs:377-382), and caches it
+        // together with the bind group the blit needs, so submission only records
+        // the copy.
+        const std::uint32_t bytes_per_pixel = readback::texture_format_pixel_size(format);
+        const wgpu::Extent3D extent(size.x, size.y, 1);
+        auto transfer_buffer = device->createBuffer(wgpu::BufferDescriptor()
+                                                        .setLabel("screenshot-transfer-buffer")
+                                                        .setSize(readback::get_aligned_size(extent, bytes_per_pixel))
+                                                        .setUsage(wgpu::BufferUsage::eCopyDst |
+                                                                  wgpu::BufferUsage::eMapRead));
+        if (!transfer_buffer) continue;
+        const auto blit_bind_group = device->createBindGroup(
+            wgpu::BindGroupDescriptor()
+                .setLabel("screenshot-to-screen-bind-group")
+                .setLayout(pipeline_server->get_bind_group_layout(blit_pipeline->bind_group_layout))
+                .setEntries(std::array{
+                    wgpu::BindGroupEntry().setBinding(0).setTextureView(temporary_view),
+                }));
+        state->prepared.push_back({readback_entity,
+                                   request.entity,
+                                   std::move(temporary),
+                                   *output_view,
+                                   size,
+                                   format,
+                                   true,
+                                   pipeline_id,
+                                   std::move(transfer_buffer),
+                                   std::move(blit_bind_group)});
     }
     state->pending.clear();
 }
@@ -338,22 +374,11 @@ static void prepare_screenshots(ResMut<ScreenshotState> state,
 static void submit_screenshot_commands(World& world, wgpu::CommandEncoder& encoder) {
     auto& state = world.resource_mut<ScreenshotState>();
     if (state.prepared.empty()) return;
-    const auto& device          = world.resource<wgpu::Device>();
-    const auto& blit_pipeline   = world.resource<ScreenshotToScreenPipeline>();
     const auto& pipeline_server = world.resource<PipelineServer>();
     auto& readbacks             = world.resource_mut<readback::GpuReadbacks>();
-    auto& pool                  = world.resource_mut<readback::GpuReadbackBufferPool>();
     for (auto& capture : state.prepared) {
         if (capture.restore_output) {
             if (auto ready = pipeline_server.get_render_pipeline(capture.pipeline_id)) {
-                const auto source_view = capture.texture.createView();
-                const auto bind_group  = device.createBindGroup(
-                    wgpu::BindGroupDescriptor()
-                        .setLabel("ScreenshotBlitBindGroup")
-                        .setLayout(pipeline_server.get_bind_group_layout(blit_pipeline.bind_group_layout))
-                        .setEntries(std::array{
-                            wgpu::BindGroupEntry().setBinding(0).setTextureView(source_view),
-                        }));
                 auto pass = encoder.beginRenderPass(
                     wgpu::RenderPassDescriptor()
                         .setLabel("screenshot-to-screen")
@@ -363,14 +388,13 @@ static void submit_screenshot_commands(World& world, wgpu::CommandEncoder& encod
                                                             .setStoreOp(wgpu::StoreOp::eStore)
                                                             .setDepthSlice(~0u)}));
                 pass.setPipeline(ready->get().pipeline());
-                pass.setBindGroup(0, bind_group, std::span<const uint32_t>{});
+                pass.setBindGroup(0, capture.bind_group, std::span<const uint32_t>{});
                 pass.draw(3, 1, 0, 0);
                 pass.end();
             }
         }
         const std::uint32_t bytes_per_pixel = readback::texture_format_pixel_size(capture.format);
         const wgpu::Extent3D extent(capture.size.x, capture.size.y, 1);
-        auto buffer = pool.get(device, readback::get_aligned_size(extent, bytes_per_pixel));
         readbacks.requested.push_back(readback::GpuReadback{
             capture.readback_entity,
             readback::ReadbackSource{readback::ReadbackSource::Texture{
@@ -379,8 +403,9 @@ static void submit_screenshot_commands(World& world, wgpu::CommandEncoder& encod
                     .setBytesPerRow(readback::align_byte_size(capture.size.x * bytes_per_pixel))
                     .setRowsPerImage(capture.size.y),
                 extent}},
-            buffer,
+            capture.buffer,
             std::make_shared<readback::ReadbackChannel>(),
+            false,
         });
         state.in_flight.insert_or_assign(
             capture.readback_entity, ScreenshotState::InFlightCapture{capture.entity, capture.size, capture.format});
