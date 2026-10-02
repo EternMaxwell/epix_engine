@@ -299,8 +299,13 @@ static void prepare_screenshots(ResMut<ScreenshotState> state,
                                const auto& extracted = it->second;
                                if (!extracted.swapchain_texture_view || !extracted.swapchain_texture.texture) return;
                                output_view = extracted.swapchain_texture_view;
-                               size        = {static_cast<uint32_t>(extracted.physical_width),
-                                              static_cast<uint32_t>(extracted.physical_height)};
+                               // The size the surface was configured at, which is what the
+                               // swapchain texture was created with - Bevy reads the same thing
+                               // from the window's surface data (`configuration.width/height`,
+                               // screenshot.rs:283-288). The window's own physical size is a
+                               // frame ahead or behind that on a resize.
+                               size        = {extracted.swapchain_texture.texture.getWidth(),
+                                              extracted.swapchain_texture.texture.getHeight()};
                                format      = extracted.swapchain_texture_view_format;
                            }
                        },
