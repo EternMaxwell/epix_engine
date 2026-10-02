@@ -192,63 +192,28 @@ static void extract_captures_and_deliver(ResMut<ScreenshotState> state,
     component_captures->pending.clear();
 }
 
-struct CaptureFormatInfo {
-    uint32_t bytes_per_pixel         = 0;
-    wgpu::TextureFormat image_format = wgpu::TextureFormat::eUndefined;
-    bool bgra_swap                   = false;
-};
-
 static void collect_completed_readbacks(ResMut<ScreenshotState> state,
                                         ResMut<readback::GpuReadbacks> readbacks,
                                         ResMut<readback::GpuReadbackBufferPool> buffer_pool);
 
-static CaptureFormatInfo capture_format(wgpu::TextureFormat format) {
-    switch (format) {
-        case wgpu::TextureFormat::eRGBA8Unorm:
-        case wgpu::TextureFormat::eRGBA8UnormSrgb:
-            return {4, wgpu::TextureFormat::eRGBA8Unorm, false};
-        case wgpu::TextureFormat::eBGRA8Unorm:
-        case wgpu::TextureFormat::eBGRA8UnormSrgb:
-            return {4, wgpu::TextureFormat::eRGBA8Unorm, true};
-        case wgpu::TextureFormat::eR8Unorm:
-            return {1, wgpu::TextureFormat::eR8Unorm, false};
-        case wgpu::TextureFormat::eRG8Unorm:
-            return {2, wgpu::TextureFormat::eRG8Unorm, false};
-        case wgpu::TextureFormat::eRGBA16Uint:
-        case wgpu::TextureFormat::eRGBA16Sint:
-        case wgpu::TextureFormat::eRGBA16Float:
-            return {8, wgpu::TextureFormat::eRGBA16Uint, false};
-        case wgpu::TextureFormat::eRGBA32Float:
-            return {16, wgpu::TextureFormat::eRGBA32Float, false};
-        default:
-            return {};
-    }
-}
-
 static std::optional<image::Image> image_from_readback(const ScreenshotState::InFlightCapture& capture,
                                                        std::span<const std::uint8_t> data) {
-    const auto info = capture_format(capture.format);
-    if (info.bytes_per_pixel == 0) return std::nullopt;
-    const std::size_t packed_row  = static_cast<std::size_t>(capture.size.x) * info.bytes_per_pixel;
+    // Bevy builds the image straight from the readback buffer, keeping the
+    // capture target's own format (`Image::new(extent, D2, result,
+    // texture_format, RenderAssetUsages::RENDER_WORLD)`, screenshot.rs:677-687);
+    // readers convert it later (`try_into_dynamic`).
+    const std::uint32_t bytes_per_pixel = readback::texture_format_pixel_size(capture.format);
+    if (bytes_per_pixel == 0) return std::nullopt;
+    const std::size_t packed_row  = static_cast<std::size_t>(capture.size.x) * bytes_per_pixel;
     const std::size_t aligned_row = readback::align_byte_size(static_cast<std::uint32_t>(packed_row));
     if (data.size() < aligned_row * capture.size.y) return std::nullopt;
     std::vector<std::byte> pixels(packed_row * capture.size.y);
     for (uint32_t y = 0; y < capture.size.y; ++y) {
         const auto* src = reinterpret_cast<const std::byte*>(data.data() + aligned_row * y);
-        auto* dst       = pixels.data() + packed_row * y;
-        if (info.bgra_swap) {
-            for (uint32_t x = 0; x < capture.size.x; ++x) {
-                dst[x * 4]     = src[x * 4 + 2];
-                dst[x * 4 + 1] = src[x * 4 + 1];
-                dst[x * 4 + 2] = src[x * 4];
-                dst[x * 4 + 3] = src[x * 4 + 3];
-            }
-        } else {
-            std::memcpy(dst, src, packed_row);
-        }
+        std::memcpy(pixels.data() + packed_row * y, src, packed_row);
     }
-    auto result = image::Image::create2d(capture.size.x, capture.size.y, info.image_format, pixels);
-    if (result) result->set_usage(assets::RenderAssetUsages::MAIN_WORLD);
+    auto result = image::Image::create2d(capture.size.x, capture.size.y, capture.format, pixels);
+    if (result) result->set_usage(assets::RenderAssetUsages::RENDER_WORLD);
     return result;
 }
 
@@ -386,7 +351,7 @@ static void prepare_screenshots(ResMut<ScreenshotState> state,
                        [&](const ::epix::camera::NoColorTarget&) {},
                    },
                    *target);
-        if (!output_view || size.x == 0 || size.y == 0 || capture_format(format).bytes_per_pixel == 0) {
+        if (!output_view || size.x == 0 || size.y == 0 || readback::texture_format_pixel_size(format) == 0) {
             spdlog::warn("[render.screenshot] Could not resolve a readable screenshot target");
             continue;
         }
@@ -454,15 +419,15 @@ static void submit_screenshot_commands(World& world, wgpu::CommandEncoder& encod
                     pass.end();
                 }
         }
-        const auto info = capture_format(capture.format);
+        const std::uint32_t bytes_per_pixel = readback::texture_format_pixel_size(capture.format);
         const wgpu::Extent3D extent(capture.size.x, capture.size.y, 1);
-        auto buffer = pool.get(device, readback::get_aligned_size(extent, info.bytes_per_pixel));
+        auto buffer = pool.get(device, readback::get_aligned_size(extent, bytes_per_pixel));
         readbacks.requested.push_back(readback::GpuReadback{
             capture.readback_entity,
             readback::ReadbackSource{readback::ReadbackSource::Texture{
                 capture.texture,
                 wgpu::TexelCopyBufferLayout()
-                    .setBytesPerRow(readback::align_byte_size(capture.size.x * info.bytes_per_pixel))
+                    .setBytesPerRow(readback::align_byte_size(capture.size.x * bytes_per_pixel))
                     .setRowsPerImage(capture.size.y),
                 extent}},
             buffer,

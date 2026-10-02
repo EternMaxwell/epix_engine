@@ -89,5 +89,13 @@ TEST(ScreenshotPlugin, WindowRenderPluginInstallsAndCapturesComponentRequest) {
     ASSERT_NE(captured, nullptr);
     EXPECT_EQ(captured->entity, request);
     EXPECT_EQ(captured->image.raw_view().size(), 4u * 4u * 4u);
+    // Bevy keeps the capture target's own format and tags the produced image
+    // RENDER_WORLD (`Image::new(extent, D2, result, texture_format,
+    // RenderAssetUsages::RENDER_WORLD)`, screenshot.rs:677-687); readers convert
+    // it afterwards. The port used to rewrite the format (BGRA8 -> RGBA8,
+    // `*UnormSrgb` -> `Unorm`, `eRGBA16Float` -> `eRGBA16Uint`) and tag it
+    // MAIN_WORLD.
+    EXPECT_EQ(captured->image.texture_format(), wgpu::TextureFormat::eRGBA8Unorm);
+    EXPECT_EQ(captured->image.usage(), epix::assets::RenderAssetUsages::RENDER_WORLD);
     EXPECT_TRUE(app.world().entity(request).contains<Captured>());
 }
