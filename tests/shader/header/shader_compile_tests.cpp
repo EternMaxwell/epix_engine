@@ -19,6 +19,7 @@
 #include <epix/pbr/mesh_shaders.hpp>
 #include <epix/render.hpp>
 #include <epix/shader.hpp>
+#include <epix/sprite_render.hpp>
 #include <epix/task.hpp>
 #include <epix/time.hpp>
 #include <epix/window.hpp>
@@ -98,9 +99,11 @@ TEST(ShaderCompile, EveryLoadedShaderCompilesOnADevice) {
     // After the render plugin, so the shader loader and the embedded registry are
     // in place before the modules are published and loaded. The plugin families
     // here are the ones whose shaders the suite otherwise only ever loads: the
-    // core pipeline's blit / tonemapping / mip generation, and the mesh modules.
+    // core pipeline's blit / tonemapping / mip generation, the mesh modules, the
+    // material modules, and the 2D sprite renderer's.
     app.add_plugins(epix::core_graph::CoreGraphPlugin{});
     app.add_plugins(epix::pbr::MeshRenderPlugin{});
+    app.add_plugins(epix::sprite_render::SpriteRenderPlugin{});
     epix::pbr::register_mesh_shaders(app.world_mut());
     // The shader assets load asynchronously, and the cache is filled from them.
     for (int attempt = 0; attempt < 10000; ++attempt) {
