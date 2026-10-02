@@ -1,25 +1,24 @@
-// Compiles every shader the engine has loaded, on a device.
+// Compiles the render module's own shaders on a device.
 //
 // `ShaderCache` compiles an entry point per definition set, so a shader branch
 // is only ever compiled when something asks for it. Nothing in the suite asked,
-// which is how `pbr/mesh.slang` kept two defects that made the whole module
-// unusable — the HLSL `SV_VertexID` (Slang then declares `OpCapability
-// DrawParameters`, which naga rejects) and column-major `float3x4`/`float2x4`
-// members (naga: "unsupported matrix stride 8 for a 2x4 matrix") — while every
-// asset-level test passed. This test asks, for every shader that has entry
-// points, so a rejected module fails here instead of only when something renders
-// with it.
+// which is how a shader can carry a defect (an unsupported SPIR-V capability, a
+// matrix stride naga rejects) while every asset-level test passes. This test
+// asks, for every render-module shader that has entry points, so a rejected
+// module fails here instead of only when something renders with it.
+//
+// It is scoped to this module deliberately: each module's shaders are compiled
+// by that module's own tests (`tests/pbr/header/mesh_shader_tests.cpp` compiles
+// the pbr mesh pipelines, for instance), so this file neither includes nor
+// installs another module's plugins.
 
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
 #include <epix/camera.hpp>
-#include <epix/core_graph.hpp>
 #include <epix/image.hpp>
 #include <epix/mesh.hpp>
-#include <epix/pbr/mesh_shaders.hpp>
 #include <epix/render.hpp>
 #include <epix/shader.hpp>
-#include <epix/sprite_render.hpp>
 #include <epix/task.hpp>
 #include <epix/time.hpp>
 #include <epix/window.hpp>
@@ -67,11 +66,12 @@ bool has_entry_points(const std::string& text) {
 /** @brief Whether any entry point sits behind a preprocessor branch.
  *
  *  A module whose code is definition-gated cannot be compiled bare — Slang
- *  reports the missing definitions rather than a stage (`pbr/mesh.slang` needs
- *  `MESH_PIPELINE`, `VERTEX_POSITIONS`, … before either entry point is valid).
- *  Those modules are compiled by the family test that owns their definition set
- *  (`tests/pbr/header/mesh_shader_tests.cpp` compiles nine mesh variants); this
- *  sweep covers the modules that must compile as written. */
+ *  reports the missing definitions rather than a stage. Those modules belong to
+ *  the pipeline that owns their definition set (the pbr mesh pipelines are
+ *  compiled with their definitions in
+ *  `tests/pbr/header/mesh_shader_tests.cpp`); this sweep covers the render
+ *  module's modules that must compile as written, and reports the gated ones
+ *  rather than skipping them silently. */
 bool is_definition_gated(const std::string& text) {
     return text.find("#ifdef") != std::string::npos || text.find("#ifndef") != std::string::npos ||
            text.find("#if ") != std::string::npos;
@@ -79,7 +79,7 @@ bool is_definition_gated(const std::string& text) {
 
 }  // namespace
 
-TEST(ShaderCompile, EveryLoadedShaderCompilesOnADevice) {
+TEST(ShaderCompile, EveryLoadedRenderShaderCompilesOnADevice) {
     App app = App::create();
     // Unprocessed mode, as the other shader-loading fixtures use: the embedded
     // source has to be reachable by path when the modules are loaded.
@@ -90,22 +90,18 @@ TEST(ShaderCompile, EveryLoadedShaderCompilesOnADevice) {
     app.add_plugins(epix::time::TimePlugin{})
         .add_plugins(epix::camera::CameraPlugin{})
         .add_plugins(epix::image::ImagePlugin{})
-        .add_plugins(epix::mesh::MeshPlugin{});
+        .add_plugins(epix::mesh::MeshPlugin{})
+        .add_plugins(render::FrameCountPlugin{});
     try {
         app.add_plugins(render::RenderPlugin{.synchronous_pipeline_compilation = true});
     } catch (const std::exception& error) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
     }
-    // After the render plugin, so the shader loader and the embedded registry are
-    // in place before the modules are published and loaded. The plugin families
-    // here are the ones whose shaders the suite otherwise only ever loads: the
-    // core pipeline's blit / tonemapping / mip generation, the mesh modules, the
-    // material modules, and the 2D sprite renderer's.
-    app.add_plugins(epix::core_graph::CoreGraphPlugin{});
-    app.add_plugins(epix::pbr::MeshRenderPlugin{});
-    app.add_plugins(epix::sprite_render::SpriteRenderPlugin{});
-    epix::pbr::register_mesh_shaders(app.world_mut());
-    // The shader assets load asynchronously, and the cache is filled from them.
+    // `RenderPlugin` publishes this module's shaders — the maths library the
+    // mesh shaders import and the screenshot blit — and loading is asynchronous.
+    // The blit shader is loaded by the render app's `RenderStartup`, so that
+    // schedule has to run before its asset exists.
+    app.sub_app_mut(render::Render).then([](App& render_app) { render_app.run_schedule(render::RenderStartup); });
     for (int attempt = 0; attempt < 10000; ++attempt) {
         app.run_schedule(Last);
         std::this_thread::yield();
@@ -138,20 +134,22 @@ TEST(ShaderCompile, EveryLoadedShaderCompilesOnADevice) {
 
     auto& shaders = app.resource<Assets<Shader>>();
     const auto ids = shaders.ids();
-    ASSERT_GT(ids.size(), 5u) << "the embedded shader modules should be loaded by now";
+    ASSERT_FALSE(ids.empty()) << "this module's embedded shaders should be loaded by now";
     for (const auto id : ids) {
         const auto shader = shaders.get(id);
         ASSERT_TRUE(shader.has_value());
         cache.set_shader(id, shader->get());
     }
 
-    std::size_t compiled = 0;
-    std::size_t gated   = 0;
+    std::size_t entry_point_modules = 0;
+    std::size_t compiled            = 0;
+    std::size_t gated               = 0;
     for (const auto id : ids) {
         const auto shader = shaders.get(id);
         ASSERT_TRUE(shader.has_value());
         const auto* text = shader_text(shader->get());
         if (text == nullptr || !has_entry_points(*text)) continue;
+        ++entry_point_modules;
         if (is_definition_gated(*text)) {
             ++gated;
             continue;
@@ -160,8 +158,8 @@ TEST(ShaderCompile, EveryLoadedShaderCompilesOnADevice) {
         EXPECT_TRUE(module.has_value()) << "compiling '" << shader->get().import_path.module_name() << "' failed";
         ++compiled;
     }
-    EXPECT_GT(compiled, 0u) << "no definition-independent shader with entry points was compiled, so this test "
-                               "proved nothing";
-    std::cout << "[shader-compile] " << compiled << " module(s) compiled bare, " << gated
-              << " definition-gated module(s) left to their family tests" << std::endl;
+    EXPECT_GT(entry_point_modules, 0u) << "no render-module shader with entry points was loaded, so this test proved "
+                                          "nothing";
+    std::cout << "[shader-compile] " << compiled << " of " << entry_point_modules
+              << " render-module entry-point module(s) compiled bare, " << gated << " definition-gated" << std::endl;
 }
