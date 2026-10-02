@@ -41,7 +41,10 @@ public float4x4 affine3_to_square(float3x4 affine) {
     return transpose(float4x4(affine[0], affine[1], affine[2], float4(0.0, 0.0, 0.0, 1.0)));
 }
 
-public float3x3 mat2x4_f32_to_mat3x3_unpack(float2x4 a, float b) {
+// The `row_major` modifier matches the `Mesh` members this reads: its two rows
+// are Bevy's two `mat2x4<f32>` columns, so `a[0]`/`a[1]` are the `vec4`s the
+// packed 3x3 is split across.
+public float3x3 mat2x4_f32_to_mat3x3_unpack(row_major float2x4 a, float b) {
     return float3x3(a[0].xyz, float3(a[0].w, a[1].xy), float3(a[1].zw, b));
 }
 

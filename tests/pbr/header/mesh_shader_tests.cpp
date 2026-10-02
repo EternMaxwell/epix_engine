@@ -1,11 +1,16 @@
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/camera.hpp>
+#include <epix/image.hpp>
 #include <epix/mesh.hpp>
 #include <epix/pbr/mesh_pipeline_resource.hpp>
 #include <epix/pbr/mesh_shaders.hpp>
+#include <epix/render.hpp>
 #include <epix/render/view.hpp>
 #include <epix/shader.hpp>
 #include <epix/task.hpp>
+#include <epix/time.hpp>
+#include <epix/window.hpp>
 #include <gtest/gtest.h>
 
 #include <cstdio>
@@ -323,4 +328,84 @@ TEST(MeshShaders, TheMeshRenderPluginRegistersTheSameShaderSet) {
     expect_embedded_shader_loaded(app, "embedded://pbr/lightmap.slang");
     // The handles resource the rest of the port reads from is populated by the same
     // call, which the assertions above already imply.
+}
+
+/** @brief The specialized mesh pipelines have to *compile* on a device, not just
+ *  assemble a descriptor.
+ *
+ *  `ShaderCache` compiles an entry point per definition set, so a shader-def
+ *  branch is only ever compiled when a pipeline asks for it — which is how the
+ *  `MORPH_TARGETS` branch of `pbr/mesh.slang` kept the HLSL `SV_VertexID` for so
+ *  long: it makes Slang read BaseVertex and declare `OpCapability
+ *  DrawParameters`, a capability naga rejects with "unsupported capability
+ *  DrawParameters", and no test or example compiled that variant. Everything
+ *  above this test passes with the shader broken. The fix is
+ *  `SV_VulkanVertexID`; this test is what would catch a regression, so it drives
+ *  the same `MeshPipeline::specialize` path the renderer uses and waits for the
+ *  pipelines to become ready. */
+TEST(MeshPipeline, SpecializedDescriptorsCompileOnADevice) {
+    // The same asset and shader setup the asset-level tests above use: the
+    // embedded source has to be reachable when the shader modules are loaded.
+    App app = make_shader_asset_app();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::time::TimePlugin{})
+        .add_plugins(epix::camera::CameraPlugin{})
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::mesh::MeshPlugin{});
+
+    // The shaders are published before the render plugin installs the pipeline
+    // server, so the modules are registered by the time anything compiles them.
+    pbr::register_mesh_shaders(app.world_mut());
+    try {
+        app.add_plugins(render::RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+    flush_load_tasks(app);
+
+    const auto& handles = app.resource<pbr::MeshShaderHandles>();
+    // The view layouts have to agree with the pipeline's capability flags: a
+    // layout carrying binding arrays while the pipeline says they are unusable
+    // makes wgpu reject the pipeline for exceeding
+    // `maxBindingArrayElementsPerShaderStage`, and the shader branches that only
+    // a binding-array device takes are ones no real run compiles.
+    const auto layouts = pbr::generate_view_layouts(wgpu::BufferBindingType::eStorage, wgpu::BufferBindingType::eStorage,
+                                                    /*binding_arrays_are_usable=*/false, /*decals_feature_enabled=*/false,
+                                                    /*partially_bound_binding_array_supported=*/false, /*oit_supported=*/false);
+    wgpu::Limits limits{};
+    limits.maxStorageBuffersPerShaderStage = 8;
+    const auto pipeline                    = pbr::MeshPipeline::make(
+        limits, wgpu::BufferBindingType::eStorage, handles.mesh, pbr::MeshPipelineViewLayouts{layouts}, false, false);
+
+    // A real mesh's layout, so the vertex-aware definitions are the ones a
+    // renderer would ask for.
+    mesh::MeshVertexBufferLayouts mesh_layouts;
+    const auto source = mesh::make_box2d(1.0f, 1.0f);
+    const auto layout = source.get_mesh_vertex_buffer_layout(mesh_layouts);
+    ASSERT_TRUE(layout.value);
+
+    auto& server = app.resource<render::PipelineServer>();
+    const auto compile = [&app, &server, &pipeline, &layout](pbr::MeshPipelineKey key, std::string_view name) {
+        auto descriptor = pipeline.specialize(key, layout);
+        ASSERT_TRUE(descriptor.has_value()) << name;
+        const auto id = server.queue_render_pipeline(std::move(*descriptor));
+        for (int attempt = 0; attempt < 400 && !server.get_render_pipeline(id).has_value(); ++attempt) {
+            app.run_schedule(Last);
+            std::this_thread::yield();
+        }
+        EXPECT_TRUE(server.get_render_pipeline(id).has_value())
+            << name
+            << ": the specialized pipeline never became ready. A shader-def branch that compiles to a module the "
+               "backend rejects (an unsupported SPIR-V capability, for instance) fails here and nowhere else.";
+    };
+
+    const auto key_with = [](std::initializer_list<pbr::MeshPipelineKey> bits) {
+        pbr::MeshPipelineKey key = pbr::MeshPipelineKey::NONE;
+        for (const auto& bit : bits) key = key | bit;
+        return key;
+    };
+    compile(key_with({}), "plain");
+    compile(key_with({pbr::MeshPipelineKey::MORPH_TARGETS}), "MORPH_TARGETS");
+    compile(key_with({pbr::MeshPipelineKey::MORPH_TARGETS, pbr::MeshPipelineKey::MOTION_VECTOR_PREPASS}),
+            "MORPH_TARGETS+MOTION_VECTOR_PREPASS");
 }

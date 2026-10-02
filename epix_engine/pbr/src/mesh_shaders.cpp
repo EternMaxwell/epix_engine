@@ -35,12 +35,17 @@ namespace epix::mesh_types {
 
 public struct Mesh {
     // Affine 4x3 matrix transposed to 3x4, and its previous frame's value: three
-    // WGSL columns of `vec4`, which is Slang's `float3x4` read by row.
-    public float3x4 world_from_local;
-    public float3x4 previous_world_from_local;
+    // WGSL columns of `vec4`, which is Slang's `float3x4` read by row. The
+    // `row_major` modifier is what makes that literal: the three rows are the
+    // three `vec4`s, so the member is 48 bytes with a 16-byte stride, and a
+    // column-major `float3x4` would instead be four columns of three floats
+    // (stride 12), which neither matches `MeshUniform` nor passes naga.
+    public row_major float3x4 world_from_local;
+    public row_major float3x4 previous_world_from_local;
     // The 3x3 inverse transpose packed as a `float2x4` and a trailing float:
-    // [0].xyz, [1].x then [1].yz, [2].xy then [2].z.
-    public float2x4 local_from_world_transpose_a;
+    // [0].xyz, [1].x then [1].yz, [2].xy then [2].z. `row_major` again makes the
+    // two rows two `vec4`s (32 bytes, stride 16), which is Bevy's `mat2x4<f32>`.
+    public row_major float2x4 local_from_world_transpose_a;
     public float local_from_world_transpose_b;
     // A bit field indicating various options; 32 bits.
     public uint flags;
@@ -251,7 +256,7 @@ public struct Vertex {
     public [[vk::location(7)]] float4 joint_weights;
 #endif
 #ifdef MORPH_TARGETS
-    public uint index : SV_VertexID;
+    public uint index : SV_VulkanVertexID;
 #endif
 };
 
