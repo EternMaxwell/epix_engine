@@ -81,7 +81,11 @@ TEST(ScreenshotPlugin, WindowRenderPluginInstallsAndCapturesComponentRequest) {
         if (!app.resource<Events<ScreenshotCaptured>>().empty()) break;
     }
     app.insert_sub_app(Render, std::move(render_sub));
-    app.run_schedule(PreUpdate);
+    // Delivery is Bevy's `trigger_screenshots`, which runs in `Update`
+    // (`bevy_render/src/view/window/screenshot.rs:416`); the request half stays in
+    // `PreUpdate` because this port stages requests for the extract system rather
+    // than doing that work inside it.
+    app.run_schedule(Update);
 
     const auto& captures = app.resource<Events<ScreenshotCaptured>>();
     ASSERT_FALSE(captures.empty());

@@ -441,9 +441,12 @@ void ScreenshotPlugin::attach(epix::app::App& app) {
                                        .set_name("screenshot: prepare targets"));
     render_app.world_mut().resource_mut<graph::RenderGraphFinalizers>().callbacks.push_back(submit_screenshot_commands);
 
-    app.add_systems(PreUpdate,
-                    into(request_component_screenshots, trigger_component_screenshots)
-                        .set_names(std::array{"screenshot: component request", "screenshot: component delivery"}));
+    // The request half stages component requests for extraction, which Bevy does
+    // inside the extract system itself; delivery is Bevy's `trigger_screenshots`,
+    // which runs in `Update` (`bevy_render/src/view/window/screenshot.rs:416`),
+    // not before it.
+    app.add_systems(PreUpdate, into(request_component_screenshots).set_name("screenshot: component request"));
+    app.add_systems(Update, into(trigger_component_screenshots).set_name("screenshot: component delivery"));
     app.add_systems(First, into(clear_screenshots).set_name("screenshot: clear captured requests"));
 }
 }  // namespace epix::render::screenshot
