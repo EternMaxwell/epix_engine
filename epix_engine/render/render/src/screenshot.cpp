@@ -44,6 +44,7 @@ struct ScreenshotState {
         glm::uvec2 size{};
         wgpu::TextureFormat format = wgpu::TextureFormat::eUndefined;
         bool restore_output        = false;
+        CachedPipelineId pipeline_id;
     };
     struct InFlightCapture {
         std::optional<Entity> entity;
@@ -57,41 +58,64 @@ struct ScreenshotState {
     std::unordered_map<Entity, InFlightCapture> in_flight;
 };
 
-struct ScreenshotBlitHandles {
-    assets::Handle<shader::Shader> vertex_shader;
-    assets::Handle<shader::Shader> fragment_shader;
+/** @brief Screenshot-to-screen blit resource (Bevy `ScreenshotToScreenPipeline`,
+ * screenshot.rs:439-443): the bind-group layout descriptor and the blit shader,
+ * inserted once by `init_screenshot_to_screen_pipeline` (:445-460). */
+struct ScreenshotToScreenPipeline {
+    /** @brief Specialization key: the target's texture format (Bevy
+     * `type Key = TextureFormat`, :463). */
+    using Key = wgpu::TextureFormat;
+
+    BindGroupLayoutDescriptor bind_group_layout;
+    assets::Handle<shader::Shader> shader;
+
+    /** @brief Specialized blit pipeline for `key` (Bevy
+     * `SpecializedRenderPipeline::specialize`, screenshot.rs:462-490): the
+     * triangle comes from the vertex index, the bind-group layout has the
+     * texture alone (the fragment uses `textureLoad`, so there is no sampler)
+     * and the primitive culls back faces. */
+    RenderPipelineDescriptor specialize(Key key) const {
+        VertexState vertex{.shader = shader, .entry_point = std::string("screenshotVert")};
+        FragmentState fragment{.shader = shader, .entry_point = std::string("screenshotFrag")};
+        fragment.add_target(wgpu::ColorTargetState().setFormat(key).setWriteMask(wgpu::ColorWriteMask::eAll));
+        return RenderPipelineDescriptor{
+            .label       = "screenshot-to-screen",
+            .layouts     = {bind_group_layout},
+            .vertex      = std::move(vertex),
+            .primitive   = wgpu::PrimitiveState()
+                               .setTopology(wgpu::PrimitiveTopology::eTriangleList)
+                               .setCullMode(wgpu::CullMode::eBack),
+            .multisample = wgpu::MultisampleState().setCount(1).setMask(~0u).setAlphaToCoverageEnabled(false),
+            .fragment    = std::move(fragment),
+        };
+    }
 };
 
-struct ScreenshotBlitPipeline {
-    wgpu::TextureFormat format = wgpu::TextureFormat::eUndefined;
-    BindGroupLayoutDescriptor layout;
-    wgpu::Sampler sampler;
-    wgpu::Buffer vertex_buffer;
-    CachedPipelineId pipeline_id;
-};
-
-struct ScreenshotBlitPipelines {
-    std::vector<ScreenshotBlitPipeline> pipelines;
-};
-
-constexpr std::string_view kScreenshotVertexPath    = "screenshot/blit_vert.slang";
-constexpr std::string_view kScreenshotVertexSlang   = R"slang(
-struct VOut { float4 pos : SV_Position; [[vk::location(0)]] float2 uv; };
+constexpr std::string_view kScreenshotBlitPath  = "screenshot/blit.slang";
+constexpr std::string_view kScreenshotBlitSlang = R"slang(
+struct VOut { float4 pos : SV_Position; };
+// Bevy screenshot.wgsl:3-8: one triangle covering the screen, built from the
+// vertex index alone, so the pipeline needs no vertex buffer. Slang must name
+// the *Vulkan* builtin here: the HLSL `SV_VertexID` reads BaseVertex and makes
+// Slang declare `OpCapability DrawParameters`, which naga (wgpu's SPIR-V
+// validator) rejects, while `SV_VulkanVertexID` emits `BuiltIn VertexIndex`
+// with the core `Shader` capability only.
 [shader("vertex")]
-VOut screenshotVert([[vk::location(0)]] float2 uv : TEXCOORD0) {
+VOut screenshotVert(uint vertex_index : SV_VulkanVertexID) {
     VOut o;
-    o.uv = uv;
-    o.pos = float4(uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f), 0.0f, 1.0f);
+    const float x = float((vertex_index & 1u) << 2u);
+    const float y = float((vertex_index & 2u) << 1u);
+    o.pos = float4(x - 1.0f, y - 1.0f, 0.0f, 1.0f);
     return o;
 }
-)slang";
-constexpr std::string_view kScreenshotFragmentPath  = "screenshot/blit_frag.slang";
-constexpr std::string_view kScreenshotFragmentSlang = R"slang(
-[[vk::binding(0, 0)]] SamplerState screenshot_sampler;
-[[vk::binding(1, 0)]] Texture2D<float4> screenshot_texture;
-struct VIn { [[vk::location(0)]] float2 uv; };
+[[vk::binding(0, 0)]] Texture2D<float4> screenshot_texture;
+// Bevy screenshot.wgsl:12-16: a texel fetch, not a filtered sample, so the
+// bind-group layout carries the texture alone (no sampler).
 [shader("fragment")]
-float4 screenshotFrag(VIn input) : SV_Target { return screenshot_texture.Sample(screenshot_sampler, input.uv); }
+float4 screenshotFrag(float4 position : SV_Position) : SV_Target {
+    const int2 coords = int2(floor(position.xy));
+    return screenshot_texture.Load(int3(coords, 0));
+}
 )slang";
 
 std::span<const std::byte> shader_bytes(std::string_view source) {
@@ -233,79 +257,13 @@ static void collect_completed_readbacks(ResMut<ScreenshotState> state,
     });
 }
 
-static ScreenshotBlitPipeline& prepare_blit_pipeline(wgpu::TextureFormat format,
-                                                     const wgpu::Device& device,
-                                                     const ScreenshotBlitHandles& handles,
-                                                     PipelineServer& pipeline_server,
-                                                     ScreenshotBlitPipelines& pipelines) {
-    if (auto it = std::ranges::find(pipelines.pipelines, format, &ScreenshotBlitPipeline::format);
-        it != pipelines.pipelines.end())
-        return *it;
-    ScreenshotBlitPipeline pipeline;
-    pipeline.format = format;
-    pipeline.layout =
-        render::BindGroupLayoutDescriptor()
-            .set_label("ScreenshotBlitLayout")
-            .set_entries(std::array{
-                wgpu::BindGroupLayoutEntry()
-                    .setBinding(0)
-                    .setVisibility(wgpu::ShaderStage::eFragment)
-                    .setSampler(wgpu::SamplerBindingLayout().setType(wgpu::SamplerBindingType::eFiltering)),
-                wgpu::BindGroupLayoutEntry()
-                    .setBinding(1)
-                    .setVisibility(wgpu::ShaderStage::eFragment)
-                    .setTexture(wgpu::TextureBindingLayout()
-                                    .setSampleType(wgpu::TextureSampleType::eFloat)
-                                    .setViewDimension(wgpu::TextureViewDimension::e2D)),
-            });
-    pipeline.sampler           = device.createSampler(wgpu::SamplerDescriptor()
-                                                          .setLabel("ScreenshotBlitSampler")
-                                                          .setAddressModeU(wgpu::AddressMode::eClampToEdge)
-                                                          .setAddressModeV(wgpu::AddressMode::eClampToEdge)
-                                                          .setAddressModeW(wgpu::AddressMode::eClampToEdge)
-                                                          .setMinFilter(wgpu::FilterMode::eLinear)
-                                                          .setMagFilter(wgpu::FilterMode::eLinear)
-                                                          .setMaxAnisotropy(1));
-    constexpr float vertices[] = {0.f, 0.f, 2.f, 0.f, 0.f, 2.f};
-    pipeline.vertex_buffer =
-        device.createBuffer(wgpu::BufferDescriptor()
-                                .setLabel("ScreenshotBlitVertices")
-                                .setSize(sizeof(vertices))
-                                .setUsage(wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst));
-    device.getQueue().writeBuffer(pipeline.vertex_buffer, 0, vertices, sizeof(vertices));
-    VertexState vertex{.shader = handles.vertex_shader, .entry_point = std::string("screenshotVert")};
-    vertex.buffers.push_back(::epix::mesh::VertexBufferLayout()
-                                 .set_array_stride(sizeof(float) * 2)
-                                 .set_step_mode(wgpu::VertexStepMode::eVertex)
-                                 .set_attributes(std::array{
-                                     ::epix::mesh::VertexAttribute()
-                                         .set_offset(0)
-                                         .set_format(wgpu::VertexFormat::eFloat32x2)
-                                         .set_shader_location(0),
-                                 }));
-    FragmentState fragment{.shader = handles.fragment_shader, .entry_point = std::string("screenshotFrag")};
-    fragment.add_target(wgpu::ColorTargetState().setFormat(format).setWriteMask(wgpu::ColorWriteMask::eAll));
-    pipeline.pipeline_id = pipeline_server.queue_render_pipeline(RenderPipelineDescriptor{
-        .label       = "screenshot-to-screen",
-        .layouts     = {pipeline.layout},
-        .vertex      = std::move(vertex),
-        .primitive   = wgpu::PrimitiveState()
-                           .setTopology(wgpu::PrimitiveTopology::eTriangleList)
-                           .setCullMode(wgpu::CullMode::eNone),
-        .multisample = wgpu::MultisampleState().setCount(1).setMask(~0u).setAlphaToCoverageEnabled(false),
-        .fragment    = std::move(fragment),
-    });
-    pipelines.pipelines.push_back(std::move(pipeline));
-    return pipelines.pipelines.back();
-}
-
 static void prepare_screenshots(ResMut<ScreenshotState> state,
                                 Res<ExtractedWindows> windows,
                                 Res<texture::ManualTextureViews> manual_texture_views,
                                 Res<wgpu::Device> device,
-                                Res<ScreenshotBlitHandles> handles,
-                                ResMut<PipelineServer> pipeline_server,
-                                ResMut<ScreenshotBlitPipelines> pipelines,
+                                Res<ScreenshotToScreenPipeline> blit_pipeline,
+                                ResMut<SpecializedRenderPipelines<ScreenshotToScreenPipeline>> blit_pipelines,
+                                Res<PipelineServer> pipeline_server,
                                 ResMut<view::ViewTargetAttachments> attachments) {
     state->prepared.clear();
     for (const auto& request : state->pending) {
@@ -367,9 +325,9 @@ static void prepare_screenshots(ResMut<ScreenshotState> state,
         const auto temporary_view = temporary.createView();
         attachments->attachments.insert_or_assign(target->identity(),
                                                   view::OutputColorAttachment::create(temporary_view, format));
-        prepare_blit_pipeline(format, *device, *handles, *pipeline_server, *pipelines);
+        const CachedPipelineId pipeline_id = blit_pipelines->specialize(*pipeline_server, *blit_pipeline, format);
         state->prepared.push_back(
-            {readback_entity, request.entity, std::move(temporary), *output_view, size, format, true});
+            {readback_entity, request.entity, std::move(temporary), *output_view, size, format, true, pipeline_id});
     }
     state->pending.clear();
 }
@@ -378,39 +336,34 @@ static void submit_screenshot_commands(World& world, wgpu::CommandEncoder& encod
     auto& state = world.resource_mut<ScreenshotState>();
     if (state.prepared.empty()) return;
     const auto& device          = world.resource<wgpu::Device>();
-    const auto& pipelines       = world.resource<ScreenshotBlitPipelines>();
+    const auto& blit_pipeline   = world.resource<ScreenshotToScreenPipeline>();
     const auto& pipeline_server = world.resource<PipelineServer>();
     auto& readbacks             = world.resource_mut<readback::GpuReadbacks>();
     auto& pool                  = world.resource_mut<readback::GpuReadbackBufferPool>();
     for (auto& capture : state.prepared) {
         if (capture.restore_output) {
-            const auto pipeline =
-                std::ranges::find(pipelines.pipelines, capture.format, &ScreenshotBlitPipeline::format);
-            if (pipeline != pipelines.pipelines.end())
-                if (auto ready = pipeline_server.get_render_pipeline(pipeline->pipeline_id)) {
-                    const auto source_view = capture.texture.createView();
-                    const auto bind_group  = device.createBindGroup(
-                        wgpu::BindGroupDescriptor()
-                            .setLabel("ScreenshotBlitBindGroup")
-                            .setLayout(pipeline_server.get_bind_group_layout(pipeline->layout))
-                            .setEntries(std::array{
-                                wgpu::BindGroupEntry().setBinding(0).setSampler(pipeline->sampler),
-                                wgpu::BindGroupEntry().setBinding(1).setTextureView(source_view),
-                            }));
-                    auto pass = encoder.beginRenderPass(
-                        wgpu::RenderPassDescriptor()
-                            .setLabel("screenshot-to-screen")
-                            .setColorAttachments(std::array{wgpu::RenderPassColorAttachment()
-                                                                .setView(capture.output_view)
-                                                                .setLoadOp(wgpu::LoadOp::eLoad)
-                                                                .setStoreOp(wgpu::StoreOp::eStore)
-                                                                .setDepthSlice(~0u)}));
-                    pass.setPipeline(ready->get().pipeline());
-                    pass.setVertexBuffer(0, pipeline->vertex_buffer, 0, sizeof(float) * 6);
-                    pass.setBindGroup(0, bind_group, std::span<const uint32_t>{});
-                    pass.draw(3, 1, 0, 0);
-                    pass.end();
-                }
+            if (auto ready = pipeline_server.get_render_pipeline(capture.pipeline_id)) {
+                const auto source_view = capture.texture.createView();
+                const auto bind_group  = device.createBindGroup(
+                    wgpu::BindGroupDescriptor()
+                        .setLabel("ScreenshotBlitBindGroup")
+                        .setLayout(pipeline_server.get_bind_group_layout(blit_pipeline.bind_group_layout))
+                        .setEntries(std::array{
+                            wgpu::BindGroupEntry().setBinding(0).setTextureView(source_view),
+                        }));
+                auto pass = encoder.beginRenderPass(
+                    wgpu::RenderPassDescriptor()
+                        .setLabel("screenshot-to-screen")
+                        .setColorAttachments(std::array{wgpu::RenderPassColorAttachment()
+                                                            .setView(capture.output_view)
+                                                            .setLoadOp(wgpu::LoadOp::eLoad)
+                                                            .setStoreOp(wgpu::StoreOp::eStore)
+                                                            .setDepthSlice(~0u)}));
+                pass.setPipeline(ready->get().pipeline());
+                pass.setBindGroup(0, bind_group, std::span<const uint32_t>{});
+                pass.draw(3, 1, 0, 0);
+                pass.end();
+            }
         }
         const std::uint32_t bytes_per_pixel = readback::texture_format_pixel_size(capture.format);
         const wgpu::Extent3D extent(capture.size.x, capture.size.y, 1);
@@ -432,6 +385,27 @@ static void submit_screenshot_commands(World& world, wgpu::CommandEncoder& encod
     state.prepared.clear();
 }
 
+/** @brief `RenderStartup` system creating the blit resource (Bevy
+ * `init_screenshot_to_screen_pipeline`, screenshot.rs:445-460): a single
+ * fragment-visible, non-filterable float texture binding, and the embedded blit
+ * shader. */
+static void init_screenshot_to_screen_pipeline(Commands commands, Res<assets::AssetServer> server) {
+    commands.insert_resource(ScreenshotToScreenPipeline{
+        .bind_group_layout =
+            BindGroupLayoutDescriptor()
+                .set_label("screenshot-to-screen-bgl")
+                .set_entries(std::array{
+                    wgpu::BindGroupLayoutEntry()
+                        .setBinding(0)
+                        .setVisibility(wgpu::ShaderStage::eFragment)
+                        .setTexture(wgpu::TextureBindingLayout()
+                                        .setSampleType(wgpu::TextureSampleType::eUnfilterableFloat)
+                                        .setViewDimension(wgpu::TextureViewDimension::e2D)),
+                }),
+        .shader = server->load<shader::Shader>(std::string("embedded://") + std::string(kScreenshotBlitPath)),
+    });
+}
+
 void ScreenshotPlugin::attach(epix::app::App& app) {
     app.add_event<ScreenshotCaptured>();
     app.world_mut().insert_resource(ScreenshotRequests{});
@@ -441,19 +415,16 @@ void ScreenshotPlugin::attach(epix::app::App& app) {
 
     auto& render_app = app.sub_app_mut(Render);
     render_app.world_mut().insert_resource(ScreenshotState{});
-    render_app.world_mut().init_resource<ScreenshotBlitPipelines>();
+    render_app.world_mut().init_resource<SpecializedRenderPipelines<ScreenshotToScreenPipeline>>();
     render_app.world_mut().insert_resource(ScreenshotDeliverySenders{std::move(component_sender)});
 
-    if (auto registry = app.world_mut().get_resource_mut<assets::EmbeddedAssetRegistry>();
-        auto server   = app.world_mut().get_resource<assets::AssetServer>()) {
-        registry->get().insert_asset_static(kScreenshotVertexPath, shader_bytes(kScreenshotVertexSlang));
-        registry->get().insert_asset_static(kScreenshotFragmentPath, shader_bytes(kScreenshotFragmentSlang));
-        render_app.world_mut().insert_resource(ScreenshotBlitHandles{
-            .vertex_shader   = server->get().load<shader::Shader>("embedded://screenshot/blit_vert.slang"),
-            .fragment_shader = server->get().load<shader::Shader>("embedded://screenshot/blit_frag.slang"),
-        });
+    if (auto registry = app.world_mut().get_resource_mut<assets::EmbeddedAssetRegistry>()) {
+        registry->get().insert_asset_static(kScreenshotBlitPath, shader_bytes(kScreenshotBlitSlang));
     } else
         return;
+
+    render_app.add_systems(RenderStartup,
+                           into(init_screenshot_to_screen_pipeline).set_name("screenshot: init to screen pipeline"));
 
     render_app.add_systems(
         ExtractSchedule,
