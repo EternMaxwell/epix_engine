@@ -67,38 +67,22 @@ using GpuMeshExtractionQuery = ecs::Query<GpuMeshExtractionItem>;
 /** @brief The change filter: the entities whose mesh data may need a new input
  *  uniform this frame (Bevy `bevy_pbr/src/render/mesh.rs:1494-1509`).
  *
- *  Bevy's is an `Or<(..)>` of fourteen `Changed<T>` terms, one per component the
- *  extraction reads. Epix has no `Changed` filter - only `Added` and `Modified` -
- *  so each term is spelled as the pair Bevy's `Changed` stands for; that is the same
- *  idiom `visibility_range.hpp` uses for its `Changed<VisibilityRange>` early-out.
- *  The required `Mesh3d` read in the item list is what keeps non-mesh entities out. */
-using GpuMeshExtractionChangedFilter = ecs::Or<ecs::Added<camera::ViewVisibility>,
-                                               ecs::Modified<camera::ViewVisibility>,
-                                               ecs::Added<transform::GlobalTransform>,
+ *  Bevy's `Or` of fourteen `Changed<T>` terms, one per component the extraction
+ *  reads; `Modified<T>` is this port's `Changed<T>`. The required `Mesh3d` read in
+ *  the item list is what keeps non-mesh entities out. */
+using GpuMeshExtractionChangedFilter = ecs::Or<ecs::Modified<camera::ViewVisibility>,
                                                ecs::Modified<transform::GlobalTransform>,
-                                               ecs::Added<PreviousGlobalTransform>,
                                                ecs::Modified<PreviousGlobalTransform>,
-                                               ecs::Added<Lightmap>,
                                                ecs::Modified<Lightmap>,
-                                               ecs::Added<::epix::camera::Aabb>,
                                                ecs::Modified<::epix::camera::Aabb>,
-                                               ecs::Added<mesh::Mesh3d>,
                                                ecs::Modified<mesh::Mesh3d>,
-                                               ecs::Added<mesh::MeshTag>,
                                                ecs::Modified<mesh::MeshTag>,
-                                               ecs::Added<camera::NoFrustumCulling>,
                                                ecs::Modified<camera::NoFrustumCulling>,
-                                               ecs::Added<NotShadowReceiver>,
                                                ecs::Modified<NotShadowReceiver>,
-                                               ecs::Added<TransmittedShadowReceiver>,
                                                ecs::Modified<TransmittedShadowReceiver>,
-                                               ecs::Added<NotShadowCaster>,
                                                ecs::Modified<NotShadowCaster>,
-                                               ecs::Added<render::phase::NoAutomaticBatching>,
                                                ecs::Modified<render::phase::NoAutomaticBatching>,
-                                               ecs::Added<camera::VisibilityRange>,
                                                ecs::Modified<camera::VisibilityRange>,
-                                               ecs::Added<mesh::SkinnedMesh>,
                                                ecs::Modified<mesh::SkinnedMesh>>;
 
 /** @brief The entity set the system rebuilds each frame from the re-extraction

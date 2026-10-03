@@ -164,12 +164,9 @@ EPIX_EXPORT EPIX_API void remove_skin(SkinUniforms& skin_uniforms, render::sync_
 
 /** @brief The term that selects the skins whose data changed this frame (Bevy
  *  `Or<(Changed<ViewVisibility>, Changed<SkinnedMesh>, AssetChanged<SkinnedMesh>)>`,
- *  `render/skin.rs:302-308`).
- *
- *  Epix has `Added` and `Modified` rather than `Changed`, so each `Changed<T>` is
- *  the pair - the same spelling `GpuMeshExtractionChangedFilter` uses. */
-using SkinnedMeshChangedFilter = ecs::Or<ecs::Added<camera::ViewVisibility>, ecs::Modified<camera::ViewVisibility>,
-                                         ecs::Added<mesh::SkinnedMesh>, ecs::Modified<mesh::SkinnedMesh>,
+ *  `render/skin.rs:302-308`). */
+using SkinnedMeshChangedFilter = ecs::Or<ecs::Modified<camera::ViewVisibility>,
+                                         ecs::Modified<mesh::SkinnedMesh>,
                                          assets::AssetChanged<mesh::SkinnedMesh>>;
 
 /** @brief The fraction of the scene's joints past which change detection is
@@ -198,10 +195,9 @@ using JointTransformQuery = ecs::Query<ecs::Item<const transform::GlobalTransfor
  *  `Query<(Entity, &GlobalTransform), Changed<GlobalTransform>>`). */
 using ChangedTransformItem = ecs::Item<ecs::Entity, const transform::GlobalTransform&>;
 
-/** @brief The term that selects the moved transforms, spelled as the pair Epix
- *  has rather than Bevy's `Changed<GlobalTransform>`. */
-using ChangedTransformFilter = ecs::Or<ecs::Added<transform::GlobalTransform>,
-                                       ecs::Modified<transform::GlobalTransform>>;
+/** @brief The term that selects the moved transforms (Bevy's
+ *  `Changed<GlobalTransform>`). */
+using ChangedTransformFilter = ecs::Modified<transform::GlobalTransform>;
 
 /** @brief Allocate space for a skin and fill in its joints (Bevy `add_skin`,
  *  `render/skin.rs:507-581`).

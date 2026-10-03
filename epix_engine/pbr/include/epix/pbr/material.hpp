@@ -82,11 +82,9 @@ EPIX_EXPORT struct EPIX_API RenderMaterialBindings {
 
 
 /** @brief The meshes whose material or visibility changed (Bevy
- *  `Or<(Changed<ViewVisibility>, Changed<MeshMaterial3d<M>>)>`). */
+ *  `Or<(Changed<ViewVisibility>, Changed<MeshMaterial3d<M>>)>`, `material.rs:703`). */
 template <typename M>
-using ChangedMeshMaterialFilter =
-    ecs::Or<ecs::Added<camera::ViewVisibility>, ecs::Modified<camera::ViewVisibility>,
-            ecs::Added<MeshMaterial3d<M>>, ecs::Modified<MeshMaterial3d<M>>>;
+using ChangedMeshMaterialFilter = ecs::Or<ecs::Modified<camera::ViewVisibility>, ecs::Modified<MeshMaterial3d<M>>>;
 
 /** @brief Fills @ref RenderMaterialInstances from the scene's meshes (Bevy
  *  `extract_mesh_materials`, `bevy_pbr/src/material.rs:698-718`).
@@ -342,8 +340,7 @@ void extract_entities_needs_specialization(
 EPIX_EXPORT template <typename M>
 void check_entities_needing_specialization(
     ecs::Query<ecs::Item<ecs::Entity>,
-               ecs::Filter<ecs::Or<ecs::Added<mesh::Mesh3d>, ecs::Modified<mesh::Mesh3d>,
-                                   assets::AssetChanged<mesh::Mesh3d>, ecs::Added<MeshMaterial3d<M>>,
+               ecs::Filter<ecs::Or<ecs::Modified<mesh::Mesh3d>, assets::AssetChanged<mesh::Mesh3d>,
                                    ecs::Modified<MeshMaterial3d<M>>, assets::AssetChanged<MeshMaterial3d<M>>>,
                            ecs::With<MeshMaterial3d<M>>>>
         needs_specialization,
@@ -545,8 +542,8 @@ struct MaterialPlugin {
 EPIX_EXPORT template <typename M>
 void mark_meshes_as_changed_if_their_materials_changed(
     ecs::Query<ecs::Item<ecs::Entity, ecs::Mut<mesh::Mesh3d>>,
-               ecs::Filter<ecs::Or<ecs::Added<MeshMaterial3d<M>>, ecs::Modified<MeshMaterial3d<M>>,
-                                                 assets::AssetChanged<MeshMaterial3d<M>>>>> changed_meshes) {
+               ecs::Filter<ecs::Or<ecs::Modified<MeshMaterial3d<M>>,
+                                   assets::AssetChanged<MeshMaterial3d<M>>>>> changed_meshes) {
     for (auto&& [entity, mesh] : changed_meshes.iter()) {
         (void)entity;
         // Bevy writes `mesh.set_changed()`. This port's `Mut` marks modified on

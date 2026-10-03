@@ -184,11 +184,9 @@ EPIX_EXPORT struct EPIX_API RenderLightmaps {
 using ChangedLightmapItem = ecs::Item<ecs::Entity, const camera::ViewVisibility&, const Lightmap&>;
 
 /** @brief The term that selects the lightmaps that changed (Bevy
- *  `Or<(Changed<ViewVisibility>, Changed<Lightmap>)>`), spelled as the pair Epix has
- *  rather than `Changed`. */
+ *  `Or<(Changed<ViewVisibility>, Changed<Lightmap>)>`). */
 using ChangedLightmapFilter =
-    ecs::Or<ecs::Added<camera::ViewVisibility>, ecs::Modified<camera::ViewVisibility>,
-            ecs::Added<Lightmap>, ecs::Modified<Lightmap>>;
+    ecs::Or<ecs::Modified<camera::ViewVisibility>, ecs::Modified<Lightmap>>;
 
 /** @brief Extract every lightmap from the scene into `RenderLightmaps` (Bevy
  *  `extract_lightmaps`, `lightmap/mod.rs:203-289`).
