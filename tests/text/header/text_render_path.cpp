@@ -220,3 +220,71 @@ TEST(Text2dExtraction, TextBoundsOverrideTheLayoutSizeForAnchoring) {
     EXPECT_NEAR(sprites.sprites.front().transform.matrix[3].x, -150.0f, 0.001f);
     EXPECT_NEAR(sprites.sprites.front().transform.matrix[3].y, 45.0f, 0.001f);
 }
+
+// Bevy `calculate_bounds_text2d_create_aabb` (bevy_sprite/src/text2d.rs:414-440): the system
+// inserts an `Aabb` for a laid-out `Text2d`, with no depth and an actual size. Bevy drives the
+// layout chain through `app.update()`; the port supplies the shaped text its shaping system
+// would have produced - the same entry point `Text2dBounds.ComputesTheAabbInPostUpdate` uses,
+// but with real glyphs, so the size assertions are the ones Bevy makes.
+TEST(Text2dBounds, CreatesAabbForLaidOutText) {
+    FontFaceFixture fixture;
+
+    app::App app = app::App::create();
+    app.add_plugins(camera::CameraPlugin{});
+    app.add_systems(app::PostUpdate, into(text::calculate_bounds_text2d)
+                                         .in_set(camera::VisibilitySystems::CalculateBounds)
+                                         .before(camera::VisibilitySystems::CheckVisibility)
+                                         .set_name("calculate bounds text 2d"));
+
+    const auto entity = app.world_mut().spawn(text::Text2d{}, fixture.shape("Hi", 48.0f)).id();
+    EXPECT_FALSE(app.world().get_entity(entity)->contains<camera::Aabb>());
+
+    app.update();
+
+    const auto aabb = app.world().get_entity(entity)->get<camera::Aabb>();
+    ASSERT_TRUE(aabb.has_value()) << "a laid-out Text2d should have an AABB";
+
+    // Text2D AABB does not have a depth.
+    EXPECT_FLOAT_EQ(aabb->get().center.z, 0.0f);
+    EXPECT_FLOAT_EQ(aabb->get().half_extents.z, 0.0f);
+
+    // AABB has an actual size.
+    EXPECT_GT(aabb->get().half_extents.x, 0.0f);
+    EXPECT_GT(aabb->get().half_extents.y, 0.0f);
+}
+
+// Bevy `calculate_bounds_text2d_update_aabb` (bevy_sprite/src/text2d.rs:442-478): re-shaping a
+// `Text2d` recomputes its `Aabb` - the height stays and the width grows with the longer text.
+TEST(Text2dBounds, RecomputesAabbAfterReshaping) {
+    FontFaceFixture fixture;
+
+    app::App app = app::App::create();
+    app.add_plugins(camera::CameraPlugin{});
+    app.add_systems(app::PostUpdate, into(text::calculate_bounds_text2d)
+                                         .in_set(camera::VisibilitySystems::CalculateBounds)
+                                         .before(camera::VisibilitySystems::CheckVisibility)
+                                         .set_name("calculate bounds text 2d"));
+
+    constexpr std::string_view first_text  = "Hi";
+    constexpr std::string_view second_text = "Hi, this one is longer";
+    const auto entity                      = app.world_mut().spawn(text::Text2d{}, fixture.shape(first_text, 48.0f)).id();
+    app.update();
+
+    const auto first_aabb = app.world().get_entity(entity)->get<camera::Aabb>();
+    ASSERT_TRUE(first_aabb.has_value()) << "the initial AABB should exist";
+    const auto first_half_extents = first_aabb->get().half_extents;
+
+    // Writing through `Mut` is what marks the `ShapedText` modified, which is the
+    // `Filter<Modified<ShapedText>>` the update query watches.
+    app.world_mut().entity_mut(entity).get_mut<text::ShapedText>()->get_mut() = fixture.shape(second_text, 48.0f);
+
+    app.update();
+
+    const auto second_aabb = app.world().get_entity(entity)->get<camera::Aabb>();
+    ASSERT_TRUE(second_aabb.has_value()) << "the recomputed AABB should exist";
+
+    // Check that the height is the same, but the width is greater.
+    EXPECT_FLOAT_EQ(first_half_extents.y, second_aabb->get().half_extents.y);
+    EXPECT_LT(first_text.size(), second_text.size());
+    EXPECT_LT(first_half_extents.x, second_aabb->get().half_extents.x);
+}
