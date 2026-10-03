@@ -328,7 +328,7 @@ void set_view_visible(Mut<ViewVisibility>& visibility) noexcept {
 void mark_newly_hidden_entities_invisible(Query<Item<Mut<ViewVisibility>>> view_visibilities) {
     for (auto&& [view_visibility] : view_visibilities.iter()) {
         if (view_visibility.get().was_visible_now_hidden()) {
-            view_visibility.get_mut() = ViewVisibility::hidden();
+            view_visibility.get_mut() = ViewVisibility::HIDDEN;
         }
     }
 }

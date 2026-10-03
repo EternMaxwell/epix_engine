@@ -334,7 +334,7 @@ TEST(SpriteExtraction, RebuildsResourcesAndPreservesMainRenderIdentity) {
         << "extraction must not spawn temporary render entities";
 
     main_world.entity_mut(main_entity).get_mut<camera::ViewVisibility>().value().get_mut() =
-        camera::ViewVisibility::hidden();
+        camera::ViewVisibility::HIDDEN;
     ASSERT_TRUE(system->run({}, render_world).has_value());
     const auto& remaining = render_world.resource<sprite_render::ExtractedSprites>().sprites;
     ASSERT_EQ(remaining.size(), 1u) << "hidden sprites drop out";

@@ -65,7 +65,7 @@ TEST(camera_visibility, visibility_bookkeeping_bypasses_change_detection) {
     static_assert(SetViewVisibility<Mut<ViewVisibility>>);
 
     World world(WorldId(2));
-    const Entity entity = world.spawn(ViewVisibility::hidden()).id();
+    const Entity entity = world.spawn(ViewVisibility::HIDDEN).id();
     Schedule reset_schedule(ScheduleLabel::from_type<CameraProjectionPlugin>());
     reset_schedule.add_systems(into(reset_view_visibility));
 

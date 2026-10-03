@@ -37,8 +37,12 @@ EPIX_EXPORT struct NoCpuCulling {};
  * visibility, avoiding a fixed per-camera bit budget. */
 EPIX_EXPORT struct ViewVisibility {
     /** @brief An entity that cannot be seen from any views (Bevy
-     * `ViewVisibility::HIDDEN`). */
-    [[nodiscard]] static constexpr ViewVisibility hidden() noexcept { return {}; }
+     * `ViewVisibility::HIDDEN`).
+     *
+     *  Declared here and defined below the class: a C++ static data member of the
+     *  enclosing type cannot be initialised inside the class body, where its own type
+     *  is still incomplete. */
+    static const ViewVisibility HIDDEN;
 
     /** @brief Visible to any view in the current frame. */
     bool get() const noexcept { return (flags & 1u) != 0; }
@@ -59,6 +63,10 @@ EPIX_EXPORT struct ViewVisibility {
     friend EPIX_API void mark_newly_hidden_entities_invisible(
         epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<ViewVisibility>>> view_visibilities);
 };
+
+/** @brief Defined out of class: an incomplete type cannot be used to initialise its own
+ *  static member inside the class body. */
+inline const ViewVisibility ViewVisibility::HIDDEN{};
 
 /** @brief Bevy `SetViewVisibility` implementation for an ECS mutable
  * `ViewVisibility` reference. It only marks the component changed when its
@@ -108,11 +116,12 @@ EPIX_EXPORT struct Visibility {
 EPIX_EXPORT struct InheritedVisibility {
     constexpr InheritedVisibility() = default;
     /** @brief An entity invisible in the hierarchy (Bevy
-     * InheritedVisibility::HIDDEN). */
-    static InheritedVisibility hidden() noexcept { return InheritedVisibility(false); }
+     * InheritedVisibility::HIDDEN). Declared here and defined below the class, for the
+     * same reason as `ViewVisibility::HIDDEN`. */
+    static const InheritedVisibility HIDDEN;
     /** @brief An entity visible in the hierarchy (Bevy
      * InheritedVisibility::VISIBLE). */
-    static InheritedVisibility visible() noexcept { return InheritedVisibility(true); }
+    static const InheritedVisibility VISIBLE;
 
     /** @brief True if the entity is visible in the hierarchy (Bevy
      * InheritedVisibility::get). */
@@ -124,6 +133,11 @@ EPIX_EXPORT struct InheritedVisibility {
     bool is_visible_ = false;
     friend struct VisibilityPropagationAccess;
 };
+
+/** @brief Defined out of class, where the private constructor is reachable and the type
+ *  is complete (Bevy declares both as in-class consts). */
+inline const InheritedVisibility InheritedVisibility::HIDDEN{false};
+inline const InheritedVisibility InheritedVisibility::VISIBLE{true};
 
 /** @brief Internal access bridge keeping `InheritedVisibility` state private
  * while allowing the propagation system to update it. */

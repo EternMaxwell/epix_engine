@@ -85,7 +85,8 @@ TEST(LightmapExtract, InitialisesEmptyAndAllocatesForVisibleLightmaps) {
     epix::camera::ViewVisibility visible;
     visible.set_visible();
     const epix::ecs::Entity lit = app.world_mut().spawn(pbr::Lightmap{}, visible).id();
-    const epix::ecs::Entity invisible = app.world_mut().spawn(pbr::Lightmap{}, epix::camera::ViewVisibility::hidden()).id();
+    const epix::ecs::Entity invisible =
+        app.world_mut().spawn(pbr::Lightmap{}, epix::camera::ViewVisibility::HIDDEN).id();
 
     // The systems are registered by the plugin rather than by hand, so this also covers
     // its scheduling: the initialiser at render startup, the extraction on the extract

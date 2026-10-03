@@ -472,8 +472,8 @@ TEST(Visibility, MarkersAndToggles) {
 // consts and get(). Bevy's derived `Default` is HIDDEN (`Self(false)`), so a
 // default-constructed value is not visible until propagation sets it.
 TEST(InheritedVisibility, ConstsAndGet) {
-    EXPECT_FALSE(epix::camera::InheritedVisibility::hidden().get());
-    EXPECT_TRUE(epix::camera::InheritedVisibility::visible().get());
+    EXPECT_FALSE(epix::camera::InheritedVisibility::HIDDEN.get());
+    EXPECT_TRUE(epix::camera::InheritedVisibility::VISIBLE.get());
     epix::camera::InheritedVisibility def;
     EXPECT_FALSE(def.get());
 }
@@ -537,7 +537,7 @@ TEST(CameraFrustum, CustomFarMatchesProjectionFrustumConstruction) {
 TEST(ViewVisibility, TracksVisibleToHiddenTransition) {
     ::epix::app::App app = ::epix::app::App::create();
     app.add_plugins(::epix::camera::CameraPlugin{});
-    const Entity entity = app.world_mut().spawn(epix::camera::ViewVisibility::hidden()).id();
+    const Entity entity = app.world_mut().spawn(epix::camera::ViewVisibility::HIDDEN).id();
     app.world_mut().get_entity_mut(entity).transform([](EntityWorldMut&& world_entity) -> int {
         world_entity.get_mut<epix::camera::ViewVisibility>().value().get_mut().set_visible();
         return 0;

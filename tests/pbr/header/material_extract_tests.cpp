@@ -117,7 +117,7 @@ TEST(MaterialExtract, VisibilityDecidesRecordsAndTheSweepsAdvanceTheTick) {
     const epix::ecs::Entity lit = application.world_mut().spawn(pbr::MeshMaterial3d<Material>{handle}, visible,
                                                         epix::mesh::Mesh3d{}).id();
     const epix::ecs::Entity dark =
-        application.world_mut().spawn(pbr::MeshMaterial3d<Material>{handle}, epix::camera::ViewVisibility::hidden(),
+        application.world_mut().spawn(pbr::MeshMaterial3d<Material>{handle}, epix::camera::ViewVisibility::HIDDEN,
                               epix::mesh::Mesh3d{}).id();
 
     // The plugin registers the systems and creates the registry, so this covers both
@@ -190,7 +190,7 @@ TEST(MaterialExtract, VisibilityDecidesRecordsAndTheSweepsAdvanceTheTick) {
     // Turning the visible mesh invisible removes its record in the same pass - the
     // query observes the visibility change, so no sweep is needed for it.
     application.world_mut().entity_mut(lit).remove<epix::camera::ViewVisibility>();
-    application.world_mut().entity_mut(lit).insert(epix::camera::ViewVisibility::hidden());
+    application.world_mut().entity_mut(lit).insert(epix::camera::ViewVisibility::HIDDEN);
     render_sub->extract(application);
     render_sub->resource_scope([](epix::ecs::Schedules& schedules, epix::ecs::World& world) {
         schedules.schedule_mut(ExtractSchedule).apply_deferred(world);
@@ -269,7 +269,7 @@ TEST(MaterialExtract, TheCpuExtractionBuildsTheInstanceRecords) {
                                    .id();
     const ecs::Entity hidden = application.world_mut()
                                    .spawn(epix::mesh::Mesh3d{}, pbr::MeshMaterial3d<Material>{handle},
-                                          epix::camera::ViewVisibility::hidden(), epix::transform::GlobalTransform{})
+                                          epix::camera::ViewVisibility::HIDDEN, epix::transform::GlobalTransform{})
                                    .id();
 
     auto render_sub = application.take_sub_app(Render);
