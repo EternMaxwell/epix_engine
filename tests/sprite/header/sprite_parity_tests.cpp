@@ -274,3 +274,70 @@ TEST(CalculateBounds2d, CreatesAndUpdatesSpriteAabb) {
     EXPECT_EQ(second.center, glm::vec3(-4.0f, -2.0f, 0.0f));
     EXPECT_EQ(second.half_extents, glm::vec3(4.0f, 2.0f, 0.0f));
 }
+
+// Bevy `test_horizontal_sizes_non_uniform_bigger` (slicer.rs:325-353), driven through the
+// public `compute_slices` rather than the private `corner_slices` (SPR-244).
+TEST(TextureSlicer, NonUniformBiggerCornersMatchBevy) {
+    const sprite::TextureSlicer slicer{
+        .border            = sprite::BorderRect{glm::vec2(20.0f, 10.0f), glm::vec2(10.0f, 10.0f)},
+        .center_scale_mode = sprite::SliceScaleMode::Stretch{},
+        .sides_scale_mode  = sprite::SliceScaleMode::Stretch{},
+        .max_corner_scale  = 1.0f,
+    };
+    const auto slices = slicer.compute_slices(image::Rect{{0.0f, 0.0f}, {50.0f, 50.0f}}, glm::vec2(100.0f));
+
+    ASSERT_EQ(slices.size(), 9u);
+    EXPECT_EQ(slices[0],  // TL
+              (sprite::TextureSlice{
+                  .texture_rect = image::Rect{{0.0f, 0.0f}, {20.0f, 10.0f}},
+                  .draw_size    = {20.0f, 10.0f},
+                  .offset       = {-40.0f, 45.0f},
+              }));
+}
+
+// Bevy `test_horizontal_sizes_non_uniform_smaller` (slicer.rs:355-396), the only Bevy test
+// that asserts a side slice. Corners are `[TL, TR, BL, BR]`, then the centre, then the
+// horizontal sides `[L, R]` and the vertical sides `[T, B]` (slicer.rs:233-266).
+TEST(TextureSlicer, NonUniformSmallerCornersAndTopSideMatchBevy) {
+    const sprite::TextureSlicer slicer{
+        .border            = sprite::BorderRect{glm::vec2(5.0f, 10.0f), glm::vec2(10.0f, 10.0f)},
+        .center_scale_mode = sprite::SliceScaleMode::Stretch{},
+        .sides_scale_mode  = sprite::SliceScaleMode::Stretch{},
+        .max_corner_scale  = 1.0f,
+    };
+    const auto slices = slicer.compute_slices(image::Rect{{0.0f, 0.0f}, {50.0f, 50.0f}}, glm::vec2(100.0f));
+
+    ASSERT_EQ(slices.size(), 9u);
+    EXPECT_EQ(slices[0],  // TL
+              (sprite::TextureSlice{
+                  .texture_rect = image::Rect{{0.0f, 0.0f}, {5.0f, 10.0f}},
+                  .draw_size    = {5.0f, 10.0f},
+                  .offset       = {-47.5f, 45.0f},
+              }));
+    EXPECT_EQ(slices[7],  // top
+              (sprite::TextureSlice{
+                  .texture_rect = image::Rect{{5.0f, 0.0f}, {40.0f, 10.0f}},
+                  .draw_size    = {85.0f, 10.0f},
+                  .offset       = {-2.5f, 45.0f},
+              }));
+}
+
+// Bevy `test_horizontal_sizes_non_uniform_zero` (slicer.rs:398-426): a zero inset on one
+// axis still produces a corner slice, with a zero-width rect and draw size.
+TEST(TextureSlicer, NonUniformZeroWidthCornersMatchBevy) {
+    const sprite::TextureSlicer slicer{
+        .border            = sprite::BorderRect{glm::vec2(0.0f, 10.0f), glm::vec2(10.0f, 10.0f)},
+        .center_scale_mode = sprite::SliceScaleMode::Stretch{},
+        .sides_scale_mode  = sprite::SliceScaleMode::Stretch{},
+        .max_corner_scale  = 1.0f,
+    };
+    const auto slices = slicer.compute_slices(image::Rect{{0.0f, 0.0f}, {50.0f, 50.0f}}, glm::vec2(100.0f));
+
+    ASSERT_EQ(slices.size(), 9u);
+    EXPECT_EQ(slices[0],  // TL
+              (sprite::TextureSlice{
+                  .texture_rect = image::Rect{{0.0f, 0.0f}, {0.0f, 10.0f}},
+                  .draw_size    = {0.0f, 10.0f},
+                  .offset       = {-50.0f, 45.0f},
+              }));
+}
