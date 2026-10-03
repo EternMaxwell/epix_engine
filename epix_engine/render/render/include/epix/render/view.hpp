@@ -653,11 +653,20 @@ EPIX_EXPORT struct MissingRenderTargetInfoError {
         return std::visit(
             utils::visitor{
                 [](const Window& error) {
-                    return std::format("RenderTarget::Window missing ({})", error.window.index);
+                    return std::format(
+                        "RenderTarget::Window missing ({}): Make sure the provided entity has a Window component.",
+                        error.window.index);
                 },
-                [](const Image& error) { return std::format("RenderTarget::Image missing ({})", error.image.value); },
+                [](const Image& error) {
+                    return std::format(
+                        "RenderTarget::Image missing ({}): Make sure the Image's usages include "
+                        "RenderAssetUsages::MAIN_WORLD.",
+                        error.image.value);
+                },
                 [](const TextureView& error) {
-                    return std::format("RenderTarget::TextureView missing ({})", error.texture_view.id);
+                    return std::format(
+                        "RenderTarget::TextureView missing ({}): make sure the texture view handle was not removed.",
+                        error.texture_view.id);
                 },
             },
             value);
@@ -793,7 +802,6 @@ EPIX_EXPORT struct TemporalJitter {
     glm::vec2 offset = glm::vec2(0.0f);
     /** @brief Applies Bevy's temporal sub-pixel projection adjustment. */
     void jitter_projection(glm::mat4& clip_from_view, glm::vec2 view_size) const noexcept {
-        if (view_size.x == 0.0f || view_size.y == 0.0f) return;
         glm::vec2 jitter = (offset * glm::vec2(2.0f, -2.0f)) / view_size;
         if (clip_from_view[3][3] == 1.0f) {
             jitter *= glm::vec2(clip_from_view[0][0], clip_from_view[1][1]) * 0.5f;

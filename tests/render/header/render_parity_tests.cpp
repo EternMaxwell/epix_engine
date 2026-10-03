@@ -4771,3 +4771,107 @@ TEST(RenderResource, RuntimeSizedShaderTypeSeparatesHeaderFromWrittenSize) {
               ShaderTypeInfo<epix::render::GlobalsUniform>::shader_size);
 }
 
+#include <spdlog/sinks/base_sink.h>
+
+/** @brief Captures everything logged through spdlog while it is alive, so a
+ *  diagnostic Bevy emits can be asserted rather than assumed. */
+namespace {
+struct CapturingSink final : spdlog::sinks::base_sink<std::mutex> {
+    std::vector<std::string> messages;
+
+   protected:
+    void sink_it_(const spdlog::details::log_msg& message) override {
+        messages.emplace_back(message.payload.data(), message.payload.size());
+    }
+    void flush_() override {}
+};
+
+/** @brief Redirects the default logger's sinks for the lifetime of the object. */
+class LogCapture {
+   public:
+    LogCapture() : previous(spdlog::default_logger()->sinks()) {
+        sink = std::make_shared<CapturingSink>();
+        spdlog::default_logger()->sinks() = {sink};
+    }
+    ~LogCapture() { spdlog::default_logger()->sinks() = previous; }
+    LogCapture(const LogCapture&)            = delete;
+    LogCapture& operator=(const LogCapture&) = delete;
+
+    bool contains(std::string_view needle) const {
+        return std::ranges::any_of(sink->messages, [needle](const std::string& message) {
+            return message.find(needle) != std::string::npos;
+        });
+    }
+    void clear() const { sink->messages.clear(); }
+
+   private:
+    std::shared_ptr<CapturingSink> sink;
+    std::vector<spdlog::sink_ptr> previous;
+};
+}  // namespace
+
+/** @brief Bevy's `Display` for every `MissingRenderTargetInfoError` variant names
+ *  the missing target *and* tells the caller how to fix it
+ *  (`bevy_render/src/camera.rs:284-291`); the port carried only the first half
+ *  until CAM-117, so all three messages are pinned here verbatim. */
+TEST(MissingRenderTargetInfoError, MessagesCarryBevysRemediation) {
+    const camera::MissingRenderTargetInfoError window{
+        camera::MissingRenderTargetInfoError::Window{Entity::from_index(7)}};
+    EXPECT_EQ(window.to_string(),
+              "RenderTarget::Window missing (7): Make sure the provided entity has a Window component.");
+
+    const camera::MissingRenderTargetInfoError image{
+        camera::MissingRenderTargetInfoError::Image{::epix::camera::RenderTargetId{1, 9}}};
+    EXPECT_EQ(image.to_string(),
+              "RenderTarget::Image missing (9): Make sure the Image's usages include "
+              "RenderAssetUsages::MAIN_WORLD.");
+
+    const camera::MissingRenderTargetInfoError texture_view{
+        camera::MissingRenderTargetInfoError::TextureView{::epix::camera::ManualTextureViewHandle{5}}};
+    EXPECT_EQ(texture_view.to_string(),
+              "RenderTarget::TextureView missing (5): make sure the texture view handle was not removed.");
+}
+
+/** @brief Bevy divides the sub-pixel offset by the view size without guarding a
+ *  zero size (`bevy_render/src/camera.rs:679`), so a degenerate size writes
+ *  non-finite entries into the clip matrix and still adjusts it. The port used to
+ *  return early instead - the guard class CAM-7 removed from `Camera::to_logical`
+ *  - and CAM-118 removed it here too. */
+TEST(TemporalJitter, ZeroViewSizeDividesLikeBevy) {
+    camera::TemporalJitter jitter{glm::vec2(0.5f, 0.5f)};
+    glm::mat4 projection(1.0f);  // orthographic path: [3][3] == 1.0
+    jitter.jitter_projection(projection, glm::vec2(0.0f, 0.0f));
+    EXPECT_GT(projection[2][0], std::numeric_limits<float>::max());
+    EXPECT_LT(projection[2][1], -std::numeric_limits<float>::max());
+}
+
+/** @brief Bevy warns once about active cameras whose `(order, target)` pair
+ *  repeats, because the sort cannot order them and the render result is then
+ *  undefined (`bevy_render/src/camera.rs:633-663`). The *pair* is the key, so the
+ *  same order on two different targets is not an ambiguity and must stay silent -
+ *  which is what CAM-120 implemented. */
+TEST(SortCameras, WarnsAboutOrderAmbiguitiesLikeBevy) {
+    LogCapture capture;
+    epix::app::App app = epix::app::App::create();
+    app.world_mut().insert_resource(camera::SortedCameras{});
+    const auto spawn_camera = [&app](std::ptrdiff_t order, std::uint32_t target) {
+        app.world_mut().spawn(camera::ExtractedCamera{
+            .target = ::epix::camera::NormalizedRenderTarget{::epix::camera::ManualTextureViewHandle{target}},
+            .order  = order});
+    };
+    spawn_camera(1, 1);
+    spawn_camera(1, 2);  // same order, different target: not an ambiguity
+    app.add_systems(epix::app::Update, epix::ecs::into(camera::sort_cameras));
+    app.run_schedule(epix::app::Update);
+    EXPECT_FALSE(capture.contains("Camera order ambiguities detected"))
+        << "two cameras sharing an order but not a target are not ambiguous";
+
+    capture.clear();
+    spawn_camera(1, 1);  // repeats the (order 1, target 1) pair
+    app.run_schedule(epix::app::Update);
+    EXPECT_TRUE(capture.contains("Camera order ambiguities detected for active cameras with the following priorities"));
+    EXPECT_TRUE(capture.contains("(1, ")) << "the warning names the ambiguous priority";
+    EXPECT_TRUE(capture.contains(
+        "ensure there is exactly one Camera entity spawned with a given order for a given RenderTarget"));
+}
+

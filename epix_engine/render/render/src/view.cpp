@@ -702,10 +702,40 @@ void sort_cameras(epix::ecs::ResMut<SortedCameras> sorted_cameras,
     // so cameras targeting different textures never share a counter.
     std::unordered_map<std::uint64_t, std::size_t> counts;
     std::unordered_map<epix::ecs::Entity, std::size_t> index_for_entity;
+    // Bevy camera.rs:633-663: a repeated (order, target) pair cannot be ordered
+    // by the sort, so it is collected and reported once below. The list is
+    // sorted so the message is the same whichever order extraction ran in.
+    std::optional<std::pair<std::ptrdiff_t, std::optional<::epix::camera::RenderTargetId>>> previous_order_target;
+    std::vector<std::pair<std::ptrdiff_t, std::optional<::epix::camera::RenderTargetId>>> ambiguities;
     for (const auto& cam : sorted_cameras->cameras) {
+        const auto new_order_target =
+            std::pair{cam.order, cam.target.transform([](const auto& target) { return target.identity(); })};
+        if (previous_order_target && *previous_order_target == new_order_target &&
+            std::ranges::find(ambiguities, new_order_target) == ambiguities.end()) {
+            ambiguities.push_back(new_order_target);
+        }
+        previous_order_target = new_order_target;
         if (!cam.target) continue;
         const std::uint64_t key      = (cam.target->identity().value << 1) | static_cast<std::uint64_t>(cam.hdr);
         index_for_entity[cam.entity] = counts[key]++;
+    }
+    if (!ambiguities.empty()) {
+        std::string listed;
+        for (const auto& [order, target] : ambiguities) {
+            if (!listed.empty()) listed += ", ";
+            if (target) {
+                listed += std::format("({}, {}:{})", order, target->kind, target->value);
+            } else {
+                listed += std::format("({}, None)", order);
+            }
+        }
+        spdlog::warn(
+            "Camera order ambiguities detected for active cameras with the following priorities: [{}]. To fix this, "
+            "ensure there is exactly one Camera entity spawned with a given order for a given RenderTarget. "
+            "Ambiguities should be resolved because either (1) multiple active cameras were spawned accidentally, "
+            "which will result in rendering multiple instances of the scene or (2) for cases where multiple active "
+            "cameras is intentional, ambiguities could result in unpredictable render results.",
+            listed);
     }
     for (auto&& [entity, camera] : cameras.iter()) {
         if (auto it = index_for_entity.find(entity); it != index_for_entity.end()) {
