@@ -1077,3 +1077,92 @@ TEST(ImageParity, ClampToBorderReachesTheSampler) {
     descriptor.address_mode_u = epix::image::ImageAddressMode::ClampToEdge;
     EXPECT_EQ(descriptor.as_wgpu().addressModeU, wgpu::AddressMode::eClampToEdge);
 }
+
+// Bevy `resize_in_place_array_grow_and_shrink` (image.rs:2268-2358): the per-layer stride
+// arithmetic has to survive growth and shrinkage on both axes, and every newly added texel
+// - in an existing layer or in a layer that did not exist - has to come back zeroed.
+TEST(Image, ResizeInPlaceArrayGrowAndShrink) {
+    constexpr std::uint32_t LAYERS = 4;
+
+    struct TestPixel {
+        std::uint32_t x;
+        std::uint32_t y;
+        epix::color::LinearRgba color;
+    };
+    // Bevy writes this pattern into every layer over a `LinearRgba::BLACK` fill.
+    const std::array<TestPixel, 3> test_pixels{{
+        {0, 1, epix::color::LinearRgba::RED},
+        {1, 1, epix::color::LinearRgba::GREEN},
+        {1, 0, epix::color::LinearRgba::BLUE},
+    }};
+
+    auto image = epix::image::Image::create2d_array(2, 2, LAYERS, wgpu::TextureFormat::eRGBA8Unorm);
+    // Bevy's `Image::new_fill` with `LinearRgba::BLACK`: (0, 0, 0, 255) per texel.
+    image.clear(std::array<std::byte, 4>{std::byte{0}, std::byte{0}, std::byte{0}, std::byte{255}});
+    for (std::uint32_t z = 0; z < LAYERS; ++z) {
+        for (const TestPixel& pixel : test_pixels) {
+            ASSERT_TRUE(image.set_color_at_3d(pixel.x, pixel.y, z, pixel.color).has_value()) << "layer " << z;
+        }
+    }
+
+    // Grow both axes and add a layer.
+    image.resize_in_place(wgpu::Extent3D{4, 4, LAYERS + 1});
+
+    const auto untouched = image.get_color_at(0, 0);
+    ASSERT_TRUE(untouched.has_value());
+    EXPECT_EQ(*untouched, epix::color::Color{epix::color::LinearRgba::BLACK});
+    for (std::uint32_t z = 0; z < LAYERS; ++z) {
+        for (const TestPixel& pixel : test_pixels) {
+            const auto read = image.get_color_at_3d(pixel.x, pixel.y, z);
+            ASSERT_TRUE(read.has_value()) << "layer " << z;
+            EXPECT_EQ(*read, epix::color::Color{pixel.color}) << "layer " << z;
+        }
+    }
+
+    // The added area is zeroes, in the old layers and in the new one.
+    for (std::uint32_t z = 0; z < LAYERS + 1; ++z) {
+        const auto read = image.get_color_at_3d(3, 3, z);
+        ASSERT_TRUE(read.has_value()) << "layer " << z;
+        EXPECT_EQ(*read, epix::color::Color{epix::color::LinearRgba::NONE}) << "layer " << z;
+    }
+
+    // Shrink to a single texel: out-of-range coordinates and dropped layers are errors.
+    image.resize_in_place(wgpu::Extent3D{1, 1, 1});
+    EXPECT_FALSE(image.get_color_at_3d(1, 1, 0).has_value());
+    EXPECT_FALSE(image.get_color_at_3d(0, 0, 1).has_value());
+
+    // Growing the layer count again zeroes the layer it adds.
+    image.resize_in_place(wgpu::Extent3D{1, 1, 2});
+    const auto added_layer = image.get_color_at_3d(0, 0, 1);
+    ASSERT_TRUE(added_layer.has_value());
+    EXPECT_EQ(*added_layer, epix::color::Color{epix::color::LinearRgba::NONE});
+}
+
+// Bevy `two_way_conversion` (image_texture_conversion.rs:233-243): "Check to see if color is
+// preserved through an rgba8 conversion and back", with the comment's own caveat that the test
+// fails when `is_srgb` is false or the dynamic image is `rgb8`.
+TEST(ImageDynamicConversion, TwoWayConversionPreservesRgba8Colour) {
+    const epix::image::Rgba8Image initial{1, 1, {132u, 3u, 7u, 200u}};
+    const auto image = epix::image::Image::from_dynamic(epix::image::DynamicImage{initial}, /*is_srgb=*/true,
+                                                        epix::assets::RENDER_WORLD);
+
+    // `is_srgb` is what chooses the sRGB format for an RGBA8 payload (image.rs:2272-2276).
+    EXPECT_EQ(image.texture_format(), wgpu::TextureFormat::eRGBA8UnormSrgb);
+    EXPECT_EQ(image.usage(), epix::assets::RenderAssetUsages::RENDER_WORLD);
+
+    const auto round_tripped = image.try_into_dynamic();
+    ASSERT_TRUE(round_tripped.has_value());
+    // Bevy compares the whole `DynamicImage`; Epix's buffers carry no equality, so the
+    // comparison goes through the RGBA8 view of both sides.
+    const auto rgba = round_tripped->into_rgba8();
+    EXPECT_EQ(rgba.width, 1u);
+    EXPECT_EQ(rgba.height, 1u);
+    EXPECT_EQ(rgba.data, (std::vector<std::uint8_t>{132u, 3u, 7u, 200u}));
+
+    // The caveat in Bevy's comment: an RGBA8 payload converted with `is_srgb = false` becomes
+    // `Rgba8Unorm`, which `try_into_dynamic` has no arm for, so the round trip fails there.
+    const auto linear = epix::image::Image::from_dynamic(epix::image::DynamicImage{initial}, /*is_srgb=*/false,
+                                                         epix::assets::RENDER_WORLD);
+    EXPECT_EQ(linear.texture_format(), wgpu::TextureFormat::eRGBA8Unorm);
+    EXPECT_FALSE(linear.try_into_dynamic().has_value());
+}
