@@ -37,6 +37,8 @@ wgpu::Device null_device() { return wgpu::Device{}; }
 void flush_and_sync(App& app) {
     static constexpr int LARGE_ITERATION_COUNT = 10000;
     for (int i = 0; i < LARGE_ITERATION_COUNT; ++i) {
+        app.run_schedule(PreUpdate);
+        app.run_schedule(PostUpdate);
         app.run_schedule(Last);
         std::this_thread::yield();
     }

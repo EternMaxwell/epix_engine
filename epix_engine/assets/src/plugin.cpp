@@ -98,7 +98,13 @@ void AssetPlugin::attach(App& app) {
 
     app.add_events<UntypedAssetLoadFailedEvent>();
 
-    app.add_systems(ScheduleInfo(Last), into(AssetServer::handle_internal_events).in_set(AssetSystems::HandleEvents));
+    // Bevy runs `handle_internal_asset_events` in PreUpdate, chained in front of the
+    // asset tracking set and declared ambiguous with everything else in that schedule
+    // because it takes `&mut World` (bevy_asset/src/lib.rs:424-439). The port had it in
+    // `Last`, which made an asset that finishes loading during a frame visible only to
+    // the next frame's readers.
+    app.add_systems(ScheduleInfo(PreUpdate),
+                    into(AssetServer::handle_internal_events).in_set(AssetSystems::HandleEvents));
     app.configure_sets(sets(AssetSystems::HandleEvents, AssetSystems::WriteEvents).chain());
 }
 

@@ -57,6 +57,8 @@ App make_shader_asset_app() {
 void flush_load_tasks(App& app) {
     static constexpr int LARGE_ITERATION_COUNT = 10000;
     for (int i = 0; i < LARGE_ITERATION_COUNT; ++i) {
+        app.run_schedule(PreUpdate);
+        app.run_schedule(PostUpdate);
         app.run_schedule(Last);
         std::this_thread::yield();
     }
@@ -408,6 +410,8 @@ TEST(MeshPipeline, SpecializedDescriptorsCompileOnADevice) {
         ASSERT_TRUE(descriptor.has_value()) << name;
         const auto id = server.queue_render_pipeline(std::move(*descriptor));
         for (int attempt = 0; attempt < 400 && !server.get_render_pipeline(id).has_value(); ++attempt) {
+            app.run_schedule(PreUpdate);
+            app.run_schedule(PostUpdate);
             app.run_schedule(Last);
             std::this_thread::yield();
         }

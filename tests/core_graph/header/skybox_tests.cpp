@@ -155,6 +155,8 @@ TEST(Skybox, PipelineCompilesWithThePortedShader) {
     for (int attempt = 0; attempt < 1000 &&
                           !asset_server.is_loaded_with_dependencies(pipeline->get().shader.id());
          ++attempt) {
+        app.run_schedule(epix::app::PreUpdate);
+        app.run_schedule(epix::app::PostUpdate);
         app.run_schedule(epix::app::Last);
         std::this_thread::yield();
     }
@@ -165,6 +167,8 @@ TEST(Skybox, PipelineCompilesWithThePortedShader) {
     const auto id         = pipeline_server.queue_render_pipeline(pipeline->get().specialize(SkyboxPipelineKey{
         .hdr = false, .samples = 1, .depth_format = epix::core_graph::core_3d::CORE_3D_DEPTH_FORMAT}));
     for (int attempt = 0; attempt < 200; ++attempt) {
+        app.run_schedule(epix::app::PreUpdate);
+        app.run_schedule(epix::app::PostUpdate);
         app.run_schedule(epix::app::Last);
         if (pipeline_server.get_render_pipeline(id).has_value()) break;
         std::this_thread::yield();
@@ -219,6 +223,8 @@ float4 probe_fragment([[vk::location(0)]] float2 uv) : SV_Target1 {
     auto& asset_server = app.resource<epix::assets::AssetServer>();
     const auto shader  = asset_server.load<epix::shader::Shader>("embedded://core_pipeline/unwritten_target_probe.slang");
     for (int attempt = 0; attempt < 1000 && !asset_server.is_loaded_with_dependencies(shader.id()); ++attempt) {
+        app.run_schedule(epix::app::PreUpdate);
+        app.run_schedule(epix::app::PostUpdate);
         app.run_schedule(epix::app::Last);
         std::this_thread::yield();
     }
@@ -249,6 +255,8 @@ float4 probe_fragment([[vk::location(0)]] float2 uv) : SV_Target1 {
                                                 .targets     = {unwritten, written}},
     });
     for (int attempt = 0; attempt < 200; ++attempt) {
+        app.run_schedule(epix::app::PreUpdate);
+        app.run_schedule(epix::app::PostUpdate);
         app.run_schedule(epix::app::Last);
         if (pipeline_server.get_render_pipeline(id).has_value()) break;
         std::this_thread::yield();

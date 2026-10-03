@@ -203,6 +203,8 @@ void downsample_depth_first() {
     for (int attempt = 0;
          attempt < 1000 && !app.resource<epix::assets::AssetServer>().is_loaded_with_dependencies(shader.id());
          ++attempt) {
+        app.run_schedule(epix::app::PreUpdate);
+        app.run_schedule(epix::app::PostUpdate);
         app.run_schedule(epix::app::Last);
         std::this_thread::yield();
     }
@@ -214,6 +216,8 @@ void downsample_depth_first() {
     };
     const auto id = app.resource<epix::render::PipelineServer>().queue_compute_pipeline(
         pipeline.specialize(DownsampleDepthPipelineKey{}));
+    app.run_schedule(epix::app::PreUpdate);
+    app.run_schedule(epix::app::PostUpdate);
     app.run_schedule(epix::app::Last);
     EXPECT_TRUE(app.resource<epix::render::PipelineServer>().get_compute_pipeline(id).has_value());
 }
@@ -261,6 +265,8 @@ TEST(MipGeneration, PluginCreatesAllFourDownsamplePipelines) {
          attempt < 1000 &&
          !app.resource<epix::assets::AssetServer>().is_loaded_with_dependencies(shader->get().handle.id());
          ++attempt) {
+        app.run_schedule(epix::app::PreUpdate);
+        app.run_schedule(epix::app::PostUpdate);
         app.run_schedule(epix::app::Last);
         std::this_thread::yield();
     }
@@ -298,6 +304,8 @@ TEST(MipGeneration, PluginCreatesAllFourDownsamplePipelines) {
     const auto compiled = [&](const DownsampleDepthPipeline& pipeline, DownsampleDepthPipelineKey key) {
         const auto id = pipeline_server.queue_compute_pipeline(pipeline.specialize(key));
         for (int attempt = 0; attempt < 200; ++attempt) {
+            app.run_schedule(epix::app::PreUpdate);
+            app.run_schedule(epix::app::PostUpdate);
             app.run_schedule(epix::app::Last);
             if (pipeline_server.get_compute_pipeline(id).has_value()) return true;
             std::this_thread::yield();
@@ -345,6 +353,8 @@ TEST(MipGeneration, DownsampleDepthWritesTheReducedDepthIntoThePyramid) {
          attempt < 1000 &&
          !app.resource<epix::assets::AssetServer>().is_loaded_with_dependencies(shader->get().handle.id());
          ++attempt) {
+        app.run_schedule(epix::app::PreUpdate);
+        app.run_schedule(epix::app::PostUpdate);
         app.run_schedule(epix::app::Last);
         std::this_thread::yield();
     }
@@ -362,6 +372,8 @@ TEST(MipGeneration, DownsampleDepthWritesTheReducedDepthIntoThePyramid) {
     const auto second_id = pipeline_server.queue_compute_pipeline(
         pipeline_desc.specialize(DownsampleDepthPipelineKey{DownsampleDepthPipelineKey::SECOND_PHASE}));
     for (int attempt = 0; attempt < 200; ++attempt) {
+        app.run_schedule(epix::app::PreUpdate);
+        app.run_schedule(epix::app::PostUpdate);
         app.run_schedule(epix::app::Last);
         if (pipeline_server.get_compute_pipeline(first_id).has_value() &&
             pipeline_server.get_compute_pipeline(second_id).has_value()) {

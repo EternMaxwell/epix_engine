@@ -94,28 +94,21 @@ epix::app::App& app_register_asset(epix::app::App& app) {
     app.resource_mut<AssetServer>().register_asset(app.resource<Assets<T>>());
     app.add_events<AssetEvent<T>>();
     app.add_events<AssetLoadFailedEvent<T>>();
-    app.add_systems(epix::app::PostStartup,
-                    ecs::into(ecs::into(Assets<T>::handle_events).in_set(AssetSystems::HandleEvents),
-                              ecs::into(Assets<T>::asset_events).in_set(AssetSystems::WriteEvents))
-                        .chain()
-                        .set_names(std::array{std::format("handle {} asset events", meta::type_id<T>::name()),
-                                              std::format("send {} asset events", meta::type_id<T>::name())}));
-    app.add_systems(epix::app::PreStartup,
-                    ecs::into(Assets<T>::asset_events)
-                        .in_set(AssetSystems::WriteEvents)
-                        .set_names(std::array{std::format("send {} asset events", meta::type_id<T>::name())}));
-    app.add_systems(epix::app::First,
-                    ecs::into(Assets<T>::asset_events)
-                        .in_set(AssetSystems::WriteEvents)
-                        .set_names(std::array{std::format("send {} asset events", meta::type_id<T>::name())}));
-    app.add_systems(epix::app::Last,
-                    ecs::into(Assets<T>::asset_events)
-                        .in_set(AssetSystems::WriteEvents)
-                        .set_names(std::array{std::format("send {} asset events", meta::type_id<T>::name())}));
-    app.add_systems(epix::app::PostUpdate,
+    // Bevy's split: the handle-destruction pass runs in PreUpdate, where bevy_asset runs
+    // `handle_internal_asset_events` (a `&mut World` system that also releases dropped
+    // handles, bevy_asset/src/lib.rs:424-439), and a type's queued events are flushed in
+    // PostUpdate in `AssetEventSystems` (`Assets::<A>::asset_events`, with
+    // `asset_events_condition`, bevy_asset/src/lib.rs:659-664). The port used to run the
+    // handle pass in PostUpdate and flush the events in PreStartup/PostStartup/First/Last
+    // as well, which made a frame's events visible earlier than Bevy makes them.
+    app.add_systems(epix::app::PreUpdate,
                     ecs::into(Assets<T>::handle_events)
                         .in_set(AssetSystems::HandleEvents)
                         .set_name(std::format("handle {} asset events", meta::type_id<T>::name())));
+    app.add_systems(epix::app::PostUpdate,
+                    ecs::into(Assets<T>::asset_events)
+                        .in_set(AssetSystems::WriteEvents)
+                        .set_name(std::format("send {} asset events", meta::type_id<T>::name())));
     return app;
 }
 

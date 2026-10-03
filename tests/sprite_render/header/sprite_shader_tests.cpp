@@ -89,6 +89,8 @@ TEST(SpritePipeline, SpecializedDescriptorsCompileOnADevice) {
     app.resource_scope([&app](epix::app::internal::Plugins& plugins) { plugins.ready_all(app); });
     app.sub_app_mut(render::Render).then([](App& render_app) { render_app.run_schedule(render::RenderStartup); });
     for (int attempt = 0; attempt < 10000; ++attempt) {
+        app.run_schedule(PreUpdate);
+        app.run_schedule(PostUpdate);
         app.run_schedule(Last);
         std::this_thread::yield();
     }
@@ -104,6 +106,8 @@ TEST(SpritePipeline, SpecializedDescriptorsCompileOnADevice) {
         auto descriptor = pipeline->specialize(key);
         const auto id   = server.queue_render_pipeline(std::move(descriptor));
         for (int attempt = 0; attempt < 400 && !server.get_render_pipeline(id).has_value(); ++attempt) {
+            app.run_schedule(PreUpdate);
+            app.run_schedule(PostUpdate);
             app.run_schedule(Last);
             std::this_thread::yield();
         }

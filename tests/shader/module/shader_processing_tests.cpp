@@ -139,6 +139,8 @@ bool wait_for_loaded(App& app, const AssetServer& server, const UntypedAssetId& 
     std::atomic<bool> stop{false};
     std::thread pump([&app, &stop]() {
         while (!stop.load(std::memory_order_relaxed)) {
+            app.run_schedule(PreUpdate);
+            app.run_schedule(PostUpdate);
             app.run_schedule(Last);
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
@@ -153,6 +155,7 @@ bool wait_for_loaded_allow_transient_errors(App& app, const AssetServer& server,
     std::atomic<bool> stop{false};
     std::thread pump([&app, &stop]() {
         while (!stop.load(std::memory_order_relaxed)) {
+            app.run_schedule(PreUpdate);
             app.run_schedule(PostUpdate);
             app.run_schedule(Last);
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -180,6 +183,7 @@ bool wait_until_not_loaded_with_dependencies(App& app, const AssetServer& server
     std::atomic<bool> stop{false};
     std::thread pump([&app, &stop]() {
         while (!stop.load(std::memory_order_relaxed)) {
+            app.run_schedule(PreUpdate);
             app.run_schedule(PostUpdate);
             app.run_schedule(Last);
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -440,7 +444,11 @@ TEST(ShaderProcessingSlangModule, ProcessEnabledManualCustomDepIsVisibleAndCompi
     auto dep_handle = server.add(std::move(dep));
 
     // Flush Added/Modified events before startup so the processor-side mirror sees the dep.
+    // Bevy's placement: internal events in `PreUpdate`, the event flush in `PostUpdate`
+    // (`bevy_asset/src/lib.rs:424-439`, `:659-664`).
     env.app.run_schedule(PreStartup);
+    env.app.run_schedule(PreUpdate);
+    env.app.run_schedule(PostUpdate);
     env.app.run_schedule(Last);
     ASSERT_TRUE(server.is_loaded_with_dependencies(dep_handle.id()));
 
@@ -500,6 +508,8 @@ TEST(ShaderProcessingSlangModule, ConcurrentIrProcessingWithRegistryUpdatesRemai
 
     // Ensure initial provider registration before processing begins.
     env.app.run_schedule(PreStartup);
+    env.app.run_schedule(PreUpdate);
+    env.app.run_schedule(PostUpdate);
     env.app.run_schedule(Last);
 
     env.app.run_schedule(Startup);
@@ -516,6 +526,8 @@ TEST(ShaderProcessingSlangModule, ConcurrentIrProcessingWithRegistryUpdatesRemai
         dep_updated.import_path = ShaderImport::custom(std::filesystem::path("utility/helper"));
         auto replaced           = shaders.insert(dep_id, dep_updated);
         ASSERT_TRUE(replaced.has_value());
+        env.app.run_schedule(PreUpdate);
+        env.app.run_schedule(PostUpdate);
         env.app.run_schedule(Last);
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
@@ -570,6 +582,8 @@ TEST(ShaderProcessingSlangModule, ManualCustomProviderModifyReloadsDependentRoot
     auto dep_id     = dep_handle.id();
 
     env.app.run_schedule(PreStartup);
+    env.app.run_schedule(PreUpdate);
+    env.app.run_schedule(PostUpdate);
     env.app.run_schedule(Last);
     env.app.run_schedule(Startup);
 
@@ -734,6 +748,8 @@ TEST(ShaderProcessingSlangModule, ManualCustomProviderImportPathRemovalReloadsDe
     auto dep_id     = dep_handle.id();
 
     env.app.run_schedule(PreStartup);
+    env.app.run_schedule(PreUpdate);
+    env.app.run_schedule(PostUpdate);
     env.app.run_schedule(Last);
     env.app.run_schedule(Startup);
 

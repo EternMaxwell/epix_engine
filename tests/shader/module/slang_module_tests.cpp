@@ -41,6 +41,8 @@ bool wait_for_loaded(App& app,
         auto state = server.get_load_state(id);
         if (state.has_value() && std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state)) return false;
         if (server.is_loaded_with_dependencies(id)) return true;
+        app.run_schedule(PreUpdate);
+        app.run_schedule(PostUpdate);
         app.run_schedule(Last);
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }

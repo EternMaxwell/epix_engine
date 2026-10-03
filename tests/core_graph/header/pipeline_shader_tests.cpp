@@ -70,6 +70,8 @@ std::optional<T> wait_for_render_resource(App& app) {
     if (!render_app.has_value()) return std::nullopt;
     for (int attempt = 0; attempt < 2000; ++attempt) {
         if (const auto resource = render_app->get().world().get_resource<T>()) return *resource;
+        app.run_schedule(PreUpdate);
+        app.run_schedule(PostUpdate);
         app.run_schedule(Last);
         std::this_thread::yield();
     }
@@ -105,6 +107,8 @@ TEST(CoreGraphShaders, BlitAndTonemappingPipelinesCompileOnADevice) {
         auto descriptor = pipeline.specialize(key);
         const auto id   = server.queue_render_pipeline(std::move(descriptor));
         for (int attempt = 0; attempt < 400 && !server.get_render_pipeline(id).has_value(); ++attempt) {
+            app.run_schedule(PreUpdate);
+            app.run_schedule(PostUpdate);
             app.run_schedule(Last);
             std::this_thread::yield();
         }

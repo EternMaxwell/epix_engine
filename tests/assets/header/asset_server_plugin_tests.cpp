@@ -800,11 +800,15 @@ PluginTestEnv make_plugin_env_for_mode(AssetServerMode mode,
     return {std::move(app), dir};
 }
 
-/// Wait for all IOTaskPool tasks and then run the Last schedule to process internal events.
+/// Wait for all IOTaskPool tasks, then run the schedules that carry the asset systems.
+/// This is Bevy's placement: `handle_internal_asset_events` (and with it the handle
+/// destruction pass) runs in `PreUpdate`, and a type's queued events are flushed in
+/// `PostUpdate` in `AssetEventSystems` (`bevy_asset/src/lib.rs:424-439`, `:659-664`).
 void flush_load_tasks(App& app) {
     static constexpr int LARGE_ITERATION_COUNT = 10000;
     for (int i = 0; i < LARGE_ITERATION_COUNT; ++i) {
-        app.run_schedule(Last);
+        app.run_schedule(PreUpdate);
+        app.run_schedule(PostUpdate);
         std::this_thread::yield();
     }
 }
@@ -954,8 +958,9 @@ TEST(HotReload, Reload_GeneratesModifiedAssetEvent) {
     auto handle = server.load<std::string>(AssetPath("hello.txt"));
     flush_load_tasks(app);
 
-    // Consume initial events by running an event update cycle.
-    app.run_schedule(Last);
+    // Consume initial events by running an event update cycle. The flush lives in
+    // `PostUpdate` (Bevy's `AssetEventSystems`), which `flush_load_tasks` already runs.
+    app.run_schedule(PostUpdate);
 
     // Overwrite and reload.
     auto bytes = make_bytes("new");
@@ -1357,8 +1362,10 @@ TEST(ManualAssetManagement, AddAndDrop_GeneratesCorrectEvents) {
     auto handle = assets.add(std::string("manual"));
     auto id     = handle.id();
 
-    // Flush events to the event writer.
-    app.run_schedule(Last);
+    // Flush events to the event writer. The flush is in `PostUpdate` in Bevy
+    // (`AssetEventSystems`), and the handle pass that feeds it in `PreUpdate`.
+    app.run_schedule(PreUpdate);
+    app.run_schedule(PostUpdate);
 
     {
         auto& events     = app.resource<Events<AssetEvent<std::string>>>();
@@ -1375,7 +1382,7 @@ TEST(ManualAssetManagement, AddAndDrop_GeneratesCorrectEvents) {
 
     // Process handle destruction + flush events.
     assets.handle_events_manual();
-    app.run_schedule(Last);
+    app.run_schedule(PostUpdate);
 
     {
         auto& events       = app.resource<Events<AssetEvent<std::string>>>();

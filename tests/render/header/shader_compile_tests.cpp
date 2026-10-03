@@ -103,6 +103,8 @@ TEST(ShaderCompile, EveryLoadedRenderShaderCompilesOnADevice) {
     // schedule has to run before its asset exists.
     app.sub_app_mut(render::Render).then([](App& render_app) { render_app.run_schedule(render::RenderStartup); });
     for (int attempt = 0; attempt < 10000; ++attempt) {
+        app.run_schedule(PreUpdate);
+        app.run_schedule(PostUpdate);
         app.run_schedule(Last);
         std::this_thread::yield();
     }

@@ -162,6 +162,8 @@ TEST(Mesh2dShader, CompilesAfterInitMesh2dPipelineLoadsIt) {
     // a headless test does not reach, so run the schedule directly.
     render_app->get().run_schedule(render::RenderStartup);
     for (int attempt = 0; attempt < 500; ++attempt) {
+        app.run_schedule(PreUpdate);
+        app.run_schedule(PostUpdate);
         app.run_schedule(Last);
         const auto pipeline = render_app->get().world().get_resource<sprite_render::Mesh2dPipeline>();
         if (pipeline && server.is_loaded_with_dependencies(pipeline->get().shader.id())) break;
@@ -195,6 +197,8 @@ TEST(Mesh2dShader, CompilesAfterInitMesh2dPipelineLoadsIt) {
     const auto tonemapping_library =
         server.load<shader::Shader>("embedded://core_pipeline/tonemapping_shared.slang");
     for (int attempt = 0; attempt < 500; ++attempt) {
+        app.run_schedule(PreUpdate);
+        app.run_schedule(PostUpdate);
         app.run_schedule(Last);
         if (server.is_loaded_with_dependencies(view_library.id()) &&
             server.is_loaded_with_dependencies(globals_library.id()) &&

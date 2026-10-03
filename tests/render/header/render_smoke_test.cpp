@@ -83,6 +83,8 @@ void namespace_probe() {}
                           (!asset_server.is_loaded_with_dependencies(view_shader.id()) ||
                            !asset_server.is_loaded_with_dependencies(probe_shader.id()));
          ++attempt) {
+        app.run_schedule(PreUpdate);
+        app.run_schedule(PostUpdate);
         app.run_schedule(Last);
         std::this_thread::yield();
     }
@@ -94,6 +96,8 @@ void namespace_probe() {}
         .shader      = probe_shader,
         .entry_point = std::string("namespace_probe"),
     });
+    app.run_schedule(PreUpdate);
+    app.run_schedule(PostUpdate);
     app.run_schedule(Last);
 
     const auto result = app.resource<PipelineServer>().get_compute_pipeline(pipeline);

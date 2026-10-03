@@ -2,6 +2,7 @@
 
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/image.hpp>
 #include <epix/shader.hpp>
 #include <epix/sprite_render.hpp>
 #include <epix/task.hpp>
@@ -30,12 +31,19 @@ App make_shader_asset_app() {
     ShaderPlugin shader_plugin;
     app.add_plugins(shader_plugin);
 
+    // The sprite-render plugins' slice computation reads `Assets<Image>` in PostUpdate,
+    // which is a schedule this file now drives (Bevy flushes asset events there), so a
+    // real app's image plugin has to be present for those systems to validate.
+    app.add_plugins(epix::image::ImagePlugin{});
+
     return app;
 }
 
 void flush_load_tasks(App& app) {
     static constexpr int LARGE_ITERATION_COUNT = 10000;
     for (int i = 0; i < LARGE_ITERATION_COUNT; ++i) {
+        app.run_schedule(PreUpdate);
+        app.run_schedule(PostUpdate);
         app.run_schedule(Last);
         std::this_thread::yield();
     }
