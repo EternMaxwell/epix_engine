@@ -53,23 +53,23 @@ EPIX_EXPORT struct Dense {
     void replace(this Dense& self, std::uint32_t index, Tick tick, Args&&... args) {
         assert(index < self.values.size());
         self.values.emplace_at<T>(index, std::forward<Args>(args)...);
-        self.modified_ticks[index].set(self.added_ticks[index].get());
+        self.modified_ticks[index].set(tick.get());
     }
     void replace_copy(this Dense& self, std::uint32_t index, Tick tick, const void* src) {
         assert(index < self.values.size());
         self.values.replace_from(index, src);
-        self.modified_ticks[index].set(self.added_ticks[index].get());
+        self.modified_ticks[index].set(tick.get());
     }
     void replace_move(this Dense& self, std::uint32_t index, Tick tick, void* src) {
         assert(index < self.values.size());
         self.values.replace_from_move(index, src);
-        self.modified_ticks[index].set(self.added_ticks[index].get());
+        self.modified_ticks[index].set(tick.get());
     }
     template <std::invocable<void*> F>
     void replace_construct(this Dense& self, std::uint32_t index, Tick tick, F&& constructor) {
         assert(index < self.values.size());
         self.values.construct_at(index, std::forward<F>(constructor));
-        self.modified_ticks[index].set(self.added_ticks[index].get());
+        self.modified_ticks[index].set(tick.get());
     }
     template <typename T, typename... Args>
     void push(this Dense& self, ComponentTicks ticks, Args&&... args) {
