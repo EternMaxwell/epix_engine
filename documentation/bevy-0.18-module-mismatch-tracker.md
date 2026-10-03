@@ -477,7 +477,7 @@ Every non-✅ row from every merged section, grouped by module and, inside a mod
 | `sprite` | SPR-113 | ⛔ | No picking subsystem in Epix; SPR-424..435. | `—` |
 | `sprite` | SPR-127 | ⛔ | `PARENT: meta`. No C++ reflection; components need no derive (`epix_engine/ecs/include/epix/ecs/component/component.hpp:11-22`). | `epix_engine/ecs/include/epix/ecs/component/component.hpp` |
 | `sprite` | SPR-130 | ⚠️ | `PARENT: assets`. Bevy defaults to `Handle::<Image>::default()` = `Handle::Uuid(AssetId::<Image>::DEFAULT_UUID)`; Epix uses the shared `image::DEFAULT_IMAGE_HANDLE`, a nil-UUID weak handle (`epix_engine/image/include/epix/image/image.hpp:1198`) that … | `epix_engine/sprite/include/epix/sprite/sprite.hpp` |
-| `sprite` | SPR-147 | ⚠️ | C++ has no conversion traits, so there is no `Sprite(Handle<Image>)` converting constructor and no implicit conversion at spawn sites; `Sprite::from_image` is the explicit counterpart and is used everywhere in the Epix examples. | `epix_engine/sprite/include/epix/sprite/sprite.hpp` |
+| `sprite` | SPR-147 | ⚠️ | **Batch 261: the reason this row gave was self-contradictory.** C++ has no `From` trait, so Bevy's `Sprite::fr… | `none` |
 | `sprite` | SPR-157 | ⚠️ | Bevy has no defaults for `tile_x`/`tile_y`/`stretch_value` (nor for `SliceScaleMode::Tile::stretch_value`) — every construction site names them. | `epix_engine/sprite/include/epix/sprite/sprite.hpp` |
 | `sprite` | SPR-181 | ⛔ | C++ has no deref coercion; the public `.value` member and `as_vec()` give the same access, and every in-tree `Anchor` read goes through `as_vec()` (`epix_engine/sprite/src/sprite.cpp:72,104`). | `epix_engine/sprite/src/sprite.cpp` |
 | `sprite` | SPR-208 | ⛔ | `PARENT: sprite_render`. The Bevy counterpart is outside this section's file set, so it gets no rows here; note only that Epix stores `std::vector<sprite::TextureSlice>` and maps them lazily through `extract_slices`, and that … | `epix_engine/sprite_render/include/epix/sprite_render/render.hpp` |
@@ -4999,7 +4999,7 @@ Supporting Bevy reads (for classification only, no rows): `bevy_camera/src/visib
 
 ## Summary
 
-Counts: **✅ 135**, **❌ 0**, **⚠️ 5**, **🚫 2**, **⛔ 7**, **REVIEW 0** — 149 rows.
+Counts: **✅ 136**, **❌ 0**, **⚠️ 4**, **🚫 2**, **⛔ 7**, **REVIEW 0** — 149 rows.
 (SPR-117/120/128/129 were fixed in `ace3545e` and SPR-212 in `78b29a14`; see `## Fix batches` in the tracker.)
 
 Non-✅ IDs (1–14 are real divergences and gaps; 15–26 are the absent test arms the 🚫 rows record):
@@ -5085,7 +5085,7 @@ Non-✅ IDs (1–14 are real divergences and gaps; 15–26 are the absent test a
 | SPR-144 | def | `texture_rect` selection (image / atlas / rect / atlas+rect) | bevy_sprite/src/sprite.rs:88-108 | epix_engine/sprite/src/sprite.cpp:52-69 | ✅ | Same four-arm match, including the atlas-offset rule (`sprite_rect.min += atlas_rect.min`, `.max += atlas_rect.min`) and the `UVec2::ONE` fallback when the image asset is missing. |
 | SPR-145 | def | anchor, flip and zero-size arithmetic | bevy_sprite/src/sprite.rs:110-126 | epix_engine/sprite/src/sprite.cpp:71-78 | ✅ | `sprite_size = custom_size.unwrap_or(texture_rect.size())`, `sprite_center = -anchor * size`, flip X always negates, Y negates only when `flip_y` is false, and the zero-size early `Err` sits after the flips — all identical. |
 | SPR-146 | def | sprite-to-texture ratio and `contains` test | bevy_sprite/src/sprite.rs:128-145 | epix_engine/sprite/src/sprite.cpp:80-84 | ✅ | Ratio, `+ texture_rect.center()`, then `contains` with the same half-open bounds (`epix_engine/image/include/epix/image/image.hpp:43-45`); the `SpriteImageMode` TODO is carried over verbatim. |
-| SPR-147 | impl | `From<Handle<Image>> for Sprite` | bevy_sprite/src/sprite.rs:149-153 | epix_engine/sprite/include/epix/sprite/sprite.hpp:103 | ⚠️ | C++ has no conversion traits, so there is no `Sprite(Handle<Image>)` converting constructor and no implicit conversion at spawn sites; `Sprite::from_image` is the explicit counterpart and is used everywhere in the Epix examples. Adding a non-explicit constructor would restore source compatibility if the Lead wants it. |
+| SPR-147 | impl | `From<Handle<Image>> for Sprite` | bevy_sprite/src/sprite.rs:149-153 | epix_engine/sprite/include/epix/sprite/sprite.hpp:103 | ⚠️ | **Batch 261: the reason this row gave was self-contradictory.** C++ has no `From` trait, so Bevy's `Sprite::from(handle)` / `handle.into()` spelling has no direct counterpart; the port provides the named factory `Sprite::from_image`, which is what the examples use. A non-explicit `Sprite(Handle<Image>)` constructor would restore the implicit form - so the absence is a deliberate spelling choice, not a language limit, which is what the row now says. |
 | SPR-148 | impl | `AsAssetId for Sprite` (`type Asset = Image`) | bevy_sprite/src/sprite.rs:155-161 | epix_engine/sprite/include/epix/sprite/sprite.hpp:148-154 | ✅ | Same specialization point (`epix_engine/assets/...`), same body (`image.id()`), same `static_assert(AsAssetIdImpl<Sprite>)` coverage. |
 | SPR-149 | type | `SpriteImageMode` | bevy_sprite/src/sprite.rs:166-185 | epix_engine/sprite/include/epix/sprite/sprite.hpp:52-69 | ✅ | `std::variant` with the four payloads in Bevy's variant order; payload structs `SpriteImageModeAuto/Scale/Sliced/Tiled` are the C++-forced naming for Rust's inline struct variants. |
 | SPR-150 | field | `SpriteImageMode::Auto` (default variant) | bevy_sprite/src/sprite.rs:168-169 | epix_engine/sprite/include/epix/sprite/sprite.hpp:33-35,61 | ✅ | Both default-construct to `Auto`. |
@@ -5359,7 +5359,7 @@ Epix files read:
 
 ## Summary
 
-Counts: ✅ 183 · ❌ 0 · ⚠️ 12 · 🚫 0 · ⛔ 1 · REVIEW 1 (total 197 rows, SRD-100..SRD-296).
+Counts: ✅ 184 · ❌ 0 · ⚠️ 12 · 🚫 0 · ⛔ 1 · REVIEW 0 (total 197 rows, SRD-100..SRD-296).
 (SRD-216 was fixed in commit `ddc844a4`; see `## Fix batches` in the tracker.)
 
 Non-✅ rows:
@@ -5651,7 +5651,7 @@ All line numbers are **absolute file lines** (a text editor's numbering). Every 
 
 ## Summary
 
-Counts: **✅ 259**, **❌ 0**, **⚠️ 14**, **🚫 3**, **⛔ 0**, **REVIEW 1** — 277 rows, SRD-300..SRD-575 plus the `PRT-3` parent row.
+Counts: **✅ 260**, **❌ 0**, **⚠️ 14**, **🚫 3**, **⛔ 0**, **REVIEW 0** — 277 rows, SRD-300..SRD-575 plus the `PRT-3` parent row.
 (SRD-414 and SRD-415 were fixed in `e95d0269`, SRD-305/SRD-330 in `555a8702`, SRD-399/SRD-457 in `18c9af19` and the `PRT-3` parent row in `90ac9a0f`; see `## Fix batches` in the tracker.)
 
 Classification notes: (a) Slang-vs-WGSL is the recorded project convention and is not itself a mismatch — each shader row states whether the maths/bindings are equivalent, and the WGSL→Slang matrix-orientation compensation in `ColorMaterialUniform::uv_transform` and `Mesh2dUniform::world_from_local` was re-derived against `bevy_render/src/maths.wgsl` and found equivalent. (b) Missing 2D-text features that `tmp/tracker-text-rows.md` item (4) already records as deliberately deferred (spans/per-span colours, `Text2dShadow`, `Underline`/`Strikethrough`/`TextBackgroundColor`, `TextLayoutInfo::scale_factor`) are marked ⚠️, matching the classification rule the sibling section used. (c) The sibling section (`sprite_render-render.md`) already enumerated `texture_slice/mod.rs` + `computed_slices.rs` as SRD-279..SRD-296, so those files get no rows here (see *Not audited*).
