@@ -641,3 +641,76 @@ TEST(RenderWorld, CameraWithUnnormalizableTargetIsStillExtracted) {
 
     app.insert_sub_app(Render, std::move(render_sub));
 }
+
+/** @brief Bevy's size destructuring in `extract_cameras` has no `else`
+ *  (`bevy_render/src/camera.rs:489-506`): a camera that cannot resolve its viewport
+ *  rect, viewport size or target size is left exactly as the previous frame
+ *  extracted it. This port used to remove the whole view in that case and drop the
+ *  camera for the frame (CAM-122). `prepare_view_targets` removes the `ViewTarget`
+ *  in the same situation (`bevy_render/src/view/mod.rs:1077-1090`, CAM-123), so the
+ *  retained view has nothing to render into until a size resolves again - which is
+ *  what the second half of this test checks. */
+TEST(RenderWorld, CameraThatLosesItsTargetSizeKeepsTheExtractedView) {
+    App app = App::create();
+    app.add_events<epix::window::WindowClosed>();
+    add_render_test_prerequisites(app);
+    try {
+        app.add_plugins(RenderPlugin{});
+    } catch (const std::exception& e) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << e.what();
+        return;
+    }
+    ready_render_plugins(app);
+    app.run_schedule(Startup);
+    app.add_plugins(epix::core_graph::core_3d::Core3dPlugin{});
+    {
+        const auto fullscreen = epix::assets::Handle<epix::shader::Shader>{
+            epix::assets::AssetId<epix::shader::Shader>::invalid()};
+        auto render_app = app.get_sub_app_mut(Render);
+        ASSERT_TRUE(render_app.has_value());
+        render_app->get().world_mut().insert_resource(epix::core_graph::FullscreenShader{fullscreen});
+    }
+
+    const Entity camera_main = app.world_mut()
+                                   .spawn(::epix::camera::Camera{}, ::epix::camera::Camera3d{},
+                                          epix::transform::GlobalTransform{})
+                                   .id();
+    app.world_mut().get_entity_mut(camera_main).transform([](EntityWorldMut&& ew) -> int {
+        ew.get_mut<::epix::camera::Camera>().value().get_mut().computed.target_info =
+            ::epix::camera::RenderTargetInfo{glm::uvec2(1280, 720), 1.0f};
+        return 0;
+    });
+
+    auto render_sub = app.take_sub_app(Render);
+    ASSERT_TRUE(render_sub) << "Render sub-app not found";
+    render_sub->extract(app);
+    render_sub->update();
+
+    auto render_entity = get_render_entity(app.world(), camera_main);
+    ASSERT_TRUE(render_entity.has_value()) << "Camera was not synced to the render world";
+    const auto has_extracted = [&] {
+        return render_sub->world()
+            .get_entity(*render_entity)
+            .and_then([](const EntityRef& e) { return e.get<camera::ExtractedCamera>(); })
+            .has_value();
+    };
+    ASSERT_TRUE(has_extracted()) << "the first frame resolves its sizes, so the camera is extracted";
+
+    // The target size goes away - the window is gone, so nothing can resolve it.
+    app.world_mut().get_entity_mut(camera_main).transform([](EntityWorldMut&& ew) -> int {
+        ew.get_mut<::epix::camera::Camera>().value().get_mut().computed.target_info.reset();
+        return 0;
+    });
+    render_sub->extract(app);
+    render_sub->update();
+
+    EXPECT_TRUE(has_extracted())
+        << "Bevy's if-let has no else: the previous frame's view survives an unresolvable size";
+    EXPECT_FALSE(render_sub->world()
+                     .get_entity(*render_entity)
+                     .and_then([](const EntityRef& e) { return e.get<view::ViewTarget>(); })
+                     .has_value())
+        << "and CAM-123 clears the ViewTarget so the retained view cannot render";
+
+    app.insert_sub_app(Render, std::move(render_sub));
+}

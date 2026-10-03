@@ -527,7 +527,16 @@ void camera::extract_cameras(
         const auto target_size   = camera.physical_target_size();
         const auto viewport_size = camera.physical_viewport_size();
         const auto viewport_rect = camera.physical_viewport_rect();
-        if (!target_size || !viewport_size || !viewport_rect || target_size->x == 0 || target_size->y == 0) {
+        if (!target_size || !viewport_size || !viewport_rect) {
+            // Bevy destructures these three facts in one `if let` with no `else`
+            // (camera.rs:489-506), so a camera that cannot resolve its sizes is left
+            // exactly as the previous frame extracted it. This port used to remove
+            // the view here, which dropped the camera for that frame (CAM-122);
+            // `prepare_view_target` removes the ViewTarget in the same situation
+            // (CAM-123), so nothing renders to the stale target in the meantime.
+            continue;
+        }
+        if (target_size->x == 0 || target_size->y == 0) {
             remove_camera_view();
             continue;
         }
