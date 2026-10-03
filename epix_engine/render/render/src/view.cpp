@@ -146,7 +146,17 @@ void view::prepare_view_target(Query<Item<Entity,
     // compatible A/B targets among cameras during one preparation pass.
     std::unordered_map<std::string, SharedMainTextures> shared_main_textures;
     for (auto&& [entity, camera, view, texture_usage, msaa] : views.iter()) {
-        if (!camera.target || !camera.physical_target_size) continue;
+        if (!camera.target || !camera.physical_target_size) {
+            // Bevy destructures the target size and the output attachment in ONE
+            // `let .. else` (view/mod.rs:1077-1090) and removes the ViewTarget when
+            // either is missing, "to make sure the camera doesn't try rendering to
+            // an invalid output attachment". This port had split the condition: the
+            // missing-attachment case removed it (below), the missing-target/size
+            // case left a stale one behind - which a camera whose target stops
+            // resolving then rendered through (CAM-123).
+            cmd.entity(entity).template remove<view::ViewTarget>();
+            continue;
+        }
         const auto& normalized_target = *camera.target;
         const auto attachment_it      = view_target_attachments->attachments.find(normalized_target.identity());
         if (attachment_it == view_target_attachments->attachments.end()) {
@@ -521,11 +531,14 @@ void camera::extract_cameras(
             remove_camera_view();
             continue;
         }
-        auto normalized_target = target.normalize(primary);
-        if (!normalized_target.has_value()) {
-            remove_camera_view();
-            continue;
-        }
+        // Bevy normalizes the target inside the insert and keeps the camera even
+        // when it answers `None` (camera.rs:405,532): the extracted camera, view and
+        // visible entities all exist with a null target, and the downstream systems
+        // skip it - `sort_cameras` assigns no per-target index, `prepare_view_target`
+        // removes the ViewTarget so nothing renders to a stale output attachment
+        // (CAM-123), and `CameraDriverNode` still runs the graph because only a
+        // *window* target can veto it (camera_driver_node.rs:43-55).
+        auto normalized_target      = target.normalize(primary);
         const auto viewport_origin = viewport_rect->first;
 
         // Bevy represents HDR as a dedicated marker component.
@@ -545,7 +558,7 @@ void camera::extract_cameras(
         // single call to insert to reduce overhead
         commands.insert(
             ExtractedCamera{
-                .target                 = *normalized_target,
+                .target                 = normalized_target,
                 .physical_viewport_size = *viewport_size,
                 .physical_target_size   = *target_size,
                 .viewport               = camera.viewport,

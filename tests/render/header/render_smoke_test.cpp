@@ -563,3 +563,81 @@ TEST(RenderWorld, ExtractVisibleComponentsSkipsCulled) {
 
     app.insert_sub_app(Render, std::move(render_sub));
 }
+
+#include <epix/core_graph/core3d.hpp>
+
+/** @brief Bevy extracts a camera even when its render target does not normalize:
+ *  the field is `Option<NormalizedRenderTarget>` (`bevy_render/src/camera.rs:405`)
+ *  and `extract_cameras` inserts it unconditionally at `:532`, leaving the later
+ *  systems to skip a null target - `sort_cameras` assigns no index,
+ *  `prepare_view_targets` bails, and `CameraDriverNode` still runs the graph
+ *  because only a *window* target can veto it
+ *  (`render_graph/camera_driver_node.rs:43-55`). The case that produces `None` is a
+ *  primary-window target in a world with no primary window
+ *  (`bevy_camera/src/camera.rs:845`), which is what CAM-121 fixed: the port used to
+ *  remove the camera view instead, so a headless camera left no trace in the render
+ *  world at all. */
+TEST(RenderWorld, CameraWithUnnormalizableTargetIsStillExtracted) {
+    App app = App::create();
+    app.add_events<epix::window::WindowClosed>();
+    add_render_test_prerequisites(app);
+    try {
+        app.add_plugins(RenderPlugin{});
+    } catch (const std::exception& e) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << e.what();
+        return;
+    }
+    ready_render_plugins(app);
+    app.run_schedule(Startup);
+    // Core3dPlugin is what gives Camera3d its `CameraRenderGraph`, which
+    // `extract_cameras` queries for (non-optional), so the camera only matches the
+    // extraction query once the core 3D plugin is installed. Its skybox
+    // `RenderStartup` system needs the fullscreen-shader resource, which
+    // `CoreGraphPlugin` supplies in a real app (see `core3d_tests.cpp`).
+    app.add_plugins(epix::core_graph::core_3d::Core3dPlugin{});
+    {
+        const auto fullscreen = epix::assets::Handle<epix::shader::Shader>{
+            epix::assets::AssetId<epix::shader::Shader>::invalid()};
+        auto render_app = app.get_sub_app_mut(Render);
+        ASSERT_TRUE(render_app.has_value());
+        render_app->get().world_mut().insert_resource(epix::core_graph::FullscreenShader{fullscreen});
+    }
+
+    // No WindowPlugin and no window entity: a camera whose `RenderTarget` is the
+    // default `Window(WindowRef::Primary)` cannot normalize. Give it a resolved
+    // target *size* as well, because that is what the viewport/target accessors
+    // read and it is the state a camera keeps when its window goes away - the
+    // combination Bevy's `Option` target exists to model. `GlobalTransform` is
+    // supplied explicitly because this fixture installs no transform plugin, and
+    // `extract_cameras` queries for it (non-optional) as Bevy does.
+    const Entity camera_main = app.world_mut()
+                                   .spawn(::epix::camera::Camera{}, ::epix::camera::Camera3d{},
+                                          epix::transform::GlobalTransform{})
+                                   .id();
+    app.world_mut().get_entity_mut(camera_main).transform([](EntityWorldMut&& ew) -> int {
+        ew.get_mut<::epix::camera::Camera>().value().get_mut().computed.target_info =
+            ::epix::camera::RenderTargetInfo{glm::uvec2(1280, 720), 1.0f};
+        return 0;
+    });
+
+    auto render_sub = app.take_sub_app(Render);
+    ASSERT_TRUE(render_sub) << "Render sub-app not found";
+    render_sub->extract(app);
+    render_sub->update();
+
+    auto render_entity = get_render_entity(app.world(), camera_main);
+    ASSERT_TRUE(render_entity.has_value()) << "Camera was not synced to the render world";
+    auto extracted = render_sub->world()
+                         .get_entity(*render_entity)
+                         .and_then([](const EntityRef& e) { return e.get<camera::ExtractedCamera>(); });
+    ASSERT_TRUE(extracted.has_value()) << "Bevy keeps the extracted camera when its target is None";
+    EXPECT_FALSE(extracted->get().target.has_value()) << "the target stays null rather than being resolved";
+    // Bevy inserts the whole component tuple in one call, so the view is there too.
+    EXPECT_TRUE(render_sub->world()
+                    .get_entity(*render_entity)
+                    .and_then([](const EntityRef& e) { return e.get<view::ExtractedView>(); })
+                    .has_value())
+        << "ExtractedView is part of the same insert";
+
+    app.insert_sub_app(Render, std::move(render_sub));
+}
