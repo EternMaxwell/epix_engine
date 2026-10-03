@@ -208,8 +208,8 @@ RenderTargetId NormalizedRenderTarget::identity() const noexcept {
 }
 
 void OrthographicProjection::update(float width, float height) {
-    float projection_width  = rect.right - rect.left;
-    float projection_height = rect.top - rect.bottom;
+    float projection_width  = area.right - area.left;
+    float projection_height = area.top - area.bottom;
     std::visit(utils::visitor{[&](const ScalingMode::Fixed& fixed) {
                                   projection_width  = fixed.width;
                                   projection_height = fixed.height;
@@ -245,10 +245,10 @@ void OrthographicProjection::update(float width, float height) {
                                   projection_height = height * fixed_horizontal.viewport_width / width;
                               }},
                scaling_mode);
-    rect.left   = -projection_width * viewport_origin.x * scale;
-    rect.right  = projection_width * scale + rect.left;
-    rect.bottom = -projection_height * viewport_origin.y * scale;
-    rect.top    = projection_height * scale + rect.bottom;
+    area.left   = -projection_width * viewport_origin.x * scale;
+    area.right  = projection_width * scale + area.left;
+    area.bottom = -projection_height * viewport_origin.y * scale;
+    area.top    = projection_height * scale + area.bottom;
 }
 
 // ==== Visibility systems (Bevy bevy_camera::visibility) ====
