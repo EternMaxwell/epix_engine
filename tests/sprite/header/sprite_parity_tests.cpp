@@ -495,3 +495,30 @@ TEST(Sprite, ComputesPixelSpacePointWithZeroCustomSize) {
     ASSERT_FALSE(third.has_value());
     EXPECT_EQ(third.error(), (glm::vec2{0.0f, -35.0f}));
 }
+
+// Bevy `calculate_bounds_2d_correct_aabb_for_sprite_with_custom_rect` (lib.rs:312-358):
+// `Sprite::rect` supplies the size - ahead of the image's own - with a `TOP_RIGHT` anchor, and
+// Bevy asserts the exact centre and half extents.
+TEST(CalculateBounds2d, SizesAabbFromTheSpriteRect) {
+    auto app = epix::app::App::create();
+    app.add_plugins(epix::assets::AssetPlugin{});
+    app.add_plugins(image::ImagePlugin{});
+    app.add_plugins(epix::mesh::MeshPlugin{});
+    app.add_plugins(epix::camera::CameraPlugin{});
+    app.add_plugins(sprite::SpritePlugin{});
+
+    // Bevy's fixture inserts `Image::default()`, a 1x1 image, so the rect is what decides the
+    // size: `custom_size`, then `rect`, then the atlas rect or the image size (lib.rs:167-179).
+    const auto image_handle = app.world_mut().resource_mut<epix::assets::Assets<image::Image>>().emplace(
+        image::Image::create2d(1, 1, wgpu::TextureFormat::eRGBA8Unorm));
+    auto sprite = sprite::Sprite::from_image(image_handle);
+    sprite.rect = image::Rect{{0.0f, 0.0f}, {0.5f, 1.0f}};
+    const auto entity = app.world_mut().spawn(sprite, sprite::Anchor::TOP_RIGHT).id();
+
+    app.update();
+
+    const auto aabb_ref = app.world().entity(entity).get<epix::camera::Aabb>();
+    ASSERT_TRUE(aabb_ref.has_value()) << "a sprite with a rect should have an AABB";
+    EXPECT_EQ(aabb_ref->get().center, glm::vec3(-0.25f, -0.5f, 0.0f));
+    EXPECT_EQ(aabb_ref->get().half_extents, glm::vec3(0.25f, 0.5f, 0.0f));
+}
