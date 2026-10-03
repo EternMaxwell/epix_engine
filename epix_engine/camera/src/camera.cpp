@@ -504,7 +504,18 @@ void CameraPlugin::attach(App& app) {
     // window messages consumed by its Bevy-compatible update system.
     app.add_events<::epix::window::WindowResized, ::epix::window::WindowCreated,
                    ::epix::window::WindowScaleFactorChanged>();
-    app.add_systems(app::PostUpdate, into(camera_system).in_set(CameraUpdateSystems::CameraUpdateSystem));
+    // Bevy registers this in both schedules (bevy_render/src/camera.rs:64-71):
+    // PostStartup so a camera's computed target and clip matrix are valid before
+    // the first PostUpdate, and PostUpdate for the steady state. Of Bevy's two
+    // PostUpdate edges, the one before `update_frusta` is the set ordering
+    // CameraProjectionPlugin declares; the one before the asset event set has no
+    // counterpart here, because this port writes asset events outside PostUpdate.
+    app.add_systems(app::PostStartup,
+                    into(camera_system).in_set(CameraUpdateSystems::CameraUpdateSystem)
+                        .set_name("camera system (startup)"));
+    app.add_systems(app::PostUpdate,
+                    into(camera_system).in_set(CameraUpdateSystems::CameraUpdateSystem)
+                        .set_name("camera system"));
     // ClearColor extraction to the render world is registered by the render
     // module's RenderPlugin, like bevy_render.
     // Bevy CameraPlugin::build uses init_resource, preserving an application

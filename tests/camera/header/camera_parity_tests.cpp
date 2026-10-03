@@ -273,7 +273,12 @@ TEST(CameraSystem, MatchesBevyChangeSensitiveLogicalAndDpiUpdates) {
                                      .id();
 
     app.update();
-    EXPECT_EQ(*updates, 1);
+    // Bevy runs camera_system once in PostStartup and once in PostUpdate, both in
+    // CameraUpdateSystems (`bevy_render/src/camera.rs:64-71`), so the first frame
+    // counts two updates; what this test pins is that the count then stays put
+    // until something change-sensitive actually changes.
+    EXPECT_EQ(*updates, 2);
+    const int baseline = *updates;
     const auto& initial_camera = app.world().entity(camera_entity).get<::epix::camera::Camera>()->get();
     ASSERT_TRUE(initial_camera.logical_viewport_size());
     EXPECT_EQ(*initial_camera.logical_viewport_size(), glm::vec2(40.0f, 20.0f));
@@ -281,14 +286,14 @@ TEST(CameraSystem, MatchesBevyChangeSensitiveLogicalAndDpiUpdates) {
     // No target/projection/viewport/sub-view change means no redundant
     // projection update on the following frame.
     app.update();
-    EXPECT_EQ(*updates, 1);
+    EXPECT_EQ(*updates, baseline);
 
     app.world_mut().entity_mut(window).get_mut<::epix::window::Window>()->get_mut().physical_size = {800, 400};
     app.world_mut().entity_mut(window).get_mut<::epix::window::Window>()->get_mut().scale_factor = 2.0f;
     app.world_mut().resource_mut<Events<::epix::window::WindowScaleFactorChanged>>().push({window, 2.0f});
     app.update();
 
-    EXPECT_EQ(*updates, 2);
+    EXPECT_EQ(*updates, baseline + 1);
     const auto& dpi_camera = app.world().entity(camera_entity).get<::epix::camera::Camera>()->get();
     ASSERT_TRUE(dpi_camera.viewport);
     EXPECT_EQ(dpi_camera.viewport->physical_position, glm::uvec2(20, 10));
@@ -684,4 +689,22 @@ TEST(VisibilityPlugin, Mesh2dReceivesRequiredVisibilityComponents) {
     ASSERT_TRUE(classes.has_value());
     const auto mesh2d_type = ::epix::meta::type_index(::epix::meta::type_id<::epix::mesh::Mesh2d>());
     EXPECT_NE(std::ranges::find(classes->get().classes, mesh2d_type), classes->get().classes.end());
+}
+
+/** @brief Bevy registers `camera_system` in **both** `PostStartup` and
+ *  `PostUpdate`, each in `CameraUpdateSystems` (`bevy_render/src/camera.rs:64-71`).
+ *  The `PostStartup` run is what makes a camera's computed target and clip matrix
+ *  valid before the first `PostUpdate`, so anything reading them during startup
+ *  sees real values; the port registered it in `PostUpdate` only. */
+TEST(CameraPlugin, RegistersCameraSystemInPostStartupAndPostUpdate) {
+    auto app = epix::app::App::create();
+    app.add_plugins(::epix::camera::CameraPlugin{});
+
+    const auto label = SystemSetLabel(&::epix::camera::camera_system);
+    app.world_mut().resource_scope([&](Schedules& schedules, World&) {
+        EXPECT_TRUE(schedules.schedule_mut(::epix::app::PostStartup).contains_system(label))
+            << "Bevy's PostStartup run is what gives a camera valid values before the first frame";
+        EXPECT_TRUE(schedules.schedule_mut(::epix::app::PostUpdate).contains_system(label))
+            << "and PostUpdate keeps them current afterwards";
+    });
 }
