@@ -341,3 +341,157 @@ TEST(TextureSlicer, NonUniformZeroWidthCornersMatchBevy) {
                   .offset       = {-50.0f, 45.0f},
               }));
 }
+
+// Bevy `compute_pixel_space_point_for_sprite_with_anchor_flip_x` (sprite.rs:409-431):
+// `flip_x` mirrors the point about the sprite's vertical centre line, in the `Ok` arm and in
+// the `Err` arm that reports the clipped pixel-space point.
+TEST(Sprite, ComputesPixelSpacePointWithFlipX) {
+    epix::assets::Assets<image::Image> images;
+    epix::assets::Assets<image::TextureAtlasLayout> layouts;
+    const auto source = images.emplace(image::Image::create2d(5, 10, wgpu::TextureFormat::eRGBA8Unorm));
+
+    const auto flipped = sprite::Sprite{.image = source, .flip_x = true};
+    const auto compute = [&](glm::vec2 point) {
+        return flipped.compute_pixel_space_point(point, sprite::Anchor::BOTTOM_LEFT, images, layouts);
+    };
+
+    EXPECT_EQ(compute({0.5f, 9.5f}), (glm::vec2{4.5f, 0.5f}));
+    EXPECT_EQ(compute({2.5f, 5.0f}), (glm::vec2{2.5f, 5.0f}));
+    EXPECT_EQ(compute({2.5f, 9.5f}), (glm::vec2{2.5f, 0.5f}));
+
+    const auto right_outside = compute({5.5f, 5.0f});
+    ASSERT_FALSE(right_outside.has_value());
+    EXPECT_EQ(right_outside.error(), (glm::vec2{-0.5f, 5.0f}));
+    const auto left_outside = compute({-0.5f, 5.0f});
+    ASSERT_FALSE(left_outside.has_value());
+    EXPECT_EQ(left_outside.error(), (glm::vec2{5.5f, 5.0f}));
+}
+
+// Bevy `compute_pixel_space_point_for_sprite_with_anchor_flip_y` (sprite.rs:433-455).
+TEST(Sprite, ComputesPixelSpacePointWithFlipY) {
+    epix::assets::Assets<image::Image> images;
+    epix::assets::Assets<image::TextureAtlasLayout> layouts;
+    const auto source = images.emplace(image::Image::create2d(5, 10, wgpu::TextureFormat::eRGBA8Unorm));
+
+    const auto flipped = sprite::Sprite{.image = source, .flip_y = true};
+    const auto compute = [&](glm::vec2 point) {
+        return flipped.compute_pixel_space_point(point, sprite::Anchor::TOP_RIGHT, images, layouts);
+    };
+
+    EXPECT_EQ(compute({-4.5f, -0.5f}), (glm::vec2{0.5f, 9.5f}));
+    EXPECT_EQ(compute({-2.5f, -5.0f}), (glm::vec2{2.5f, 5.0f}));
+    EXPECT_EQ(compute({-2.5f, -0.5f}), (glm::vec2{2.5f, 9.5f}));
+
+    const auto right_outside = compute({0.5f, -5.0f});
+    ASSERT_FALSE(right_outside.has_value());
+    EXPECT_EQ(right_outside.error(), (glm::vec2{5.5f, 5.0f}));
+    const auto left_outside = compute({-5.5f, -5.0f});
+    ASSERT_FALSE(left_outside.has_value());
+    EXPECT_EQ(left_outside.error(), (glm::vec2{-0.5f, 5.0f}));
+}
+
+// Bevy `compute_pixel_space_point_for_sprite_with_rect` (sprite.rs:457-477): the `rect`
+// offsets the point into image space, and a point outside the rect but still inside the
+// image is an `Err`.
+TEST(Sprite, ComputesPixelSpacePointWithRect) {
+    epix::assets::Assets<image::Image> images;
+    epix::assets::Assets<image::TextureAtlasLayout> layouts;
+    const auto source = images.emplace(image::Image::create2d(5, 10, wgpu::TextureFormat::eRGBA8Unorm));
+
+    const auto cropped = sprite::Sprite{.image = source, .rect = image::Rect{{1.5f, 3.0f}, {3.0f, 9.5f}}};
+    const auto compute = [&](glm::vec2 point) {
+        return cropped.compute_pixel_space_point(point, sprite::Anchor::BOTTOM_LEFT, images, layouts);
+    };
+
+    EXPECT_EQ(compute({0.5f, 0.5f}), (glm::vec2{2.0f, 9.0f}));
+    // The pixel is outside the rect, but is still a valid pixel in the image.
+    const auto outside_rect = compute({2.0f, 2.5f});
+    ASSERT_FALSE(outside_rect.has_value());
+    EXPECT_EQ(outside_rect.error(), (glm::vec2{3.5f, 7.0f}));
+}
+
+// Bevy `compute_pixel_space_point_for_texture_atlas_sprite` (sprite.rs:479-506), whose
+// in-rect arm the existing atlas test already covers; this ports the `Err` arm too.
+TEST(Sprite, ComputesPixelSpacePointForAtlasSpriteOutsideTheAtlas) {
+    epix::assets::Assets<image::Image> images;
+    epix::assets::Assets<image::TextureAtlasLayout> layouts;
+    const auto source = images.emplace(image::Image::create2d(5, 10, wgpu::TextureFormat::eRGBA8Unorm));
+    const auto layout = layouts.emplace(image::TextureAtlasLayout{
+        .size = {5, 10}, .textures = {image::URect{{1, 1}, {4, 4}}}});
+
+    const auto atlas = sprite::Sprite::from_atlas_image(source, image::TextureAtlas{layout, 0});
+    const auto compute = [&](glm::vec2 point) {
+        return atlas.compute_pixel_space_point(point, sprite::Anchor::BOTTOM_LEFT, images, layouts);
+    };
+
+    EXPECT_EQ(compute({0.5f, 0.5f}), (glm::vec2{1.5f, 3.5f}));
+    // The pixel is outside the texture atlas, but is still a valid pixel in the image.
+    const auto outside_atlas = compute({4.0f, 2.5f});
+    ASSERT_FALSE(outside_atlas.has_value());
+    EXPECT_EQ(outside_atlas.error(), (glm::vec2{5.0f, 1.5f}));
+}
+
+// Bevy `compute_pixel_space_point_for_texture_atlas_sprite_with_rect` (sprite.rs:508-537): the
+// rect is relative to the texture-atlas sprite.
+TEST(Sprite, ComputesPixelSpacePointForAtlasSpriteWithRect) {
+    epix::assets::Assets<image::Image> images;
+    epix::assets::Assets<image::TextureAtlasLayout> layouts;
+    const auto source = images.emplace(image::Image::create2d(5, 10, wgpu::TextureFormat::eRGBA8Unorm));
+    const auto layout = layouts.emplace(image::TextureAtlasLayout{
+        .size = {5, 10}, .textures = {image::URect{{1, 1}, {4, 4}}}});
+
+    auto atlas = sprite::Sprite::from_atlas_image(source, image::TextureAtlas{layout, 0});
+    atlas.rect = image::Rect{{1.5f, 1.5f}, {3.0f, 3.0f}};
+    const auto compute = [&](glm::vec2 point) {
+        return atlas.compute_pixel_space_point(point, sprite::Anchor::BOTTOM_LEFT, images, layouts);
+    };
+
+    EXPECT_EQ(compute({0.5f, 0.5f}), (glm::vec2{3.0f, 3.5f}));
+    const auto outside_atlas = compute({4.0f, 2.5f});
+    ASSERT_FALSE(outside_atlas.has_value());
+    EXPECT_EQ(outside_atlas.error(), (glm::vec2{6.5f, 1.5f}));
+}
+
+// Bevy `compute_pixel_space_point_for_sprite_with_custom_size_and_rect`
+// (sprite.rs:539-565): `custom_size` scales the point and the rect crops it.
+TEST(Sprite, ComputesPixelSpacePointWithCustomSizeAndRect) {
+    epix::assets::Assets<image::Image> images;
+    epix::assets::Assets<image::TextureAtlasLayout> layouts;
+    const auto source = images.emplace(image::Image::create2d(5, 10, wgpu::TextureFormat::eRGBA8Unorm));
+
+    const auto scaled = sprite::Sprite{.image        = source,
+                                       .custom_size  = glm::vec2(100.0f, 50.0f),
+                                       .rect         = image::Rect{{0.0f, 0.0f}, {5.0f, 5.0f}}};
+    const auto compute = [&](glm::vec2 point) {
+        return scaled.compute_pixel_space_point(point, sprite::Anchor{}, images, layouts);
+    };
+
+    EXPECT_EQ(compute({30.0f, 15.0f}), (glm::vec2{4.0f, 1.0f}));
+    EXPECT_EQ(compute({-10.0f, -15.0f}), (glm::vec2{2.0f, 4.0f}));
+    const auto outside_rect = compute({0.0f, 35.0f});
+    ASSERT_FALSE(outside_rect.has_value());
+    EXPECT_EQ(outside_rect.error(), (glm::vec2{2.5f, -1.0f}));
+}
+
+// Bevy `compute_pixel_space_point_for_sprite_with_zero_custom_size` (sprite.rs:567-595): a
+// zero-sized sprite has no in-range pixel, so every point reports its clipped value.
+TEST(Sprite, ComputesPixelSpacePointWithZeroCustomSize) {
+    epix::assets::Assets<image::Image> images;
+    epix::assets::Assets<image::TextureAtlasLayout> layouts;
+    const auto source = images.emplace(image::Image::create2d(5, 10, wgpu::TextureFormat::eRGBA8Unorm));
+
+    const auto empty = sprite::Sprite{.image = source, .custom_size = glm::vec2(0.0f, 0.0f)};
+    const auto compute = [&](glm::vec2 point) {
+        return empty.compute_pixel_space_point(point, sprite::Anchor{}, images, layouts);
+    };
+
+    const auto first = compute({30.0f, 15.0f});
+    ASSERT_FALSE(first.has_value());
+    EXPECT_EQ(first.error(), (glm::vec2{30.0f, -15.0f}));
+    const auto second = compute({-10.0f, -15.0f});
+    ASSERT_FALSE(second.has_value());
+    EXPECT_EQ(second.error(), (glm::vec2{-10.0f, 15.0f}));
+    const auto third = compute({0.0f, 35.0f});
+    ASSERT_FALSE(third.has_value());
+    EXPECT_EQ(third.error(), (glm::vec2{0.0f, -35.0f}));
+}
