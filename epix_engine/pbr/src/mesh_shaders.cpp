@@ -1549,14 +1549,13 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
         epix::ecs::sets(MeshExtractionSystems::Extract)
             .after(epix::render::view::extract_visibility_ranges)
             .after(late_sweep_material_instances));
-    // Bevy's `Render`-schedule block, as far as the port has the systems for it: the
-    // three that exist are registered in their sets, and the three that do not
-    // (`set_mesh_motion_vector_flags`, `prepare_mesh_bind_groups`, and
-    // `prepare_mesh_view_bind_groups`, which `PBR-302` records as gated) are named
-    // against `PBR-109` rather than left to be noticed.
+    // Bevy's `Render`-schedule block, as far as the port has the systems for it: four of
+    // the six are registered in their sets, and the two that do not exist
+    // (`prepare_mesh_bind_groups` and `prepare_mesh_view_bind_groups`, which `PBR-302`
+    // records as gated) are named against `PBR-109` rather than left to be noticed.
     // `set_mesh_motion_vector_flags` is Bevy's only writer of the motion-vector
     // flags; it needs `RenderMeshInstances` (inserted above) and `SkinUniforms`
-    // (built in `ready`, where the device exists).
+    // (built in `ready`, where the device exists), and is registered here.
     render_app->get().add_systems(
         epix::app::ScheduleInfo(epix::render::Render),
         epix::ecs::into(set_mesh_motion_vector_flags)
