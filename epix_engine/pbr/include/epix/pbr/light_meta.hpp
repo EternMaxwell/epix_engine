@@ -9,6 +9,7 @@
 #include <epix/render.hpp>
 #include <numbers>
 #include <optional>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -168,6 +169,37 @@ EPIX_EXPORT struct PointLightFlags {
     static constexpr std::uint32_t UNINITIALIZED                    = 0xFFFF;
 };
 
+/** @brief The render-world twin of a light view's visible-entity list (Bevy
+ *  `RenderVisibleMeshEntities`, `bevy_pbr/src/components.rs:8-13`): pairs of the
+ *  render entity and the main-world entity it was synced from.
+ *
+ *  Deliberately not the camera's `VisibleMeshEntities`, which holds main-world
+ *  entities only; this is what a light's shadow view actually draws. Bevy also
+ *  derives `Deref`/`DerefMut` over the vector, which the public `entities` member
+ *  spells in C++. */
+EPIX_EXPORT struct RenderVisibleMeshEntities {
+    std::vector<std::pair<ecs::Entity, ::epix::render::sync_world::MainEntity>> entities;
+};
+
+/** @brief The six faces' visible-entity lists a point light's cubemap view keeps
+ *  (Bevy `RenderCubemapVisibleEntities`, `bevy_pbr/src/components.rs:15-38`).
+ *
+ *  Bevy keeps `data` crate-private and reads it through the four accessors below;
+ *  the same split is kept here. */
+EPIX_EXPORT struct RenderCubemapVisibleEntities {
+    /** @brief The list for cube face @p i (Bevy `RenderCubemapVisibleEntities::get`). */
+    const RenderVisibleMeshEntities& get(std::size_t i) const { return data[i]; }
+    /** @brief The list for cube face @p i, for writing (Bevy `...::get_mut`). */
+    RenderVisibleMeshEntities& get_mut(std::size_t i) { return data[i]; }
+    /** @brief The six face lists in order (Bevy `...::iter`). */
+    std::span<const RenderVisibleMeshEntities, 6> iter() const noexcept { return data; }
+    /** @brief The six face lists in order, for writing (Bevy `...::iter_mut`). */
+    std::span<RenderVisibleMeshEntities, 6> iter_mut() noexcept { return data; }
+
+   private:
+    std::array<RenderVisibleMeshEntities, 6> data;
+};
+
 /** @brief A point light as extracted for the render world (Bevy
  *  `ExtractedPointLight`, `render/light.rs:69-86`).
  *
@@ -181,8 +213,11 @@ EPIX_EXPORT struct ExtractedPointLight {
     float intensity = 0.0f;
     float range     = 0.0f;
     float radius    = 0.0f;
-    /** @brief The light's global transform, unless it is a spot light, in which
-     *  case Bevy rebuilds it from the translation alone. */
+    /** @brief The light's global transform (Bevy `ExtractedPointLight::transform`,
+     *  `render/light.rs:412` for a point light and `:477` for a spot light - both take
+     *  the whole transform). A spot light's cone direction is its forward axis
+     *  (`light.rs:920`); only the light's *shadow view* basis is rebuilt from it, by
+     *  `spot_light_world_from_view`. */
     glm::mat4 transform{1.0f};
     bool shadows_enabled     = false;
     float shadow_depth_bias  = 0.0f;
@@ -341,8 +376,10 @@ EPIX_EXPORT inline glm::vec4 pack_light_color_intensity_range(glm::vec4 color, f
  *  own position in the spot block. Getting either comparison wrong silently
  *  assigns the wrong lights shadow maps.
  *
- *  Two further details: the volumetric flag requires shadows as well as
- *  volumetrics, and the lightmapped flag stands alone. */
+ *  Three further details: the volumetric flag requires shadows as well as
+ *  volumetrics, the lightmapped flag stands alone, and a spot light carries
+ *  `SPOT_LIGHT_Y_NEGATIVE` when its forward axis points below the horizon
+ *  (`light.rs:920-923`), which is what tells the shader to flip the cone. */
 EPIX_EXPORT EPIX_API std::uint32_t point_light_gpu_flags(std::size_t index,
                                                        const ExtractedPointLight& light,
                                                        const LightCounts& counts);

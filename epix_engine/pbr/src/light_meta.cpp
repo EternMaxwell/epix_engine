@@ -102,6 +102,15 @@ std::uint32_t point_light_gpu_flags(std::size_t index,
         (index < counts.point_light_shadow_maps || (is_spot && in_block < counts.spot_light_shadow_maps))) {
         flags |= PointLightFlags::SHADOWS_ENABLED;
     }
+    if (is_spot) {
+        // Bevy reads `light.transform.forward()` here - the light's local -Z axis, taken
+        // from the rotation alone - and sets the bit when its Y is negative, because the
+        // shader flips the cone around Y for those lights (light.rs:920-923).
+        const glm::vec3 light_direction = -glm::normalize(glm::vec3(light.transform[2]));
+        if (spot_light_y_negative(light_direction)) {
+            flags |= PointLightFlags::SPOT_LIGHT_Y_NEGATIVE;
+        }
+    }
     if (light.shadows_enabled && light.volumetric &&
         (index < counts.point_light_volumetric_enabled ||
          (is_spot && in_block < counts.spot_light_volumetric_enabled))) {
