@@ -504,12 +504,9 @@ void CameraPlugin::attach(App& app) {
     // window messages consumed by its Bevy-compatible update system.
     app.add_events<::epix::window::WindowResized, ::epix::window::WindowCreated,
                    ::epix::window::WindowScaleFactorChanged>();
-    // Bevy registers this in both schedules (bevy_render/src/camera.rs:64-71):
-    // PostStartup so a camera's computed target and clip matrix are valid before
-    // the first PostUpdate, and PostUpdate for the steady state. Of Bevy's two
-    // PostUpdate edges, the one before `update_frusta` is the set ordering
-    // CameraProjectionPlugin declares; the one before the asset event set has no
-    // counterpart here, because this port writes asset events outside PostUpdate.
+    // Deliberate divergence from Bevy's file layout: `camera_system` is registered by
+    // this module's plugin so the public camera module works without the renderer
+    // (Bevy registers it in bevy_render, camera.rs:64-71). The scheduling is Bevy's.
     app.add_systems(app::PostStartup,
                     into(camera_system).in_set(CameraUpdateSystems::CameraUpdateSystem)
                         .set_name("camera system (startup)"));
