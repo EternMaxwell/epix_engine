@@ -47,10 +47,11 @@ struct Core3dProbe {
 void animate_clear_color(std::optional<ResMut<::epix::camera::ClearColor>> color, Res<time::Time<>> time) {
     if (!color) return;
     const float t = time->elapsed_secs();
-    auto& c       = *color.value();
-    c.r           = 0.5f + 0.5f * std::sin(t * 0.8f);
-    c.g           = 0.5f + 0.5f * std::sin(t * 1.3f + 2.0f);
-    c.b           = 0.5f + 0.5f * std::sin(t * 1.9f + 4.0f);
+    // Linear components, as the pass writes them, so the animated frames keep
+    // exactly the values this example has always produced.
+    *color.value() = ::epix::camera::ClearColor{::epix::color::Color::linear_rgba(
+        0.5f + 0.5f * std::sin(t * 0.8f), 0.5f + 0.5f * std::sin(t * 1.3f + 2.0f),
+        0.5f + 0.5f * std::sin(t * 1.9f + 4.0f), 1.0f)};
 }
 
 /** @brief Log the Core3D depth attachment and phase membership for the

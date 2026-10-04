@@ -43,7 +43,7 @@ std::optional<wgpu::BlendState> output_blend_for(const render::camera::Extracted
 
 std::optional<glm::vec4> output_clear_color(const render::camera::ExtractedCamera* camera, const ecs::World& world) {
     if (!camera) {
-        if (auto clear = world.get_resource<camera::ClearColor>()) return clear->get().to_vec4();
+        if (auto clear = world.get_resource<camera::ClearColor>()) return clear->get().to_linear_vec4();
         return std::nullopt;
     }
     const auto* write = std::get_if<camera::CameraOutputMode::Write>(&camera->output_mode);
@@ -52,7 +52,7 @@ std::optional<glm::vec4> output_clear_color(const render::camera::ExtractedCamer
         return ::epix::color::LinearRgba(custom->color).vec4();
     }
     if (!std::holds_alternative<camera::ClearColorConfig::None>(write->clear_color)) {
-        if (auto clear = world.get_resource<camera::ClearColor>()) return clear->get().to_vec4();
+        if (auto clear = world.get_resource<camera::ClearColor>()) return clear->get().to_linear_vec4();
     }
     return std::nullopt;
 }

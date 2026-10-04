@@ -60,7 +60,7 @@ struct ClearPassNode : render::graph::Node {
                 return ::epix::color::LinearRgba(custom->color).vec4();
             }
             return world.get_resource<::epix::camera::ClearColor>().transform(
-                [](const auto& color) { return color.get().to_vec4(); });
+                [](const auto& color) { return color.get().to_linear_vec4(); });
         }();
         auto pass = render_ctx.command_encoder().beginRenderPass(wgpu::RenderPassDescriptor().setColorAttachments(
             std::array{target.out_texture_color_attachment(clear_color)}));

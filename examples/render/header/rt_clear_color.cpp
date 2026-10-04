@@ -64,7 +64,7 @@ struct ClearPassNode : render::graph::Node {
                 return ::epix::color::LinearRgba(custom->color).vec4();
             }
             return world.get_resource<::epix::camera::ClearColor>().transform(
-                [](const auto& color) { return color.get().to_vec4(); });
+                [](const auto& color) { return color.get().to_linear_vec4(); });
         }();
         // Generate the clear buffer after graph execution on ComputeTaskPool.
         // The task owns a cloned view, so no render-world borrow crosses the
@@ -118,10 +118,11 @@ void animate_clear_color(std::optional<ResMut<::epix::camera::ClearColor>> color
     // scheduler validation error.
     if (!color) return;
     const float t = time->elapsed_secs();
-    auto& c       = *color.value();
-    c.r           = 0.5f + 0.5f * std::sin(t * 0.8f);
-    c.g           = 0.5f + 0.5f * std::sin(t * 1.3f + 2.0f);
-    c.b           = 0.5f + 0.5f * std::sin(t * 1.9f + 4.0f);
+    // Linear components, as the pass writes them, so the animated frames keep
+    // exactly the values this example has always produced.
+    *color.value() = ::epix::camera::ClearColor{::epix::color::Color::linear_rgba(
+        0.5f + 0.5f * std::sin(t * 0.8f), 0.5f + 0.5f * std::sin(t * 1.3f + 2.0f),
+        0.5f + 0.5f * std::sin(t * 1.9f + 4.0f), 1.0f)};
 }
 
 // Logs one FPS line per second from the main world.

@@ -252,7 +252,7 @@ void view::prepare_view_target(Query<Item<Entity,
             if (const auto* custom = std::get_if<::epix::camera::ClearColorConfig::Custom>(&camera.clear_color)) {
                 return ::epix::color::LinearRgba(custom->color).vec4();
             }
-            return global_clear_color->to_vec4();
+            return global_clear_color->to_linear_vec4();
         }();
         const auto& shared = shared_it->second;
         view::MainTargetTextures main_textures;
@@ -672,13 +672,14 @@ std::expected<void, graph::NodeRunError> epix::render::camera::CameraDriverNode:
     for (const auto& [entity, window] : windows->get().windows) {
         if (camera_windows.contains(entity) && render_ctx.has_command_encoder()) continue;
         if (!window.swapchain_texture_view) continue;
+        // The resource stores Bevy's color; a swapchain clear writes linear values.
+        const glm::vec4 clear = global_clear_color->get().to_linear_vec4();
         auto attachment = wgpu::RenderPassColorAttachment()
                               .setView(window.swapchain_texture_view)
                               .setDepthSlice(~0u)
                               .setLoadOp(wgpu::LoadOp::eClear)
                               .setStoreOp(wgpu::StoreOp::eStore)
-                              .setClearValue(wgpu::Color(global_clear_color->get().r, global_clear_color->get().g,
-                                                         global_clear_color->get().b, global_clear_color->get().a));
+                              .setClearValue(wgpu::Color(clear.r, clear.g, clear.b, clear.a));
         auto pass       = render_ctx.command_encoder().beginRenderPass(
             wgpu::RenderPassDescriptor().setColorAttachments(std::array{attachment}));
         pass.end();

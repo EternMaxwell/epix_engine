@@ -153,13 +153,15 @@ TEST(CameraOutput, ModesAndWritebackMatchBevy) {
 }
 
 TEST(ClearColor, DefaultMatchesBevyDarkGray) {
-    // bevy_camera::ClearColor::default() is Color::srgb_u8(43, 44, 47),
-    // converted to linear RGB before it is written through an sRGB target.
+    // bevy_camera::ClearColor::default() is Color::srgb_u8(43, 44, 47), stored
+    // as that color and converted to linear only where a target is written.
     const ::epix::camera::ClearColor clear;
-    EXPECT_NEAR(clear.r, 0.02415763f, 1e-7f);
-    EXPECT_NEAR(clear.g, 0.02518686f, 1e-7f);
-    EXPECT_NEAR(clear.b, 0.02842604f, 1e-7f);
-    EXPECT_FLOAT_EQ(clear.a, 1.0f);
+    EXPECT_EQ(*clear, ::epix::color::Color::srgb_u8(43, 44, 47));
+    const glm::vec4 linear = clear.to_linear_vec4();
+    EXPECT_NEAR(linear.r, 0.02415763f, 1e-7f);
+    EXPECT_NEAR(linear.g, 0.02518686f, 1e-7f);
+    EXPECT_NEAR(linear.b, 0.02842604f, 1e-7f);
+    EXPECT_FLOAT_EQ(linear.a, 1.0f);
 }
 
 TEST(SubCameraView, DefaultsMatchBevy) {
@@ -325,13 +327,13 @@ TEST(CameraSystem, MatchesBevyChangeSensitiveLogicalAndDpiUpdates) {
 
 TEST(CameraPlugin, PreservesPreconfiguredClearColor) {
     auto app = epix::app::App::create();
-    const ::epix::camera::ClearColor configured{0.25f, 0.5f, 0.75f, 1.0f};
+    const ::epix::camera::ClearColor configured{::epix::color::Color::linear_rgba(0.25f, 0.5f, 0.75f, 1.0f)};
     app.world_mut().insert_resource(configured);
 
     app.add_plugins(::epix::camera::CameraPlugin{});
 
     const auto& clear_color = app.world().resource<::epix::camera::ClearColor>();
-    EXPECT_EQ(clear_color.to_vec4(), configured.to_vec4());
+    EXPECT_EQ(clear_color, configured);
 }
 
 TEST(CameraMainTextureUsages, WithReturnsAugmentedCopy) {
