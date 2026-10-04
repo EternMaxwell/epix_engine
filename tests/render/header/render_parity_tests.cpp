@@ -1782,17 +1782,17 @@ TEST(RenderVisibilityRanges, InsertDedupAndAccessors) {
     view::RenderVisibilityRanges ranges;
 
     ::epix::camera::VisibilityRange crossfaded;
-    crossfaded.start_margin_start = 1.0f;
-    crossfaded.start_margin_end   = 5.0f;  // crossfade: margins differ
-    crossfaded.end_margin_start   = 45.0f;
-    crossfaded.end_margin_end     = 50.0f;
+    crossfaded.start_margin.first = 1.0f;
+    crossfaded.start_margin.second  = 5.0f;  // crossfade: margins differ
+    crossfaded.end_margin.first  = 45.0f;
+    crossfaded.end_margin.second   = 50.0f;
     EXPECT_FALSE(crossfaded.is_abrupt());
 
     ::epix::camera::VisibilityRange abrupt;
-    abrupt.start_margin_start = 1.0f;
-    abrupt.start_margin_end   = 1.0f;  // abrupt: start == end
-    abrupt.end_margin_start   = 50.0f;
-    abrupt.end_margin_end     = 50.0f;
+    abrupt.start_margin.first = 1.0f;
+    abrupt.start_margin.second  = 1.0f;  // abrupt: start == end
+    abrupt.end_margin.first  = 50.0f;
+    abrupt.end_margin.second   = 50.0f;
     EXPECT_TRUE(abrupt.is_abrupt());
 
     const sync_world::MainEntity e1{Entity::from_index(1)};
@@ -1859,17 +1859,17 @@ TEST(RenderVisibilityRanges, ExtractSystemPopulatesAndEarlyOuts) {
     render_world.insert_resource(view::RenderVisibilityRanges{});
 
     ::epix::camera::VisibilityRange crossfaded;
-    crossfaded.start_margin_start = 1.0f;
-    crossfaded.start_margin_end   = 5.0f;
-    crossfaded.end_margin_start   = 45.0f;
-    crossfaded.end_margin_end     = 50.0f;
+    crossfaded.start_margin.first = 1.0f;
+    crossfaded.start_margin.second  = 5.0f;
+    crossfaded.end_margin.first  = 45.0f;
+    crossfaded.end_margin.second   = 50.0f;
     Entity e1                     = main_world.spawn(crossfaded).id();
     Entity e2                     = main_world.spawn(crossfaded).id();  // identical range -> dedup
     ::epix::camera::VisibilityRange abrupt;
-    abrupt.start_margin_start = 1.0f;
-    abrupt.start_margin_end   = 1.0f;
-    abrupt.end_margin_start   = 50.0f;
-    abrupt.end_margin_end     = 50.0f;
+    abrupt.start_margin.first = 1.0f;
+    abrupt.start_margin.second  = 1.0f;
+    abrupt.end_margin.first  = 50.0f;
+    abrupt.end_margin.second   = 50.0f;
     Entity e3                 = main_world.spawn(abrupt).id();
 
     auto system = make_system_unique(view::extract_visibility_ranges);

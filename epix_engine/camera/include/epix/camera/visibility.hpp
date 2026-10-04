@@ -342,20 +342,22 @@ EPIX_EXPORT struct NoAutoAabb {};
  * render's `RenderVisibilityRanges`, but this is a main-world camera
  * component. */
 EPIX_EXPORT struct VisibilityRange {
-    float start_margin_start                      = 0.0f;
-    float start_margin_end                        = 0.0f;
-    float end_margin_start                        = 0.0f;
-    float end_margin_end                          = 0.0f;
+    /** @brief The margin around the range's start (Bevy `start_margin`, a
+     *  `Range<f32>`; C++ has no range type, so this is the port's two-float
+     *  pair, read as `.first`/`.second` for Bevy's `.start`/`.end`). */
+    std::pair<float, float> start_margin{0.0f, 0.0f};
+    /** @brief The margin around the range's end (Bevy `end_margin`). */
+    std::pair<float, float> end_margin{0.0f, 0.0f};
     bool use_aabb                                 = false;
     bool operator==(const VisibilityRange&) const = default;
     static VisibilityRange abrupt(float start, float end) noexcept {
-        return {.start_margin_start = start, .start_margin_end = start, .end_margin_start = end, .end_margin_end = end};
+        return {.start_margin = {start, start}, .end_margin = {end, end}};
     }
     bool is_abrupt() const noexcept {
-        return start_margin_start == start_margin_end && end_margin_start == end_margin_end;
+        return start_margin.first == start_margin.second && end_margin.first == end_margin.second;
     }
     bool is_visible_at_all(float camera_distance) const noexcept {
-        return camera_distance >= start_margin_start && camera_distance < end_margin_end;
+        return camera_distance >= start_margin.first && camera_distance < end_margin.second;
     }
     bool is_culled(float camera_distance) const noexcept { return !is_visible_at_all(camera_distance); }
 };
@@ -409,6 +411,8 @@ EPIX_EXPORT struct HalfSpace {
     glm::vec4 normal_d() const noexcept { return normal_d_; }
     glm::vec3 normal() const noexcept { return glm::vec3(normal_d_); }
     float d() const noexcept { return normal_d_.w; }
+    /** @brief Bevy derives `PartialEq` on `HalfSpace`, which the frustum tests use. */
+    bool operator==(const HalfSpace&) const noexcept = default;
 
    private:
     // Bevy's field is private and reached through `normal_d()`.
@@ -499,13 +503,14 @@ EPIX_EXPORT struct EPIX_API Sphere {
  * primitives::Frustum). Each plane is (normal.xyz, d) with a point in front
  * when dot(normal, p) + d >= 0. */
 EPIX_EXPORT struct EPIX_API Frustum {
-    /** @brief The six planes: left, right, top, bottom, near, far. */
     /** @brief The index of the near plane among `planes` (Bevy
      *  `Frustum::NEAR_PLANE_IDX`, `primitives.rs:293`). The far plane is index 5,
      *  which is what Bevy's private `FAR_PLANE_IDX` names. */
     static constexpr std::size_t NEAR_PLANE_IDX = 4;
 
-    std::array<glm::vec4, 6> planes{};
+    /** @brief The six planes: left, right, top, bottom, near, far (Bevy's
+     *  `half_spaces`, which is an array of `HalfSpace`). */
+    std::array<HalfSpace, 6> planes{};
 
     /** @brief Extract the planes from a clip-from-world matrix (Bevy
      * `Frustum::from_clip_from_world`). */
@@ -517,10 +522,10 @@ EPIX_EXPORT struct EPIX_API Frustum {
                              clip_from_world[3][i]};
         };
         const auto row3 = row(3);
-        auto extract    = [&](std::size_t index, glm::vec4 plane) {
-            const float len = glm::length(glm::vec3(plane));
-            if (len > 0.0f) plane /= len;
-            frustum.planes[index] = plane;
+        // The normalization lives in `HalfSpace::from_normal_d`, as it does in
+        // Bevy's `HalfSpace::new`.
+        auto extract = [&](std::size_t index, glm::vec4 plane) {
+            frustum.planes[index] = HalfSpace::from_normal_d(plane);
         };
         extract(0, row3 + row(0));  // left
         extract(1, row3 - row(0));  // right
@@ -533,11 +538,6 @@ EPIX_EXPORT struct EPIX_API Frustum {
         return frustum;
     }
 
-    /** @brief Backward-compatible spelling for `from_clip_from_world`. */
-    static Frustum from_view_projection(const glm::mat4& clip_from_world) noexcept {
-        return from_clip_from_world(clip_from_world);
-    }
-
     /** @brief Creates a frustum with an explicit far plane (Bevy
      * `Frustum::from_clip_from_world_custom_far`). */
     static Frustum from_clip_from_world_custom_far(const glm::mat4& clip_from_world,
@@ -546,9 +546,9 @@ EPIX_EXPORT struct EPIX_API Frustum {
                                                    float far_distance) noexcept {
         Frustum frustum            = from_clip_from_world(clip_from_world);
         const glm::vec3 far_center = view_translation - far_distance * view_backward;
-        glm::vec4 far_plane(view_backward, -glm::dot(view_backward, far_center));
-        const float length = glm::length(glm::vec3(far_plane));
-        frustum.planes[5]  = length > 0.0f ? far_plane / length : far_plane;
+        // Bevy builds `view_backward.extend(-view_backward.dot(far_center))` and
+        // lets `HalfSpace::new` do the scaling, so this does not pre-normalize.
+        frustum.planes[5] = HalfSpace::from_normal_d(glm::vec4(view_backward, -glm::dot(view_backward, far_center)));
         return frustum;
     }
 
@@ -557,7 +557,7 @@ EPIX_EXPORT struct EPIX_API Frustum {
     bool intersects_sphere(const Sphere& sphere, bool intersect_far = true) const noexcept {
         const std::size_t last_plane = intersect_far ? planes.size() : 5;
         for (std::size_t i = 0; i < last_plane; ++i) {
-            if (glm::dot(planes[i], glm::vec4(sphere.center, 1.0f)) + sphere.radius <= 0.0f) return false;
+            if (glm::dot(planes[i].normal_d(), glm::vec4(sphere.center, 1.0f)) + sphere.radius <= 0.0f) return false;
         }
         return true;
     }
@@ -572,21 +572,21 @@ EPIX_EXPORT struct EPIX_API Frustum {
         const glm::mat3 basis(world_from_local);
         for (std::size_t i = 0; i < planes.size(); ++i) {
             if ((i == 4 && !intersect_near) || (i == 5 && !intersect_far)) continue;
-            const glm::vec3 normal = glm::vec3(planes[i]);
-            if (glm::dot(normal, center) + planes[i].w + aabb.relative_radius(normal, basis) <= 0.0f) return false;
+            const glm::vec3 normal = planes[i].normal();
+            if (glm::dot(normal, center) + planes[i].d() + aabb.relative_radius(normal, basis) <= 0.0f) return false;
         }
         return true;
     }
     bool intersects_obb_identity(const Aabb& aabb) const noexcept { return intersects_obb(aabb, glm::mat4(1.0f)); }
     bool contains_aabb(const Aabb& aabb, const glm::mat4& world_from_local) const noexcept {
-        for (const auto& plane : planes) {
-            if (!aabb.is_in_half_space(HalfSpace::from_normal_d(plane), world_from_local)) return false;
+        for (const HalfSpace& plane : planes) {
+            if (!aabb.is_in_half_space(plane, world_from_local)) return false;
         }
         return true;
     }
     bool contains_aabb_identity(const Aabb& aabb) const noexcept {
-        for (const auto& plane : planes) {
-            if (!aabb.is_in_half_space_identity(HalfSpace::from_normal_d(plane))) return false;
+        for (const HalfSpace& plane : planes) {
+            if (!aabb.is_in_half_space_identity(plane)) return false;
         }
         return true;
     }
@@ -800,10 +800,10 @@ EPIX_EXPORT EPIX_API void update_frusta(
 template <>
 struct std::hash<epix::camera::VisibilityRange> {
     std::size_t operator()(const epix::camera::VisibilityRange& range) const noexcept {
-        std::size_t h = std::hash<float>{}(range.start_margin_start);
-        h ^= std::hash<float>{}(range.start_margin_end) + 0x9e3779b9 + (h << 6) + (h >> 2);
-        h ^= std::hash<float>{}(range.end_margin_start) + 0x9e3779b9 + (h << 6) + (h >> 2);
-        h ^= std::hash<float>{}(range.end_margin_end) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        std::size_t h = std::hash<float>{}(range.start_margin.first);
+        h ^= std::hash<float>{}(range.start_margin.second) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        h ^= std::hash<float>{}(range.end_margin.first) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        h ^= std::hash<float>{}(range.end_margin.second) + 0x9e3779b9 + (h << 6) + (h >> 2);
         return h;
     }
 };

@@ -123,10 +123,10 @@ std::vector<camera::Frustum> directional_cascade_frusta(const std::vector<Cascad
 }
 
 camera::Frustum directional_view_frustum(const camera::Frustum& frustum) {
-    camera::Frustum pushed     = frustum;
-    const glm::vec4 near_plane = pushed.planes[camera::Frustum::NEAR_PLANE_IDX];
+    camera::Frustum pushed       = frustum;
+    const glm::vec3 near_normal  = pushed.planes[camera::Frustum::NEAR_PLANE_IDX].normal();
     pushed.planes[camera::Frustum::NEAR_PLANE_IDX] =
-        glm::vec4(glm::vec3(near_plane), std::numeric_limits<float>::infinity());
+        camera::HalfSpace::from_normal_d(glm::vec4(near_normal, std::numeric_limits<float>::infinity()));
     return pushed;
 }
 

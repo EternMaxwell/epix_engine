@@ -3283,9 +3283,8 @@ TEST(Cluster, DirectionalCascadeFrustaMatchBevy) {
     // Everything else is untouched: the push changes one plane and leaves the rest.
     for (std::size_t plane = 0; plane < frusta[0].planes.size(); ++plane) {
         if (plane == Frustum::NEAR_PLANE_IDX) {
-            EXPECT_EQ(glm::vec3(pushed.planes[plane]), glm::vec3(frusta[0].planes[plane]))
-                << "the normal is kept";
-            EXPECT_FALSE(std::isfinite(pushed.planes[plane].w)) << "only the distance becomes infinite";
+            EXPECT_EQ(pushed.planes[plane].normal(), frusta[0].planes[plane].normal()) << "the normal is kept";
+            EXPECT_FALSE(std::isfinite(pushed.planes[plane].d())) << "only the distance becomes infinite";
         } else {
             EXPECT_EQ(pushed.planes[plane], frusta[0].planes[plane]) << "plane " << plane << " is unchanged";
         }

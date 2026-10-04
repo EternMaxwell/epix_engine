@@ -91,11 +91,11 @@ TEST(RenderTarget, VariantsNormalizeAndKeepDistinctIdentities) {
 // dedup (bevy_camera visibility ranges).
 TEST(VisibilityRange, EqualityAndHash) {
     ::epix::camera::VisibilityRange a;
-    a.start_margin_start              = 1.0f;
-    a.end_margin_end                  = 50.0f;
+    a.start_margin.first              = 1.0f;
+    a.end_margin.second               = 50.0f;
     ::epix::camera::VisibilityRange b = a;
     ::epix::camera::VisibilityRange c = a;
-    c.end_margin_end                  = 51.0f;
+    c.end_margin.second               = 51.0f;
     ::epix::camera::VisibilityRange d = a;
     d.use_aabb                        = true;
     EXPECT_EQ(a, b);
@@ -490,8 +490,12 @@ TEST(InheritedVisibility, ConstsAndGet) {
 TEST(CameraFrustum, CullsSphereAndOrientedBounds) {
     epix::camera::Frustum frustum;
     frustum.planes = {
-        glm::vec4{1.0f, 0.0f, 0.0f, 1.0f},  glm::vec4{-1.0f, 0.0f, 0.0f, 1.0f}, glm::vec4{0.0f, 1.0f, 0.0f, 1.0f},
-        glm::vec4{0.0f, -1.0f, 0.0f, 1.0f}, glm::vec4{0.0f, 0.0f, 1.0f, 0.0f},  glm::vec4{0.0f, 0.0f, -1.0f, 1.0f},
+        epix::camera::HalfSpace::from_normal_d(glm::vec4{1.0f, 0.0f, 0.0f, 1.0f}),
+        epix::camera::HalfSpace::from_normal_d(glm::vec4{-1.0f, 0.0f, 0.0f, 1.0f}),
+        epix::camera::HalfSpace::from_normal_d(glm::vec4{0.0f, 1.0f, 0.0f, 1.0f}),
+        epix::camera::HalfSpace::from_normal_d(glm::vec4{0.0f, -1.0f, 0.0f, 1.0f}),
+        epix::camera::HalfSpace::from_normal_d(glm::vec4{0.0f, 0.0f, 1.0f, 0.0f}),
+        epix::camera::HalfSpace::from_normal_d(glm::vec4{0.0f, 0.0f, -1.0f, 1.0f}),
     };
     EXPECT_TRUE(frustum.intersects_sphere({.center = {0.0f, 0.0f, 0.5f}, .radius = 0.25f}));
     EXPECT_FALSE(frustum.intersects_sphere({.center = {3.0f, 0.0f, 0.5f}, .radius = 0.25f}));
@@ -519,7 +523,7 @@ TEST(SpherePrimitives, IntersectsObbRejectsTheCoincidentCentreAsBevyDoes) {
 TEST(CameraPrimitives, MatchBevyClipPlanesAndHelpers) {
     const auto frustum = epix::camera::Frustum::from_clip_from_world(glm::mat4(1.0f));
     // Bevy's zero-to-one-depth extraction uses row2 as the far plane.
-    EXPECT_EQ(frustum.planes[5], glm::vec4(0.0f, 0.0f, 1.0f, 0.0f));
+    EXPECT_EQ(frustum.planes[5].normal_d(), glm::vec4(0.0f, 0.0f, 1.0f, 0.0f));
     EXPECT_EQ(epix::camera::face_index_to_name(4), "+z");
     EXPECT_EQ(epix::camera::face_index_to_name(5), "-z");
     EXPECT_EQ(epix::camera::face_index_to_name(6), "invalid");

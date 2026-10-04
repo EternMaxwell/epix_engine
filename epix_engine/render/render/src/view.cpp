@@ -345,6 +345,13 @@ void create_uniform_for_view(Commands cmd,
             main_pass_viewport.z = static_cast<float>(opt_resolution_override->get().size.x);
             main_pass_viewport.w = static_cast<float>(opt_resolution_override->get().size.y);
         }
+        // The frustum holds its planes as half-spaces now (Bevy's `Frustum` does
+        // too), while the uniform carries them as `(normal.xyz, d)`.
+        std::array<glm::vec4, 6> frustum_planes{};
+        if (opt_frustum) {
+            const auto& planes = opt_frustum->get().planes;
+            for (std::size_t i = 0; i < planes.size(); ++i) frustum_planes[i] = planes[i].normal_d();
+        }
         ViewUniform uniform{
             .clip_from_world            = clip_from_world,
             .unjittered_clip_from_world = unjittered_projection * view_from_world,
@@ -357,7 +364,7 @@ void create_uniform_for_view(Commands cmd,
             .exposure                   = camera.exposure,
             .viewport                   = viewport_vec,
             .main_pass_viewport         = main_pass_viewport,
-            .frustum                    = opt_frustum ? opt_frustum->get().planes : std::array<glm::vec4, 6>{},
+            .frustum                    = frustum_planes,
             .color_grading              = view::to_uniform(view.color_grading),
             .mip_bias                   = opt_mip_bias ? opt_mip_bias->get().bias : 0.0f,
             .frame_count                = frame_count.get().count,

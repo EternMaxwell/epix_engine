@@ -32,8 +32,8 @@ void view::RenderVisibilityRanges::insert(sync_world::MainEntity entity,
             spdlog::warn("[render] Too many distinct visibility ranges; index truncated.");
         }
         buffer_index = static_cast<std::uint16_t>(range_to_index.size());
-        buffer.push(glm::vec4(visibility_range.start_margin_start, visibility_range.start_margin_end,
-                              visibility_range.end_margin_start, visibility_range.end_margin_end));
+        buffer.push(glm::vec4(visibility_range.start_margin.first, visibility_range.start_margin.second,
+                              visibility_range.end_margin.first, visibility_range.end_margin.second));
         range_to_index.emplace(visibility_range, buffer_index);
         buffer_dirty = true;
     }
