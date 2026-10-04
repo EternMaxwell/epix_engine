@@ -319,10 +319,11 @@ concept CameraProjection = requires(T t) {
 
 /** @brief Type-erased custom camera projection (Bevy `CustomProjection`).
  * The stored projection is cloned on copy, so copying a `Projection` retains
- * ordinary component value semantics. */
+ * ordinary component value semantics. Bevy owns it in a `Box`; a
+ * `std::unique_ptr` with a virtual clone is the C++ spelling of that. */
 struct DynCameraProjection {
     virtual ~DynCameraProjection()                                       = default;
-    virtual std::shared_ptr<DynCameraProjection> clone() const           = 0;
+    virtual std::unique_ptr<DynCameraProjection> clone() const           = 0;
     virtual glm::mat4 clip_from_view() const                             = 0;
     virtual glm::mat4 clip_from_view_for_sub(const SubCameraView&) const = 0;
     virtual std::array<glm::vec3, 8> frustum_corners(float, float) const = 0;
@@ -335,8 +336,8 @@ template <CameraProjection P>
 struct DynCameraProjectionImpl final : DynCameraProjection {
     P value;
     explicit DynCameraProjectionImpl(P projection) : value(std::move(projection)) {}
-    std::shared_ptr<DynCameraProjection> clone() const override {
-        return std::make_shared<DynCameraProjectionImpl>(value);
+    std::unique_ptr<DynCameraProjection> clone() const override {
+        return std::make_unique<DynCameraProjectionImpl>(value);
     }
     glm::mat4 clip_from_view() const override { return value.get_clip_from_view(); }
     glm::mat4 clip_from_view_for_sub(const SubCameraView& sub_view) const override {
@@ -351,11 +352,11 @@ struct DynCameraProjectionImpl final : DynCameraProjection {
 
 EPIX_EXPORT struct EPIX_API CustomProjection {
    private:
-    std::shared_ptr<DynCameraProjection> dyn_projection;
+    std::unique_ptr<DynCameraProjection> dyn_projection;
 
    public:
     CustomProjection()
-        : dyn_projection(std::make_shared<DynCameraProjectionImpl<PerspectiveProjection>>(PerspectiveProjection{})) {}
+        : dyn_projection(std::make_unique<DynCameraProjectionImpl<PerspectiveProjection>>(PerspectiveProjection{})) {}
     CustomProjection(const CustomProjection& other)
         : dyn_projection(other.dyn_projection ? other.dyn_projection->clone() : nullptr) {}
     CustomProjection(CustomProjection&&) noexcept = default;
@@ -368,7 +369,7 @@ EPIX_EXPORT struct EPIX_API CustomProjection {
     template <CameraProjection P>
         requires std::copy_constructible<P>
     explicit CustomProjection(P projection)
-        : dyn_projection(std::make_shared<DynCameraProjectionImpl<P>>(std::move(projection))) {}
+        : dyn_projection(std::make_unique<DynCameraProjectionImpl<P>>(std::move(projection))) {}
 
     template <CameraProjection P>
     P* get() noexcept {

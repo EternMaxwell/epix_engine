@@ -306,12 +306,8 @@ EPIX_EXPORT struct VisibilityClass {
      *  `DerefMut` to the inner `SmallVec`, `visibility/mod.rs:161-164,736`).
      *
      *  Bevy appends without checking, so a class can be stored twice and the visibility
-     *  system then queues the entity once per duplicate (CAM-19). `add` below keeps the
-     *  deduplicating form for callers that want it, which Bevy has no equivalent of. */
+     *  system then queues the entity once per duplicate (CAM-19). */
     void push(meta::type_index type) { classes.push_back(type); }
-    void add(meta::type_index type) {
-        if (std::ranges::find(classes, type) == classes.end()) classes.push_back(type);
-    }
     auto begin() const noexcept { return classes.begin(); }
     auto end() const noexcept { return classes.end(); }
     bool empty() const noexcept { return classes.empty(); }
