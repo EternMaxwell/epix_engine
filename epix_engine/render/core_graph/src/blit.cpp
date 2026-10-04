@@ -95,7 +95,11 @@ void BlitPlugin::attach(App& app) {
                                        using render::render_resource::binding_types::sampler;
                                        using render::render_resource::binding_types::texture_2d;
                                        const auto entries = BindGroupLayoutEntries<>::sequential(
-                                           wgpu::ShaderStage::eFragment, texture_2d(wgpu::TextureSampleType::eFloat),
+                                           wgpu::ShaderStage::eFragment,
+                                           // Bevy's blit layout declares this texture
+                                           // non-filterable, matching its `NonFiltering`
+                                           // sampler below.
+                                           texture_2d(wgpu::TextureSampleType::eUnfilterableFloat),
                                            sampler(wgpu::SamplerBindingType::eNonFiltering));
                                        commands.insert_resource(BlitPipeline{
                                            .layout = render::BindGroupLayoutDescriptor()
