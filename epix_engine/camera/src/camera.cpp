@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <epix/camera.hpp>
+#include <epix/mesh.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
 #include <optional>
@@ -466,7 +467,8 @@ void VisibilityPlugin::attach(App& app) {
         sets(VisibilitySystems::MarkNewlyHiddenEntitiesInvisible).after(VisibilitySystems::CheckVisibility));
     app.configure_sets(app::PostUpdate, sets(VisibilitySystems::CalculateBounds)
                                             .before(VisibilitySystems::CheckVisibility)
-                                            .after(::epix::transform::TransformSystems::Propagate));
+                                            .after(::epix::transform::TransformSystems::Propagate)
+                                            .after(::epix::assets::AssetSystems::WriteEvents));
     // Bevy: Visibility requires InheritedVisibility + ViewVisibility
     // (visibility/mod.rs:151-166); required components are auto-added on spawn.
     app.world_mut().register_required_components<Visibility, InheritedVisibility>();
@@ -491,6 +493,15 @@ void VisibilityPlugin::attach(App& app) {
     app.add_systems(
         app::PostUpdate,
         into(check_visibility_system).in_set(VisibilitySystems::CheckVisibility).set_name("check visibility"));
+    // Bevy registers the mesh-bounds system from this plugin, not from the mesh one
+    // (bevy_camera/src/visibility/mod.rs:420-425). The definition still lives in the mesh
+    // module, which owns the mesh-asset change marking it currently filters on; the
+    // faithful follow-up is to move it here and filter on `AssetChanged<Mesh3d>` as Bevy
+    // does, which this port's assets module already provides (CAM-46).
+    app.add_systems(app::PostUpdate,
+                    into(::epix::mesh::calculate_bounds)
+                        .in_set(VisibilitySystems::CalculateBounds)
+                        .set_name("calculate bounds"));
     app.add_systems(app::PostUpdate, into(mark_newly_hidden_entities_invisible)
                                          .in_set(VisibilitySystems::MarkNewlyHiddenEntitiesInvisible)
                                          .set_name("mark newly hidden entities invisible"));

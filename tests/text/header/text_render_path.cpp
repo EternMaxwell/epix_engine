@@ -8,6 +8,7 @@
 #include <epix/camera.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
+#include <epix/mesh.hpp>
 #include <epix/sprite.hpp>
 #include <epix/sprite_render.hpp>
 #include <epix/text.hpp>
@@ -111,6 +112,11 @@ TEST(Text2d, RegistersTheSpriteVisibilityClassAndItsRequiredComponents) {
 TEST(Text2dBounds, ComputesTheAabbInPostUpdate) {
     app::App app = app::App::create();
     app.add_plugins(camera::CameraPlugin{});
+    // `VisibilityPlugin` (added by `CameraPlugin`) registers the mesh-bounds system, which
+    // reads `Assets<Mesh>`; a real app gets that resource from `MeshPlugin`, and these
+    // focused tests give the minimal app the same resource instead of the registration
+    // being moved back out of its Bevy home (CAM-46).
+    app.world_mut().init_resource<epix::assets::Assets<epix::mesh::Mesh>>();
     app.add_systems(app::PostUpdate, into(text::calculate_bounds_text2d)
                                          .in_set(camera::VisibilitySystems::CalculateBounds)
                                          .before(camera::VisibilitySystems::CheckVisibility)
@@ -231,6 +237,11 @@ TEST(Text2dBounds, CreatesAabbForLaidOutText) {
 
     app::App app = app::App::create();
     app.add_plugins(camera::CameraPlugin{});
+    // `VisibilityPlugin` (added by `CameraPlugin`) registers the mesh-bounds system, which
+    // reads `Assets<Mesh>`; a real app gets that resource from `MeshPlugin`, and these
+    // focused tests give the minimal app the same resource instead of the registration
+    // being moved back out of its Bevy home (CAM-46).
+    app.world_mut().init_resource<epix::assets::Assets<epix::mesh::Mesh>>();
     app.add_systems(app::PostUpdate, into(text::calculate_bounds_text2d)
                                          .in_set(camera::VisibilitySystems::CalculateBounds)
                                          .before(camera::VisibilitySystems::CheckVisibility)
@@ -260,6 +271,11 @@ TEST(Text2dBounds, RecomputesAabbAfterReshaping) {
 
     app::App app = app::App::create();
     app.add_plugins(camera::CameraPlugin{});
+    // `VisibilityPlugin` (added by `CameraPlugin`) registers the mesh-bounds system, which
+    // reads `Assets<Mesh>`; a real app gets that resource from `MeshPlugin`, and these
+    // focused tests give the minimal app the same resource instead of the registration
+    // being moved back out of its Bevy home (CAM-46).
+    app.world_mut().init_resource<epix::assets::Assets<epix::mesh::Mesh>>();
     app.add_systems(app::PostUpdate, into(text::calculate_bounds_text2d)
                                          .in_set(camera::VisibilitySystems::CalculateBounds)
                                          .before(camera::VisibilitySystems::CheckVisibility)

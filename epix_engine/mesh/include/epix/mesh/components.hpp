@@ -84,10 +84,10 @@ EPIX_EXPORT struct Mesh3d {
 /** @brief Give every `Mesh3d` an `Aabb` and keep it current (Bevy `calculate_bounds`,
  *  `bevy_camera/src/visibility/mod.rs:451-486`).
  *
- *  Declared here rather than in the camera module for the layering reason the definition
- *  states: camera cannot see `Mesh3d`, while mesh already sees camera. Registered by
- *  `MeshPlugin` into `VisibilitySystems::CalculateBounds`, the set `VisibilityPlugin`
- *  configures and which was previously left empty (`CAM-21`). */
+ *  Registered by the camera module's `VisibilityPlugin`, which is Bevy's registration
+ *  home (`visibility/mod.rs:420-425`); it is declared and defined here for now because
+ *  the mesh-asset change marking its filter uses is mesh-side, and the faithful
+ *  follow-up is to move it and filter on `AssetChanged<Mesh3d>` as Bevy does (CAM-46). */
 EPIX_EXPORT EPIX_API void calculate_bounds(
     ecs::Commands commands, ecs::Res<assets::Assets<Mesh>> meshes,
     ecs::Query<ecs::Item<ecs::Entity, const Mesh3d&>,

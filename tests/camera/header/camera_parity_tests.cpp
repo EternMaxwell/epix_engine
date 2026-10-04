@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 #include <epix/app.hpp>
+#include <epix/assets.hpp>
 #include <epix/camera.hpp>
 #include <epix/color.hpp>
 #include <epix/ecs.hpp>
+#include <epix/mesh.hpp>
 #include <epix/transform.hpp>
 #include <epix/window.hpp>
 #include <array>
@@ -260,6 +262,9 @@ TEST(CameraSystem, MatchesBevyChangeSensitiveLogicalAndDpiUpdates) {
 
     auto app = epix::app::App::create();
     app.add_plugins(::epix::camera::CameraPlugin{});
+    // `VisibilityPlugin` registers the mesh-bounds system, which reads `Assets<Mesh>`
+    // (Bevy's registration home, CAM-46); a real app gets the resource from `MeshPlugin`.
+    app.world_mut().init_resource<epix::assets::Assets<epix::mesh::Mesh>>();
     const Entity window = app.world_mut()
                               .spawn(::epix::window::Window{.physical_size = {400, 200}, .scale_factor = 1.0f},
                                      ::epix::window::PrimaryWindow{})
@@ -537,6 +542,9 @@ TEST(CameraFrustum, CustomFarMatchesProjectionFrustumConstruction) {
 TEST(ViewVisibility, TracksVisibleToHiddenTransition) {
     ::epix::app::App app = ::epix::app::App::create();
     app.add_plugins(::epix::camera::CameraPlugin{});
+    // The camera plugin's `VisibilityPlugin` registers the mesh-bounds system, which reads
+    // `Assets<Mesh>` (CAM-46); see the same note on `CameraSystem`'s app.
+    app.world_mut().init_resource<::epix::assets::Assets<::epix::mesh::Mesh>>();
     const Entity entity = app.world_mut().spawn(epix::camera::ViewVisibility::HIDDEN).id();
     app.world_mut().get_entity_mut(entity).transform([](EntityWorldMut&& world_entity) -> int {
         world_entity.get_mut<epix::camera::ViewVisibility>().value().get_mut().set_visible();
@@ -699,6 +707,9 @@ TEST(VisibilityPlugin, Mesh2dReceivesRequiredVisibilityComponents) {
 TEST(CameraPlugin, RegistersCameraSystemInPostStartupAndPostUpdate) {
     auto app = epix::app::App::create();
     app.add_plugins(::epix::camera::CameraPlugin{});
+    // `VisibilityPlugin` registers the mesh-bounds system, which reads `Assets<Mesh>`
+    // (Bevy's registration home, CAM-46); a real app gets the resource from `MeshPlugin`.
+    app.world_mut().init_resource<epix::assets::Assets<epix::mesh::Mesh>>();
 
     const auto label = SystemSetLabel(&::epix::camera::camera_system);
     app.world_mut().resource_scope([&](Schedules& schedules, World&) {

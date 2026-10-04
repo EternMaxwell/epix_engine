@@ -57,6 +57,7 @@ void add_render_prerequisites(App& app) {
     app.add_plugins(epix::time::TimePlugin{})
         .add_plugins(epix::camera::CameraPlugin{})
         .add_plugins(epix::assets::AssetPlugin{})
+        .add_plugins(epix::mesh::MeshPlugin{})
         .add_plugins(epix::image::ImagePlugin{})
         .add_plugins(epix::shader::ShaderPlugin{})
         .add_plugins(render::FrameCountPlugin{})

@@ -1142,10 +1142,9 @@ void mark_3d_meshes_as_changed_if_their_assets_changed(ecs::Query<ecs::Item<ecs:
 void MeshPlugin::attach(app::App& app) {
     assets::app_register_asset<Mesh>(app);
     assets::app_register_asset<SkinnedMeshInverseBindposes>(app);
-    app.add_systems(app::PostUpdate,
-                    ecs::into(calculate_bounds)
-                        .in_set(::epix::camera::VisibilitySystems::CalculateBounds)
-                        .set_name("calculate bounds"));
+    // `calculate_bounds` is registered by the camera module's `VisibilityPlugin`, which is
+    // its Bevy home (bevy_camera/src/visibility/mod.rs:420-425); the mesh module keeps the
+    // definition and the asset-change marking it filters on, for now (CAM-46).
     app.add_systems(app::PostUpdate, ecs::into(mark_3d_meshes_as_changed_if_their_assets_changed)
                                          .after(assets::AssetSystems::WriteEvents)
                                          .set_name("mark 3d meshes changed after mesh asset changes"));
