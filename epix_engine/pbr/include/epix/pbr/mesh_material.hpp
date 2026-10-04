@@ -13,12 +13,11 @@ namespace epix::pbr {
 /** @brief A 3D mesh's material handle (Bevy `MeshMaterial3d<M>`,
  *  `bevy_pbr/src/mesh_material.rs:41`).
  *
- *  Bevy's tuple struct is constrained on `M: Material`; Epix's 3D `Material`
- *  counterpart does not exist yet, so the constraint is absent here and the type is
- *  usable the moment it lands. Its 2D sibling (`MeshMaterial2d<M>`,
- *  `sprite_render/material2d.hpp`) shows the shape it takes then: a CRTP base the
- *  material derives from, which is how the port expresses Bevy's associated-type
- *  trait.
+ *  Bevy's tuple struct is constrained on `M: Material`; the port's `Material` is a
+ *  CRTP base the material derives from (`pbr/material.hpp`), which is how it
+ *  expresses Bevy's associated-type trait, and this type is left unconstrained for
+ *  the same reason its 2D sibling (`MeshMaterial2d<M>`,
+ *  `sprite_render/material2d.hpp`) is.
  *
  *  The handle member stands for Bevy's tuple field `.0` - a tuple struct has no
  *  field name to keep, and the 2D sibling made the same choice. */
