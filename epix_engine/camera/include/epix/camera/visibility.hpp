@@ -742,7 +742,7 @@ EPIX_EXPORT EPIX_API void check_visibility_ranges(
  * collects them into the camera's VisibleEntities (Bevy `check_visibility`).
  * When bounds and a global transform are present, it performs Bevy's sphere
  * broad phase followed by transformed-AABB frustum culling. */
-EPIX_EXPORT EPIX_API void check_visibility_system(
+EPIX_EXPORT EPIX_API void check_visibility(
     epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
                                      const Camera&,
                                      epix::ecs::Mut<VisibleEntities>,

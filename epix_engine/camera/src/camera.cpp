@@ -363,7 +363,7 @@ void check_visibility_ranges(
     }
 }
 
-void check_visibility_system(Query<Item<Entity,
+void check_visibility(Query<Item<Entity,
                                         const Camera&,
                                         Mut<VisibleEntities>,
                                         Opt<const RenderLayers&>,
@@ -426,7 +426,7 @@ void VisibilityRangePlugin::attach(App& app) {
     app.world_mut().init_resource<VisibleEntityRanges>();
     app.add_systems(app::PostUpdate, into(check_visibility_ranges)
                                          .in_set(VisibilitySystems::CheckVisibility)
-                                         .before(check_visibility_system)
+                                         .before(check_visibility)
                                          .set_name("check visibility ranges"));
 }
 
@@ -492,7 +492,7 @@ void VisibilityPlugin::attach(App& app) {
         into(reset_view_visibility).in_set(VisibilitySystems::VisibilityPropagate).set_name("reset view visibility"));
     app.add_systems(
         app::PostUpdate,
-        into(check_visibility_system).in_set(VisibilitySystems::CheckVisibility).set_name("check visibility"));
+        into(check_visibility).in_set(VisibilitySystems::CheckVisibility).set_name("check visibility"));
     // Bevy registers the mesh-bounds system from this plugin, not from the mesh one
     // (bevy_camera/src/visibility/mod.rs:420-425). The definition still lives in the mesh
     // module, which owns the mesh-asset change marking it currently filters on; the
