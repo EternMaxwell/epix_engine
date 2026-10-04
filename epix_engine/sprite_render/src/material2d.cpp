@@ -266,8 +266,18 @@ void epix::sprite_render::Material2dPlugin<M>::ready(epix::app::App& app) {
     render.add_systems(epix::render::RenderStartup, epix::ecs::into(init_material_2d_pipeline<M>)
                                                         .after(init_mesh_2d_pipeline)
                                                         .set_name("init material 2d pipeline"));
+    // Bevy orders the tick-stamping extraction after the camera extraction
+    // (`extract_entities_needs_specialization::<M>.after(extract_cameras)`,
+    // material.rs:301), because the system iterates the frame's extracted views
+    // to stamp their ticks: run first and it sees no views, so a changed
+    // material would wait a frame for its specialization (SRD-41).
     render.add_systems(epix::render::ExtractSchedule,
-                       epix::ecs::into(extract_entities_needs_specialization<M>, extract_mesh_materials_2d<M>));
+                       epix::ecs::into(extract_entities_needs_specialization<M>)
+                           .after(epix::render::camera::extract_cameras)
+                           .set_name("extract entities needing material2d specialization"));
+    render.add_systems(epix::render::ExtractSchedule,
+                       epix::ecs::into(extract_mesh_materials_2d<M>)
+                           .set_name("extract mesh materials 2d"));
     render.add_systems(epix::render::Render, epix::ecs::into(specialize_material2d_meshes<M>)
                                                  .in_set(epix::render::RenderSystems::PrepareMeshes)
                                                  .set_name("specialize material2d meshes"));
