@@ -1117,7 +1117,8 @@ std::expected<Mesh, MeshAccessError> Mesh::take_gpu_data() {
 [[noreturn]] void Mesh::throw_access_error(MeshAccessError error) {
     if (error == MeshAccessError::ExtractedToRenderWorld) {
         throw std::logic_error(
-            "Mesh has been extracted to RenderWorld. To access vertex attributes, asset_usage must include MAIN_WORLD");
+            "Mesh has been extracted to RenderWorld. To access vertex attributes, the mesh `asset_usage` must include "
+            "`MAIN_WORLD`");
     }
     throw std::out_of_range("The requested mesh data was not found");
 }
