@@ -264,11 +264,11 @@ std::pair<std::vector<camera::HalfSpace>, std::vector<camera::HalfSpace>> perspe
 
 float get_distance_x(const camera::HalfSpace& plane, glm::vec3 point, bool is_orthographic) {
     if (is_orthographic) return point.x - plane.d();
-    return glm::dot(glm::vec2(plane.normal_d.x, plane.normal_d.z), glm::vec2(point.x, point.z));
+    return glm::dot(glm::vec2(plane.normal_d().x, plane.normal_d().z), glm::vec2(point.x, point.z));
 }
 
 std::optional<camera::Sphere> project_to_plane_z(const camera::Sphere& z_object, const camera::HalfSpace& z_plane) {
-    const float z                 = z_plane.d() / z_plane.normal_d.z;
+    const float z                 = z_plane.d() / z_plane.normal_d().z;
     const float distance_to_plane = z - z_object.center.z;
     if (std::abs(distance_to_plane) > z_object.radius) return std::nullopt;
     return camera::Sphere{
@@ -281,7 +281,7 @@ std::optional<camera::Sphere> project_to_plane_y(const camera::Sphere& y_object,
                                                 bool is_orthographic) {
     const float distance_to_plane = is_orthographic ? y_plane.d() - y_object.center.y
                                                     : -glm::dot(glm::vec2(y_object.center.y, y_object.center.z),
-                                                                glm::vec2(y_plane.normal_d.y, y_plane.normal_d.z));
+                                                                glm::vec2(y_plane.normal_d().y, y_plane.normal_d().z));
     if (std::abs(distance_to_plane) > y_object.radius) return std::nullopt;
     return camera::Sphere{
         .center = y_object.center + distance_to_plane * y_plane.normal(),

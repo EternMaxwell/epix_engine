@@ -387,7 +387,6 @@ EPIX_EXPORT struct EPIX_API VisibilityPlugin {
 
 /** @brief A normalized inward-facing plane half-space (Bevy `HalfSpace`). */
 EPIX_EXPORT struct HalfSpace {
-    glm::vec4 normal_d{0.0f, 0.0f, 0.0f, std::numeric_limits<float>::infinity()};
     /** @brief Construct from a plane whose first three components are the normal and the
      *  fourth is the signed distance along it (Bevy `HalfSpace::new`).
      *
@@ -396,10 +395,18 @@ EPIX_EXPORT struct HalfSpace {
      *  than passing the value through unchanged - safer, but a divergence from Bevy. */
     static HalfSpace from_normal_d(glm::vec4 value) noexcept {
         const float length = glm::length(glm::vec3(value));
-        return HalfSpace{value / length};
+        HalfSpace result;
+        result.normal_d_ = value / length;
+        return result;
     }
-    glm::vec3 normal() const noexcept { return glm::vec3(normal_d); }
-    float d() const noexcept { return normal_d.w; }
+    /** @brief The plane as `(normal.xyz, signed distance)` (Bevy `HalfSpace::normal_d`). */
+    glm::vec4 normal_d() const noexcept { return normal_d_; }
+    glm::vec3 normal() const noexcept { return glm::vec3(normal_d_); }
+    float d() const noexcept { return normal_d_.w; }
+
+   private:
+    // Bevy's field is private and reached through `normal_d()`.
+    glm::vec4 normal_d_{0.0f, 0.0f, 0.0f, std::numeric_limits<float>::infinity()};
 };
 
 /** @brief Axis-aligned local-space bounds (Bevy `Aabb`). */
