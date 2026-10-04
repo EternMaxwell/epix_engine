@@ -2498,23 +2498,33 @@ Mesh PlaneMeshBuilder::build() const {
     indices.reserve(num_indices);
 
     // The default normal is +Y; every other normal rotates the XZ plane onto it with Bevy's
-    // `Quat::from_rotation_arc` (shortest arc). Epix builds the rotation directly so the mesh
-    // module keeps its plain `glm/glm.hpp` math dependency.
-    const glm::vec3 from    = {0.0f, 1.0f, 0.0f};
-    const glm::vec3 to      = glm::normalize(plane.normal);
-    const float cos_angle   = glm::dot(from, to);
-    const glm::vec3 axis_in = glm::cross(from, to);
-    const float axis_length = glm::length(axis_in);
-    const glm::vec3 axis    = axis_length > 1e-6f ? axis_in / axis_length : axis_in;
-    const float angle       = std::atan2(axis_length, cos_angle);
-    const float sin_angle   = std::sin(angle);
-    const float cos_rot     = std::cos(angle);
-    const auto rotate       = [&](glm::vec3 value) {
-        if (axis_length <= 1e-6f) {
-            // Parallel or anti-parallel: a 180 degree rotation flips the other two axes.
-            return cos_angle > 0.0f ? value : glm::vec3(value.x, -value.y, -value.z);
+    // `Quat::from_rotation_arc`. Epix builds the rotation directly so the mesh module keeps its
+    // plain `glm/glm.hpp` math dependency; glam's three branches are reproduced exactly, because
+    // the opposite case picks one specific axis rather than any 180 degree rotation.
+    const glm::vec3 from             = {0.0f, 1.0f, 0.0f};
+    const glm::vec3 to               = glm::normalize(plane.normal);
+    const float dot                  = glm::dot(from, to);
+    constexpr float kOneMinusEpsilon = 1.0f - 2.0f * std::numeric_limits<float>::epsilon();
+    const auto rotate                = [&](glm::vec3 value) {
+        // `dot > 1 - 2 * f32::EPSILON`: the vectors already agree, so the rotation is the identity.
+        if (dot > kOneMinusEpsilon) return value;
+        if (dot < -kOneMinusEpsilon) {
+            // `Quat::from_axis_angle(from.any_orthonormal_vector(), PI)`: the axis is the Pixar
+            // orthonormal-basis vector, and a half turn about it reflects through that axis.
+            const float sign = std::signbit(from.z) ? -1.0f : 1.0f;
+            const float a    = -1.0f / (sign + from.z);
+            const float b    = from.x * from.y * a;
+            const glm::vec3 axis{b, sign + from.y * from.y * a, -from.y};
+            return 2.0f * glm::dot(axis, value) * axis - value;
         }
-        // Rodrigues' rotation formula.
+        // Otherwise the shortest arc: Rodrigues about the normalized cross product, by the angle
+        // whose sine is that product's length and whose cosine is the dot product.
+        const glm::vec3 cross_in = glm::cross(from, to);
+        const float cross_length = glm::length(cross_in);
+        const glm::vec3 axis     = cross_in / cross_length;
+        const float angle        = std::atan2(cross_length, dot);
+        const float sin_angle    = std::sin(angle);
+        const float cos_rot      = std::cos(angle);
         return value * cos_rot + glm::cross(axis, value) * sin_angle +
                axis * (glm::dot(axis, value) * (1.0f - cos_rot));
     };

@@ -1897,6 +1897,26 @@ TEST(MeshPrimitives, PlaneMatchesBevySubdivisionGridAndRotation) {
     for (const auto& position : *vertical_positions) {
         EXPECT_NEAR(position[2], 0.0f, 1e-5f);
     }
+
+    // An anti-parallel normal takes glam's `from_axis_angle` branch: the half turn is about
+    // `any_orthonormal_vector(+Y)`, which is -Z, so the grid is X-negated rather than Z-negated.
+    auto downward_builder         = mesh::PlaneMeshBuilder::from_size({1.0f, 1.0f});
+    downward_builder.plane.normal = glm::vec3(0.0f, -1.0f, 0.0f);
+    const auto downward           = downward_builder.build();
+    const auto* downward_positions =
+        downward.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* downward_uvs =
+        downward.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(downward_positions, nullptr);
+    ASSERT_NE(downward_uvs, nullptr);
+    ASSERT_EQ(downward_positions->size(), 4u);
+    EXPECT_EQ((*downward_positions)[0], (mesh::VertexAttributeValues::Float32x3Value{0.5f, 0.0f, -0.5f}));
+    EXPECT_EQ((*downward_positions)[1], (mesh::VertexAttributeValues::Float32x3Value{-0.5f, 0.0f, -0.5f}));
+    EXPECT_EQ((*downward_positions)[2], (mesh::VertexAttributeValues::Float32x3Value{0.5f, 0.0f, 0.5f}));
+    EXPECT_EQ((*downward_positions)[3], (mesh::VertexAttributeValues::Float32x3Value{-0.5f, 0.0f, 0.5f}));
+    // The UVs keep their grid order, which is what makes the vertex pairing observable.
+    EXPECT_EQ((*downward_uvs)[0], (mesh::VertexAttributeValues::Float32x2Value{0.0f, 0.0f}));
+    EXPECT_EQ((*downward_uvs)[3], (mesh::VertexAttributeValues::Float32x2Value{1.0f, 1.0f}));
 }
 
 TEST(MeshPrimitives, SegmentAndPolyline3dMatchBevyLineListData) {
