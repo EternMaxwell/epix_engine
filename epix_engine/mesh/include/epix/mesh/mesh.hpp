@@ -1090,11 +1090,13 @@ EPIX_EXPORT struct EPIX_API Mesh {
         std::optional<std::size_t> count;
         const auto stored_attributes = _attributes.as_ref();
         if (!stored_attributes) throw_access_error(stored_attributes.error());
-        for (auto&& [id, attribute_data] : stored_attributes->get()) {
+        for (const auto& entry : stored_attributes->get()) {
+            const auto& attribute_data = entry.second;
             std::size_t attribute_count = attribute_data.values.len();
             if (count.has_value() && attribute_count != *count) {
-                spdlog::warn("Mesh::count_vertices(): attribute [{}:{}] has different count with previous ({} vs {})",
-                             id.value, attribute_data.attribute.name, *count, attribute_count);
+                spdlog::warn("Mesh::count_vertices(): {} has a different vertex count ({}) than other attributes ({}) in this "
+                             "mesh, all attributes will be truncated to match the smallest.",
+                             attribute_data.attribute.name, attribute_count, *count);
             }
             count = count.has_value() ? std::min(*count, attribute_count) : attribute_count;
         }
