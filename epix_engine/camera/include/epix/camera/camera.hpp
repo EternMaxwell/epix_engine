@@ -509,7 +509,11 @@ inline Exposure Exposure::from_physical_camera(const PhysicalCameraParameters& p
 /** @brief Overrides the physical resolution of a camera's main pass without
  * changing its output viewport (Bevy MainPassResolutionOverride). */
 EPIX_EXPORT struct MainPassResolutionOverride {
-    glm::uvec2 size{1, 1};
+    glm::uvec2 size;
+    /** @brief Bevy's tuple field has no `Default`, so neither does this: the dimensions
+     *  are always supplied, and a default-constructed override of `(1, 1)` would silently
+     *  render the main pass at a single pixel (CAM-103). */
+    explicit MainPassResolutionOverride(glm::uvec2 dimensions) noexcept : size(dimensions) {}
 };
 
 // --- Camera Systems --- //
