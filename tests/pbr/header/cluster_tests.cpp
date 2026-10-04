@@ -5231,13 +5231,13 @@ TEST(Cluster, PointLightFacesComeFromTheVisibilitySystem) {
     const auto& faces = app.world_mut().entity(light).get<epix::camera::CubemapVisibleEntities>()->get();
     const auto face_count = [&faces](epix::ecs::Entity entity) {
         std::size_t count = 0;
-        for (const auto& face : faces.data) {
+        for (const auto& face : faces.iter()) {
             count += static_cast<std::size_t>(std::count(face.entities.begin(), face.entities.end(), entity));
         }
         return count;
     };
     const auto in_face = [&faces](std::size_t index, epix::ecs::Entity entity) {
-        const auto& list = faces.data[index].entities;
+        const auto& list = faces.get(index).entities;
         return std::find(list.begin(), list.end(), entity) != list.end();
     };
 
@@ -5330,7 +5330,7 @@ TEST(Cluster, CheckPointLightMeshVisibilityWiring) {
         // A light at the origin looking down -Z, with its cube frusta and a
         // pre-populated visible list so the clearing is observable.
         epix::camera::CubemapVisibleEntities visible;
-        visible.data[0].entities.push_back(epix::ecs::Entity::from_index(900));
+        visible.get_mut(0).entities.push_back(epix::ecs::Entity::from_index(900));
         const auto light = app.world_mut()
                                .spawn(PointLight{.shadows_enabled = shadows_enabled, .range = 10.0f},
                                       epix::camera::InheritedVisibility::VISIBLE,
@@ -5373,7 +5373,7 @@ TEST(Cluster, CheckPointLightMeshVisibilityWiring) {
         const auto [light, ordinary, opted_out, no_culling] = build(app, true);
         const auto& faces = app.world_mut().entity(light).get<epix::camera::CubemapVisibleEntities>()->get();
         std::vector<epix::ecs::Entity> recorded;
-        for (const auto& face : faces.data) {
+        for (const auto& face : faces.iter()) {
             recorded.insert(recorded.end(), face.entities.begin(), face.entities.end());
         }
         EXPECT_EQ(std::find(recorded.begin(), recorded.end(), epix::ecs::Entity::from_index(900)), recorded.end())
@@ -5392,7 +5392,7 @@ TEST(Cluster, CheckPointLightMeshVisibilityWiring) {
         epix::app::App app = epix::app::App::create();
         const auto [light, ordinary, opted_out, no_culling] = build(app, false);
         const auto& faces = app.world_mut().entity(light).get<epix::camera::CubemapVisibleEntities>()->get();
-        for (const auto& face : faces.data) {
+        for (const auto& face : faces.iter()) {
             EXPECT_TRUE(face.entities.empty());
         }
         EXPECT_FALSE(app.world_mut().entity(ordinary).get<epix::camera::ViewVisibility>()->get().get())

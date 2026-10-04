@@ -448,7 +448,7 @@ void check_point_light_mesh_visibility(
 
         // Clear first, and leave empty when shadows are off: a light without shadow
         // mapping must have no visible entities rather than stale ones.
-        for (::epix::camera::VisibleMeshEntities& face : cubemap_visible.data) face.entities.clear();
+        for (::epix::camera::VisibleMeshEntities& face : cubemap_visible.iter_mut()) face.entities.clear();
         if (!point_light.shadows_enabled) continue;
 
         const RenderLayers light_layers = layers_or_default(maybe_layers);
@@ -483,20 +483,20 @@ void check_point_light_mesh_visibility(
                     if (maybe_no_culling.has_value() ||
                         cubemap_frusta.frusta[face].intersects_obb(aabb, world_from_local, true, true)) {
                         visibility.set_visible();
-                        cubemap_visible.data[face].entities.push_back(mesh_entity);
+                        cubemap_visible.get_mut(face).entities.push_back(mesh_entity);
                     }
                 }
             } else {
                 // Nothing to cull against: visible to every face.
                 visibility.set_visible();
-                for (::epix::camera::VisibleMeshEntities& face : cubemap_visible.data) {
+                for (::epix::camera::VisibleMeshEntities& face : cubemap_visible.iter_mut()) {
                     face.entities.push_back(mesh_entity);
                 }
             }
         }
 
         // Bevy bounds each face list's capacity after the walk (lib.rs:604-606).
-        for (::epix::camera::VisibleMeshEntities& face : cubemap_visible.data) shrink_entities(face.entities);
+        for (::epix::camera::VisibleMeshEntities& face : cubemap_visible.iter_mut()) shrink_entities(face.entities);
     }
 
     for (auto&& [light_entity, spot_light, transform, frustum, visible_meshes, maybe_layers] : spot_lights.iter()) {

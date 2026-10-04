@@ -290,6 +290,12 @@ EPIX_EXPORT struct EPIX_API RenderLayers {
     bool operator==(const RenderLayers&) const = default;
 };
 
+/** @brief The layers an entity or camera without the component is treated as
+ *  having (Bevy `DEFAULT_LAYERS`, `bevy_camera/src/visibility/render_layers.rs:5`).
+ *  Bevy's `const` is a reference to `RenderLayers::layer(0)`; `layer()` is not
+ *  `constexpr` here, so this is an inline object with the same value. */
+EPIX_EXPORT inline const RenderLayers DEFAULT_LAYERS = RenderLayers::layer(0);
+
 /** @brief Visibility class(es) an entity is collected under (Bevy
  * `VisibilityClass`). */
 EPIX_EXPORT struct VisibilityClass {
@@ -684,11 +690,18 @@ EPIX_EXPORT struct VisibleMeshEntities {
 /** @brief Visible mesh entities for all six cubemap faces (Bevy
  * `CubemapVisibleEntities`). */
 EPIX_EXPORT struct CubemapVisibleEntities {
-    std::array<VisibleMeshEntities, 6> data{};
+    /** @brief The list for cube face @p index (Bevy `CubemapVisibleEntities::get`). */
     const VisibleMeshEntities& get(std::size_t index) const { return data.at(index); }
+    /** @brief The mutable list for cube face @p index (Bevy `get_mut`). */
     VisibleMeshEntities& get_mut(std::size_t index) { return data.at(index); }
+    /** @brief Iterate the six faces (Bevy `iter`). */
     auto iter() const noexcept { return std::views::all(data); }
+    /** @brief Iterate the six faces mutably (Bevy `iter_mut`). */
     auto iter_mut() noexcept { return std::views::all(data); }
+
+   private:
+    /** @brief Bevy's private field: reachable only through the accessors above. */
+    std::array<VisibleMeshEntities, 6> data{};
 };
 
 /** @brief Visible mesh entities for each shadow cascade (Bevy
