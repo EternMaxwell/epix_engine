@@ -628,7 +628,8 @@ std::expected<void, MeshAccessError> Mesh::try_scale_by(glm::vec3 scale) {
     // Needed when transforming normals and tangents.
     const glm::vec3 scale_reciprocal{1.0f / scale.x, 1.0f / scale.y, 1.0f / scale.z};
     // The scale cannot be zero on more than one axis, as in Bevy.
-    assert(glm::vec3(scale.y, scale.z, scale.x) * glm::vec3(scale.z, scale.x, scale.y) != glm::vec3(0.0f));
+    assert((glm::vec3(scale.y, scale.z, scale.x) * glm::vec3(scale.z, scale.x, scale.y) != glm::vec3(0.0f)) &&
+           "mesh transform scale cannot be zero on more than one axis");
 
     auto positions = try_attribute_mut_option(Mesh::ATTRIBUTE_POSITION);
     if (!positions) return std::unexpected(positions.error());
@@ -749,9 +750,10 @@ std::expected<void, MeshAccessError> Mesh::try_transform_by(const epix::transfor
     // Needed when transforming normals and tangents.
     const glm::vec3 scale_reciprocal{1.0f / transform.scaler.x, 1.0f / transform.scaler.y, 1.0f / transform.scaler.z};
     // The scale cannot be zero on more than one axis, as in Bevy.
-    assert(glm::vec3(transform.scaler.y, transform.scaler.z, transform.scaler.x) *
-               glm::vec3(transform.scaler.z, transform.scaler.x, transform.scaler.y) !=
-           glm::vec3(0.0f));
+    assert((glm::vec3(transform.scaler.y, transform.scaler.z, transform.scaler.x) *
+                glm::vec3(transform.scaler.z, transform.scaler.x, transform.scaler.y) !=
+            glm::vec3(0.0f)) &&
+           "mesh transform scale cannot be zero on more than one axis");
 
     auto positions = try_attribute_mut_option(Mesh::ATTRIBUTE_POSITION);
     if (!positions) return std::unexpected(positions.error());
