@@ -32,18 +32,28 @@ EPIX_EXPORT namespace epix::sprite {
     struct SpriteImageModeAuto {
         bool operator==(const SpriteImageModeAuto&) const = default;
     };
+    /** @brief C++ counterpart to `SpriteImageMode::Scale(SpriteScalingMode)`.
+     *
+     *  Bevy's variant carries the mode as a required payload and gives it no default, so
+     *  the member has no initialiser and every construction site supplies the value
+     *  (SPR-5). The struct stays an aggregate, which is what lets call sites spell the
+     *  payload by field name the way Rust's variant literals do. */
     struct SpriteImageModeScale {
-        SpriteScalingMode mode                             = SpriteScalingMode::FillCenter;
+        SpriteScalingMode mode;
         bool operator==(const SpriteImageModeScale&) const = default;
     };
     struct SpriteImageModeSliced {
         TextureSlicer slicer;
         bool operator==(const SpriteImageModeSliced&) const = default;
     };
+    /** @brief C++ counterpart to `SpriteImageMode::Tiled { .. }`.
+     *
+     *  All three values are supplied, as they are in Bevy, which gives this variant's
+     *  fields no defaults (SPR-5). */
     struct SpriteImageModeTiled {
-        bool tile_x                                        = true;
-        bool tile_y                                        = true;
-        float stretch_value                                = 1.0f;
+        bool tile_x;
+        bool tile_y;
+        float stretch_value;
         bool operator==(const SpriteImageModeTiled&) const = default;
     };
 

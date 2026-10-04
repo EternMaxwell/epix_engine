@@ -49,7 +49,12 @@ TEST(SpriteImageMode, HelpersMatchBevy) {
     EXPECT_EQ(scale.scale(), sprite::SpriteScalingMode::FitEnd);
     EXPECT_FALSE(scale.uses_slices());
     EXPECT_TRUE(sprite::SpriteImageMode{sprite::SpriteImageMode::Sliced{}}.uses_slices());
-    EXPECT_TRUE(sprite::SpriteImageMode{sprite::SpriteImageMode::Tiled{}}.uses_slices());
+    // `uses_slices` covers every `Tiled`, whatever its fields hold, exactly as Bevy's
+    // `matches!(Sliced(..) | Tiled { .. })` does; the values themselves round-trip.
+    const sprite::SpriteImageMode tiled = sprite::SpriteImageMode::Tiled{true, false, 2.0f};
+    EXPECT_TRUE(tiled.uses_slices());
+    EXPECT_EQ(tiled, (sprite::SpriteImageMode{sprite::SpriteImageMode::Tiled{true, false, 2.0f}}));
+    EXPECT_NE(tiled, (sprite::SpriteImageMode{sprite::SpriteImageMode::Tiled{false, false, 2.0f}}));
 }
 
 TEST(BorderRect, ConstructorsAndArithmeticMatchBevy) {
