@@ -540,6 +540,14 @@ std::optional<wgpu::TextureView> ViewPrepassTextures::depth_view() const {
     return depth->texture.default_view;
 }
 
+std::optional<wgpu::TextureView> ViewPrepassTextures::previous_depth_view() const {
+    // Bevy reads the attachment's `previous_frame_texture`, which
+    // `package_double_buffered_texture` fills on the buffer the frame count
+    // did not select.
+    if (!depth || !depth->previous_frame_texture) return std::nullopt;
+    return depth->previous_frame_texture->default_view;
+}
+
 std::optional<wgpu::TextureView> ViewPrepassTextures::normal_view() const {
     if (!normal) return std::nullopt;
     return normal->texture.default_view;
@@ -553,6 +561,11 @@ std::optional<wgpu::TextureView> ViewPrepassTextures::motion_vectors_view() cons
 std::optional<wgpu::TextureView> ViewPrepassTextures::deferred_view() const {
     if (!deferred) return std::nullopt;
     return deferred->texture.default_view;
+}
+
+std::optional<wgpu::TextureView> ViewPrepassTextures::previous_deferred_view() const {
+    if (!deferred || !deferred->previous_frame_texture) return std::nullopt;
+    return deferred->previous_frame_texture->default_view;
 }
 
 namespace {

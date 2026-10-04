@@ -45,6 +45,48 @@ TEST(Prepass, PreviousViewUniformOffsetDefaultsToZero) {
     EXPECT_EQ(offset.offset, 0u);
 }
 
+/** @brief Bevy exposes six views on `ViewPrepassTextures`, and the two that
+ *  read the *previous* frame report a view exactly when the attachment is
+ *  double-buffered (`prepass/mod.rs:138-168`). */
+TEST(Prepass, ViewPrepassTexturesPreviousFrameViewsFollowTheAttachments) {
+    using epix::render::render_resource::CachedTexture;
+    using epix::render::render_resource::ColorAttachment;
+    using epix::core_graph::core_3d::ViewPrepassTextures;
+
+    // Nothing attached: every accessor reports nothing.
+    const ViewPrepassTextures empty;
+    EXPECT_FALSE(empty.depth_view().has_value());
+    EXPECT_FALSE(empty.previous_depth_view().has_value());
+    EXPECT_FALSE(empty.normal_view().has_value());
+    EXPECT_FALSE(empty.motion_vectors_view().has_value());
+    EXPECT_FALSE(empty.deferred_view().has_value());
+    EXPECT_FALSE(empty.previous_deferred_view().has_value());
+
+    // Single-buffered: the current view exists and the previous one does not,
+    // which is what a view with a prepass but no double-buffer marker sees.
+    ViewPrepassTextures single;
+    single.depth    = ColorAttachment{CachedTexture{}};
+    single.deferred = ColorAttachment{CachedTexture{}};
+    EXPECT_TRUE(single.depth_view().has_value());
+    EXPECT_FALSE(single.previous_depth_view().has_value());
+    EXPECT_TRUE(single.deferred_view().has_value());
+    EXPECT_FALSE(single.previous_deferred_view().has_value());
+
+    // Double-buffered: `package_double_buffered_texture` fills the other
+    // buffer into `previous_frame_texture`, and both views are then readable.
+    ViewPrepassTextures doubled;
+    doubled.depth    = ColorAttachment{CachedTexture{}, std::nullopt, CachedTexture{}};
+    doubled.deferred = ColorAttachment{CachedTexture{}, std::nullopt, CachedTexture{}};
+    EXPECT_TRUE(doubled.depth_view().has_value());
+    EXPECT_TRUE(doubled.previous_depth_view().has_value());
+    EXPECT_TRUE(doubled.deferred_view().has_value());
+    EXPECT_TRUE(doubled.previous_deferred_view().has_value());
+
+    // The other two accessors stay independent of the double buffering.
+    EXPECT_FALSE(doubled.normal_view().has_value());
+    EXPECT_FALSE(doubled.motion_vectors_view().has_value());
+}
+
 /** @brief The target set is Bevy's `prepass_target_descriptors`: four slots in
  *  the order normals, motion vectors, deferred G-buffer, deferred lighting id,
  *  each present only when its prepass is (`prepass/mod.rs:383-405`). */

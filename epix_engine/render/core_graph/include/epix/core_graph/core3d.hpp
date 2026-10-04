@@ -99,6 +99,10 @@ EPIX_EXPORT struct EPIX_API ViewPrepassTextures {
     /** @brief The depth pass attachment view, if the prepass wrote a depth
      * texture (Bevy `ViewPrepassTextures::depth_view`). */
     std::optional<wgpu::TextureView> depth_view() const;
+    /** @brief The previous frame's depth view, present only when the view
+     * double-buffers its depth (Bevy
+     * `ViewPrepassTextures::previous_depth_view`). */
+    std::optional<wgpu::TextureView> previous_depth_view() const;
     /** @brief The normals view, if present (Bevy
      * `ViewPrepassTextures::normal_view`). */
     std::optional<wgpu::TextureView> normal_view() const;
@@ -108,6 +112,10 @@ EPIX_EXPORT struct EPIX_API ViewPrepassTextures {
     /** @brief The deferred G-buffer view, if present (Bevy
      * `ViewPrepassTextures::deferred_view`). */
     std::optional<wgpu::TextureView> deferred_view() const;
+    /** @brief The previous frame's deferred G-buffer view, present only when
+     * the view double-buffers it (Bevy
+     * `ViewPrepassTextures::previous_deferred_view`). */
+    std::optional<wgpu::TextureView> previous_deferred_view() const;
 };
 
 /** @brief Names exposed by Bevy's `core_3d::graph::input` module. */
