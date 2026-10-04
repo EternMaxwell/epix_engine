@@ -387,12 +387,12 @@ void check_visibility(Query<Item<Entity,
          cameras.iter()) {
         (void)camera_entity;
         if (!camera.is_active) continue;
-        const auto& camera_layers = opt_camera_layers ? *opt_camera_layers : RenderLayers::layer(0);
+        const RenderLayers& camera_layers = opt_camera_layers ? opt_camera_layers->get() : DEFAULT_LAYERS;
         visible_entities.get_mut().clear_all();
         for (auto&& [entity, inherited, view_visibility, opt_classes, opt_layers, opt_aabb, transform,
                      no_frustum_culling, opt_visibility_range] : entities.iter()) {
             if (!inherited.get()) continue;
-            const auto& entity_layers = opt_layers ? *opt_layers : RenderLayers::layer(0);
+            const RenderLayers& entity_layers = opt_layers ? opt_layers->get() : DEFAULT_LAYERS;
             if (!camera_layers.intersects(entity_layers)) continue;
             if (opt_visibility_range && visible_entity_ranges &&
                 !visible_entity_ranges->get().entity_is_in_range_of_view(entity, camera_entity)) {
