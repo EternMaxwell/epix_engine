@@ -615,7 +615,13 @@ EPIX_EXPORT struct ImageFormatSetting {
     struct FromExtension {
         bool operator==(const FromExtension&) const = default;
     };
-    /** @brief C++ counterpart to `ImageFormatSetting::Format(ImageFormat)`. */
+    /** @brief C++ counterpart to `ImageFormatSetting::Format(ImageFormat)`.
+     *
+     *  Bevy's variant payload has no default. The value here is required all the same,
+     *  because this settings type is serialized by the asset machinery and the
+     *  serializer default-constructs every member it reads back
+     *  (`zpp_bits.h:189` -> `error C2512` when the member has no default constructor).
+     *  Recorded as IMG-59: a forced default, not an invented one. */
     struct Format {
         ImageFormat format                   = ImageFormat::Png;
         bool operator==(const Format&) const = default;
@@ -631,7 +637,13 @@ EPIX_EXPORT struct ImageFormatSetting {
 };
 
 /** @brief How to interpret an image as an array of textures (Bevy
- * `ImageArrayLayout`), primarily for `texture2DArray` uniforms. */
+ * `ImageArrayLayout`), primarily for `texture2DArray` uniforms.
+ *
+ *  Bevy gives neither alternative a default value and gives the type no `Default`.
+ *  Both payloads are defaulted here because the serializer the asset machinery uses
+ *  constructs every member it deserializes (`zpp_bits.h:189`, see IMG-59): the
+ *  defaults are forced by that library, and the variant's own default follows the
+ *  same reason rather than a preference for `RowCount`. */
 EPIX_EXPORT struct ImageArrayLayout {
     /** @brief Interpret the image as a vertical stack of `rows` images. */
     struct RowCount {
