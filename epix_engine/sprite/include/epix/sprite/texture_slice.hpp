@@ -55,8 +55,14 @@ EPIX_EXPORT namespace epix::sprite {
     struct SliceScaleModeStretch {
         bool operator==(const SliceScaleModeStretch&) const = default;
     };
+    /** @brief C++ counterpart to `SliceScaleMode::Tile { stretch_value }`.
+     *
+     *  Bevy's variant carries the value as a required payload and gives it no default,
+     *  so the member has no initialiser and every construction site supplies it (SPR-17).
+     *  The struct stays an aggregate, as SPR-5 settled, so the payload can still be
+     *  spelled positionally or by field name. */
     struct SliceScaleModeTile {
-        float stretch_value                              = 1.0f;
+        float stretch_value;
         bool operator==(const SliceScaleModeTile&) const = default;
     };
 
