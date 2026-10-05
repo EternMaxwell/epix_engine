@@ -209,8 +209,8 @@ RenderTargetId NormalizedRenderTarget::identity() const noexcept {
 }
 
 void OrthographicProjection::update(float width, float height) {
-    float projection_width  = area.right - area.left;
-    float projection_height = area.top - area.bottom;
+    float projection_width  = area.width();
+    float projection_height = area.height();
     std::visit(utils::visitor{[&](const ScalingMode::Fixed& fixed) {
                                   projection_width  = fixed.width;
                                   projection_height = fixed.height;
@@ -246,10 +246,12 @@ void OrthographicProjection::update(float width, float height) {
                                   projection_height = height * fixed_horizontal.viewport_width / width;
                               }},
                scaling_mode);
-    area.left   = -projection_width * viewport_origin.x * scale;
-    area.right  = projection_width * scale + area.left;
-    area.bottom = -projection_height * viewport_origin.y * scale;
-    area.top    = projection_height * scale + area.bottom;
+    // Bevy builds the area from the origin and the scaled size, which orders the
+    // corners (`Rect::new` is `from_corners`).
+    const float origin_x = projection_width * viewport_origin.x;
+    const float origin_y = projection_height * viewport_origin.y;
+    area = math::Rect::create(scale * -origin_x, scale * -origin_y, scale * (projection_width - origin_x),
+                              scale * (projection_height - origin_y));
 }
 
 // ==== Visibility systems (Bevy bevy_camera::visibility) ====

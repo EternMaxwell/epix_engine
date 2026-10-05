@@ -8,6 +8,7 @@
 #include <epix/app.hpp>
 #include <epix/common.hpp>
 #include <epix/ecs.hpp>
+#include <epix/math/rect.hpp>
 #include <epix/transform.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -109,12 +110,9 @@ EPIX_EXPORT struct EPIX_API OrthographicProjection {
     ScalingMode scaling_mode{};
     float scale               = 1.0f;                   // Additional scale factor
     glm::vec2 viewport_origin = glm::vec2(0.5f, 0.5f);  // Viewport origin (0 to 1)
-    struct {
-        float left   = -1.0f;
-        float right  = 1.0f;
-        float bottom = -1.0f;
-        float top    = 1.0f;
-    } area;
+    /** @brief The orthographic view area, defaulting to the unit square (Bevy's
+     *  `area: Rect`, `projection.rs:583`). */
+    math::Rect area{glm::vec2(-1.0f, -1.0f), glm::vec2(1.0f, 1.0f)};
 
     /** @brief Update the projection for new viewport dimensions. */
     void update(float width, float height);
@@ -129,7 +127,7 @@ EPIX_EXPORT struct EPIX_API OrthographicProjection {
     /** @brief Compute the right-handed reverse-Z orthographic matrix used by
      * Bevy (`Mat4::orthographic_rh(..., far, near)`). */
     glm::mat4 get_clip_from_view() const {
-        return glm::orthoRH_ZO(area.left, area.right, area.bottom, area.top, far_plane, near_plane);
+        return glm::orthoRH_ZO(area.min.x, area.max.x, area.min.y, area.max.y, far_plane, near_plane);
     }
     /** @brief Projection cropped to a sub-camera view (Bevy
      * get_clip_from_view_for_sub, `projection.rs:647-688`).
@@ -149,12 +147,12 @@ EPIX_EXPORT struct EPIX_API OrthographicProjection {
 
         const float full_aspect = full_width / full_height;
 
-        const float top          = area.top;
-        const float bottom       = area.bottom;
+        const float top          = area.max.y;
+        const float bottom       = area.min.y;
         const float ortho_height = top - bottom;
         const float ortho_width  = ortho_height * full_aspect;
 
-        const float center_x = (area.left + area.right) / 2.0f;
+        const float center_x = (area.min.x + area.max.x) / 2.0f;
         const float left     = center_x - ortho_width / 2.0f;
         const float right    = center_x + ortho_width / 2.0f;
 
@@ -171,10 +169,10 @@ EPIX_EXPORT struct EPIX_API OrthographicProjection {
     float get_far() const { return far_plane; }
     /** @brief Compute frustum corners at the caller-provided view-space depths. */
     std::array<glm::vec3, 8> get_frustum_corners(float z_near, float z_far) const {
-        return {glm::vec3(area.right, area.bottom, z_near), glm::vec3(area.right, area.top, z_near),
-                glm::vec3(area.left, area.top, z_near),     glm::vec3(area.left, area.bottom, z_near),
-                glm::vec3(area.right, area.bottom, z_far),  glm::vec3(area.right, area.top, z_far),
-                glm::vec3(area.left, area.top, z_far),      glm::vec3(area.left, area.bottom, z_far)};
+        return {glm::vec3(area.max.x, area.min.y, z_near), glm::vec3(area.max.x, area.max.y, z_near),
+                glm::vec3(area.min.x, area.max.y, z_near), glm::vec3(area.min.x, area.min.y, z_near),
+                glm::vec3(area.max.x, area.min.y, z_far),  glm::vec3(area.max.x, area.max.y, z_far),
+                glm::vec3(area.min.x, area.max.y, z_far),  glm::vec3(area.min.x, area.min.y, z_far)};
     }
     /** @brief Compute this projection's world-space frustum (Bevy
      * `CameraProjection::compute_frustum`). */

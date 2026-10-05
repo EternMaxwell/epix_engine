@@ -1485,7 +1485,8 @@ TEST(Cluster, ComputeAabbForClusterMatchesBevy) {
 
     // Orthographic: depth slices are evenly spaced from -near.
     epix::camera::OrthographicProjection ortho_projection;
-    ortho_projection.area       = {.left = -1.0f, .right = 1.0f, .bottom = -0.75f, .top = 0.75f};
+    ortho_projection.area =
+        epix::math::Rect{.min = glm::vec2(-1.0f, -0.75f), .max = glm::vec2(1.0f, 0.75f)};
     ortho_projection.near_plane = z_near;
     ortho_projection.far_plane  = z_far;
     const glm::mat4 ortho       = ortho_projection.get_clip_from_view();

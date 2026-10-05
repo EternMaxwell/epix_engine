@@ -352,28 +352,28 @@ TEST(ScalingMode, VariantsAndProjectionSizingMatchBevy) {
 
     projection.scaling_mode = ScalingMode::Fixed{100.0f, 50.0f};
     projection.update(800.0f, 400.0f);
-    EXPECT_FLOAT_EQ(projection.area.right - projection.area.left, 100.0f);
-    EXPECT_FLOAT_EQ(projection.area.top - projection.area.bottom, 50.0f);
+    EXPECT_FLOAT_EQ(projection.area.max.x - projection.area.min.x, 100.0f);
+    EXPECT_FLOAT_EQ(projection.area.max.y - projection.area.min.y, 50.0f);
 
     projection.scaling_mode = ScalingMode::AutoMin{200.0f, 100.0f};
     projection.update(1000.0f, 100.0f);
-    EXPECT_FLOAT_EQ(projection.area.right - projection.area.left, 1000.0f);
-    EXPECT_FLOAT_EQ(projection.area.top - projection.area.bottom, 100.0f);
+    EXPECT_FLOAT_EQ(projection.area.max.x - projection.area.min.x, 1000.0f);
+    EXPECT_FLOAT_EQ(projection.area.max.y - projection.area.min.y, 100.0f);
 
     projection.scaling_mode = ScalingMode::AutoMax{1000.0f, 500.0f};
     projection.update(100.0f, 1000.0f);
-    EXPECT_FLOAT_EQ(projection.area.right - projection.area.left, 50.0f);
-    EXPECT_FLOAT_EQ(projection.area.top - projection.area.bottom, 500.0f);
+    EXPECT_FLOAT_EQ(projection.area.max.x - projection.area.min.x, 50.0f);
+    EXPECT_FLOAT_EQ(projection.area.max.y - projection.area.min.y, 500.0f);
 
     projection.scaling_mode = ScalingMode::FixedVertical{20.0f};
     projection.update(400.0f, 100.0f);
-    EXPECT_FLOAT_EQ(projection.area.right - projection.area.left, 80.0f);
-    EXPECT_FLOAT_EQ(projection.area.top - projection.area.bottom, 20.0f);
+    EXPECT_FLOAT_EQ(projection.area.max.x - projection.area.min.x, 80.0f);
+    EXPECT_FLOAT_EQ(projection.area.max.y - projection.area.min.y, 20.0f);
 
     projection.scaling_mode = ScalingMode::FixedHorizontal{20.0f};
     projection.update(400.0f, 100.0f);
-    EXPECT_FLOAT_EQ(projection.area.right - projection.area.left, 20.0f);
-    EXPECT_FLOAT_EQ(projection.area.top - projection.area.bottom, 5.0f);
+    EXPECT_FLOAT_EQ(projection.area.max.x - projection.area.min.x, 20.0f);
+    EXPECT_FLOAT_EQ(projection.area.max.y - projection.area.min.y, 5.0f);
 }
 
 TEST(Camera3d, DefaultsMatchBevyCameraComponents) {
