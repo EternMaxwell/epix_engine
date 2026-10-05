@@ -2696,7 +2696,7 @@ Mesh CircularSectorMeshBuilder::build() const {
     for (std::uint32_t index = 0; index < resolution; ++index) {
         const float angle = std::lerp(first_angle, last_angle, static_cast<float>(index) / last_index);
         const auto vertex = sector.radius() * unit_from_angle(angle);
-        const auto uv     = unit_from_angle(-(angle + uv_angle)) * 0.5f + glm::vec2(0.5f);
+        const auto uv     = glm::fma(unit_from_angle(-(angle + uv_angle)), glm::vec2(0.5f), glm::vec2(0.5f));
         positions.push_back({vertex.x, vertex.y, 0.0f});
         uvs.push_back({uv.x, uv.y});
     }
@@ -2726,8 +2726,8 @@ Mesh CircularSegmentMeshBuilder::build() const {
 
     constexpr float half_pi = std::numbers::pi_v<float> * 0.5f;
     const float uv_angle    = uv_mode.value.angle;
-    const auto midpoint_uv =
-        unit_from_angle(-uv_angle - half_pi) * (0.5f * segment.apothem() / segment.radius()) + glm::vec2(0.5f);
+    const auto midpoint_uv = glm::fma(unit_from_angle(-uv_angle - half_pi),
+                                      glm::vec2(0.5f * segment.apothem() / segment.radius()), glm::vec2(0.5f));
     uvs.push_back({midpoint_uv.x, midpoint_uv.y});
 
     const float first_angle = half_pi - segment.half_angle();
@@ -2736,7 +2736,7 @@ Mesh CircularSegmentMeshBuilder::build() const {
     for (std::uint32_t index = 0; index < resolution; ++index) {
         const float angle = std::lerp(first_angle, last_angle, static_cast<float>(index) / last_index);
         const auto vertex = segment.radius() * unit_from_angle(angle);
-        const auto uv     = unit_from_angle(-(angle + uv_angle)) * 0.5f + glm::vec2(0.5f);
+        const auto uv     = glm::fma(unit_from_angle(-(angle + uv_angle)), glm::vec2(0.5f), glm::vec2(0.5f));
         positions.push_back({vertex.x, vertex.y, 0.0f});
         uvs.push_back({uv.x, uv.y});
     }
