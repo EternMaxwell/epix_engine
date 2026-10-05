@@ -3,6 +3,7 @@
 # EPIX_CXX_MODULE=ON, a module/) variant.
 
 epix_add_tests(utils)
+epix_add_tests(math)
 epix_add_tests(task)
 epix_add_tests(ecs)
 epix_add_tests(app)

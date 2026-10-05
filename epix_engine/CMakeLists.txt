@@ -19,6 +19,7 @@ set(EPIX_ENGINE_INCLUDE_DIRS "")
 
 epix_add_module(common)
 epix_add_module(utils)
+epix_add_module(math)
 epix_add_module(task)
 epix_add_module(ecs)
 epix_add_module(app)
