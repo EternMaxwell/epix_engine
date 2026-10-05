@@ -555,7 +555,7 @@ void camera::extract_cameras(
         // (CAM-123), and `CameraDriverNode` still runs the graph because only a
         // *window* target can veto it (camera_driver_node.rs:43-55).
         auto normalized_target      = target.normalize(primary);
-        const auto viewport_origin = viewport_rect->first;
+        const auto viewport_origin = viewport_rect->min;
 
         // Bevy represents HDR as a dedicated marker component.
         const bool hdr = opt_hdr.has_value();

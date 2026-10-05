@@ -9,6 +9,7 @@
 #include <epix/app.hpp>
 #include <epix/common.hpp>
 #include <epix/ecs.hpp>
+#include <epix/math/rect.hpp>
 #include <epix/transform.hpp>
 #include <epix/utils.hpp>
 #include <epix/window.hpp>
@@ -257,24 +258,25 @@ EPIX_EXPORT struct EPIX_API Camera {
         if (!computed.target_info) return std::nullopt;
         return glm::vec2(physical_size) / computed.target_info->scale_factor;
     }
-    /** @brief Physical viewport rectangle as (min, max), or no value before
-     * the camera target has been resolved (Bevy physical_viewport_rect). */
-    std::optional<std::pair<glm::uvec2, glm::uvec2>> physical_viewport_rect() const noexcept {
+    /** @brief The rendered physical bounds of the camera, or no value before the
+     *  camera target has been resolved (Bevy `physical_viewport_rect`,
+     *  `camera.rs:409-417`). */
+    std::optional<math::URect> physical_viewport_rect() const noexcept {
         auto size = physical_viewport_size();
         if (!size) return std::nullopt;
         const auto min =
             viewport.transform([](const Viewport& vp) { return vp.physical_position; }).value_or(glm::uvec2(0, 0));
-        return std::pair{min, min + *size};
+        return math::URect{.min = min, .max = min + *size};
     }
-    /** @brief Logical viewport rectangle as (min, max) (Bevy
-     * logical_viewport_rect). */
-    std::optional<std::pair<glm::vec2, glm::vec2>> logical_viewport_rect() const noexcept {
+    /** @brief The rendered logical bounds of the camera (Bevy
+     *  `logical_viewport_rect`, `camera.rs:423-429`). */
+    std::optional<math::Rect> logical_viewport_rect() const noexcept {
         auto rect = physical_viewport_rect();
         if (!rect) return std::nullopt;
-        auto min = to_logical(rect->first);
-        auto max = to_logical(rect->second);
+        auto min = to_logical(rect->min);
+        auto max = to_logical(rect->max);
         if (!min || !max) return std::nullopt;
-        return std::pair{*min, *max};
+        return math::Rect{.min = *min, .max = *max};
     }
     /** @brief The physical viewport size, if the target has been resolved
      * (Bevy physical_viewport_size). */
@@ -334,8 +336,8 @@ EPIX_EXPORT struct EPIX_API Camera {
     std::expected<glm::vec2, ViewportConversionError> viewport_to_ndc(glm::vec2 viewport_position) const noexcept {
         auto rect = logical_viewport_rect();
         if (!rect) return std::unexpected(ViewportConversionError::NoViewportSize);
-        const glm::vec2 extent = rect->second - rect->first;
-        glm::vec2 ndc = ((viewport_position - rect->first) / extent) * 2.0f - glm::vec2(1.0f);
+        const glm::vec2 extent = rect->max - rect->min;
+        glm::vec2 ndc = ((viewport_position - rect->min) / extent) * 2.0f - glm::vec2(1.0f);
         ndc.y         = -ndc.y;
         return ndc;
     }
@@ -349,8 +351,8 @@ EPIX_EXPORT struct EPIX_API Camera {
         if (!ndc) return std::unexpected(ViewportConversionError::InvalidData);
         if (ndc->z < 0.0f) return std::unexpected(ViewportConversionError::PastFarPlane);
         if (ndc->z > 1.0f) return std::unexpected(ViewportConversionError::PastNearPlane);
-        const glm::vec2 extent = rect->second - rect->first;
-        return ((glm::vec2(ndc->x, -ndc->y) + glm::vec2(1.0f)) * 0.5f) * extent + rect->first;
+        const glm::vec2 extent = rect->max - rect->min;
+        return ((glm::vec2(ndc->x, -ndc->y) + glm::vec2(1.0f)) * 0.5f) * extent + rect->min;
     }
     /** @brief Converts a world-space point to viewport pixels plus positive
      * view depth (Bevy world_to_viewport_with_depth). */
