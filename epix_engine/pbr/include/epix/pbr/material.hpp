@@ -442,12 +442,16 @@ void sweep_entities_needing_specialization(
  *  and before the late sweep, which is what lets a material of one type be replaced
  *  by another in the same frame.
  *
- *  What is **not** here, and lands with its prerequisites: `EntitiesNeedingSpecialization`
- *  and its three systems, `add_material_bind_group_allocator`, the erased
- *  render-asset plugin, the PostUpdate mesh-change systems, and the whole
- *  `finish` half (`PreparedMaterial`, `MaterialPipeline`, the specialized-pipeline
- *  caches). The registry resource is inserted here rather than by Bevy's
- *  `MaterialsPlugin`, which is global and unported. */
+ *  What is **not** here is every system that would turn an extracted material into
+ *  something drawable: there is no `prepare_materials`, no `specialize_materials`,
+ *  no `queue_material_meshes` and nothing that prepares a material's bind group, so
+ *  the types below (`PreparedMaterial`, `MaterialProperties`, `MaterialPipeline`) are
+ *  defined but never constructed and no material of any type reaches a phase. Also
+ *  absent, each with its prerequisite: `EntitiesNeedingSpecialization`'s three
+ *  systems, `add_material_bind_group_allocator` with `MaterialBindGroupAllocator`,
+ *  the erased render-asset plugin, the PostUpdate mesh-change systems, and the
+ *  specialized pipeline caches (PBR-34). The registry resource is inserted here
+ *  rather than by Bevy's `MaterialsPlugin`, which is global and unported. */
 EPIX_EXPORT template <typename M>
     requires std::derived_from<M, Material<M>>
 struct MaterialPlugin {
