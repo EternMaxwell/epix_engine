@@ -1620,6 +1620,53 @@ void MeshRenderPlugin::ready(epix::app::App& app) {
     wgpu::Limits limits{};
     device->get().getLimits(&limits);
     render_app->get().world_mut().insert_resource(SkinUniforms::make(device->get(), limits));
+
+    // Bevy creates `MeshPipeline` with `init_resource` (`render/mesh.rs:291`, whose
+    // `impl FromWorld` is `:1883-1912`), and that needs the device and the adapter -
+    // so it belongs in this half too. Nothing created it before, while
+    // `cluster_prepare` and `cluster` both take `Res<MeshPipeline>`; under this
+    // port's hard validation a real app aborted there, which is one concrete reason
+    // 3D never rendered.
+    // The adapter is in both worlds (`render.cpp`); the shader handles are registered
+    // into the main world by `register_mesh_shaders`.
+    const auto adapter        = render_app->get().world().get_resource<wgpu::Adapter>();
+    const auto shader_handles = app.world().get_resource<MeshShaderHandles>();
+    if (adapter && shader_handles) {
+        const wgpu::Device& render_device = device->get();
+
+        // Bevy's `RenderDevice::get_supported_read_only_binding_type`.
+        const auto read_only_binding_type = [&limits](std::uint32_t buffers_per_shader_stage) {
+            return limits.maxStorageBuffersPerShaderStage >= buffers_per_shader_stage
+                       ? wgpu::BufferBindingType::eStorage
+                       : wgpu::BufferBindingType::eUniform;
+        };
+
+        // Bevy's `binding_arrays_are_usable`: never on a GLSL build (this port has
+        // no GLSL path), not on Adreno models at or below 610, and only with enough
+        // storage textures and both binding-array features.
+        const auto adapter_info = render::RenderAdapterInfo::from_adapter(adapter->get());
+        const auto adreno_model = render::get_adreno_model(adapter_info);
+        const auto min_texture_bindings =
+            static_cast<std::uint32_t>(STANDARD_MATERIAL_FRAGMENT_SHADER_MIN_TEXTURE_BINDINGS + MAX_VIEW_LIGHT_PROBES);
+        const bool binding_arrays_are_usable =
+            (!adreno_model || *adreno_model > 610) &&
+            limits.maxStorageTexturesPerShaderStage >= min_texture_bindings &&
+            render_device.hasFeature(wgpu::FeatureName::eTextureBindingArray) &&
+            render_device.hasFeature(wgpu::FeatureName::eSampledTextureAndStorageBufferArrayNonUniformIndexing);
+
+        // Bevy's `clustered_decals_are_usable` is this and its decals feature; the
+        // port's decal pass is not ported, so the feature stays off.
+        constexpr bool decals_feature_enabled = false;
+
+        render_app->get().world_mut().insert_resource(MeshPipeline::make(
+            limits, read_only_binding_type(CLUSTERED_FORWARD_STORAGE_BUFFER_COUNT), shader_handles->get().mesh,
+            MeshPipelineViewLayouts::make(read_only_binding_type(CLUSTERED_FORWARD_STORAGE_BUFFER_COUNT),
+                                          read_only_binding_type(render::view::VISIBILITY_RANGES_STORAGE_BUFFER_COUNT),
+                                          binding_arrays_are_usable, decals_feature_enabled,
+                                          render_device.hasFeature(wgpu::FeatureName::ePartiallyBoundBindingArray),
+                                          /*oit_supported=*/false),
+            binding_arrays_are_usable, clustered_decals_are_usable(binding_arrays_are_usable, decals_feature_enabled)));
+    }
 }
 
 }  // namespace epix::pbr
