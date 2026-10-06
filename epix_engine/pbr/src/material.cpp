@@ -31,4 +31,8 @@ void late_sweep_material_instances(ecs::ResMut<RenderMaterialInstances> material
     material_instances->current_change_tick = ecs::Tick{last_change_tick.get() + 1};
 }
 
+void init_material_pipeline(ecs::Commands commands, ecs::Res<MeshPipeline> mesh_pipeline) {
+    commands.insert_resource(MaterialPipeline{.mesh_pipeline = *mesh_pipeline});
+}
+
 }  // namespace epix::pbr

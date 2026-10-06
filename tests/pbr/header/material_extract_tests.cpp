@@ -77,7 +77,22 @@ void add_render_dependent_prerequisites(App& app) {
     // without that plugin still need the resource present, exactly as
     // mesh_instance_tests.cpp does.
     if (auto render_app = app.get_sub_app_mut(Render); render_app.has_value()) {
-        render_app->get().world_mut().init_resource<pbr::RenderMaterialBindings>();
+        auto& world = render_app->get().world_mut();
+        world.init_resource<pbr::RenderMaterialBindings>();
+
+        // `MaterialPlugin` now also registers `init_material_pipeline` in
+        // `RenderStartup` (Bevy `material.rs:300`), and that system takes
+        // `Res<MeshPipeline>`. A real app should get the resource from
+        // `MeshRenderPlugin`, which does not create it yet - that engine gap is
+        // recorded as remaining work - so this app supplies it the way
+        // cluster_prepare_tests.cpp does rather than weakening the parameter.
+        world.insert_resource(pbr::MeshPipeline{
+            .view_layouts                          = {},
+            .clustered_forward_buffer_binding_type = wgpu::BufferBindingType::eStorage,
+            .mesh_layouts = pbr::MeshLayouts::make(wgpu::Limits{}, /*binding_arrays_are_usable=*/false),
+            .shader       = epix::assets::Handle<epix::shader::Shader>{
+                epix::assets::AssetId<epix::shader::Shader>::invalid()},
+        });
     }
 }
 

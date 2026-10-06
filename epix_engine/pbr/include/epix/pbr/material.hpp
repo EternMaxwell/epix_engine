@@ -433,6 +433,24 @@ void sweep_entities_needing_specialization(
 }
 
 
+/** @brief The 3D mesh pipeline data a material specializes against (Bevy
+ *  `MaterialPipeline`, `bevy_pbr/src/material.rs:442-447`).
+ *
+ *  Bevy's `MaterialPipelineSpecializer` and `ErasedMaterialPipelineKey` are not
+ *  ported: they need `AsBindGroup`'s erased key, which belongs to the render module
+ *  and is recorded against `add_material_bind_group_allocator`'s row. */
+EPIX_EXPORT struct MaterialPipeline {
+    /** @brief The mesh pipeline this material's pipeline derives from. */
+    MeshPipeline mesh_pipeline;
+};
+
+/** @brief Insert the `MaterialPipeline` resource once the mesh pipeline exists
+ *  (Bevy `init_material_pipeline`, `material.rs:506-510`, registered in
+ *  `RenderStartup` at `material.rs:300`). Everything that specializes a 3D
+ *  material against the mesh pipeline reads this resource, so it is the first
+ *  piece of the system half that turns a material into a drawable pipeline. */
+EPIX_EXPORT EPIX_API void init_material_pipeline(ecs::Commands commands, ecs::Res<MeshPipeline> mesh_pipeline);
+
 /** @brief Registers one 3D material type (Bevy `MaterialPlugin<M>`,
  *  `bevy_pbr/src/material.rs:339-404`).
  *
@@ -469,6 +487,11 @@ struct MaterialPlugin {
         // material type, so a second material plugin must not wipe the first's
         // contents.
         render_app->get().world_mut().init_resource<RenderMaterialInstances>();
+
+        // Bevy registers the material-pipeline resource in `RenderStartup`, before
+        // anything specializes against it (`material.rs:300`).
+        render_app->get().add_systems(render::RenderStartup,
+                                      ecs::into(init_material_pipeline).set_name("init material pipeline"));
 
         // The set must be in the schedule before anything can be ordered against it:
         // the port warns and *ignores* a hierarchy or dependency whose set is absent,
@@ -616,16 +639,5 @@ EPIX_EXPORT struct PreparedMaterial {
 };
 
 
-
-/** @brief The 3D mesh pipeline data a material specializes against (Bevy
- *  `MaterialPipeline`, `bevy_pbr/src/material.rs:442-447`).
- *
- *  Bevy's `MaterialPipelineSpecializer` and `ErasedMaterialPipelineKey` are not
- *  ported: they need `AsBindGroup`'s erased key, which belongs to the render module
- *  and is recorded against `add_material_bind_group_allocator`'s row. */
-EPIX_EXPORT struct MaterialPipeline {
-    /** @brief The mesh pipeline this material's pipeline derives from. */
-    MeshPipeline mesh_pipeline;
-};
 
 }  // namespace epix::pbr
