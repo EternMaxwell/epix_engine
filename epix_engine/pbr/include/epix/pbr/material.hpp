@@ -546,13 +546,16 @@ EPIX_EXPORT EPIX_API void init_material_pipeline(ecs::Commands commands, ecs::Re
  *  prepares a material's bind group, so the types below (`PreparedMaterial`,
  *  `MaterialProperties`, `MaterialPipeline` and the two specialization caches) are
  *  defined but never constructed and no material of any type reaches a phase. Also
- *  absent, each with its prerequisite: `EntitiesNeedingSpecialization`'s three
- *  systems and `add_material_bind_group_allocator` with `MaterialBindGroupAllocator`
- *  (PBR-34, PBR-39). The erased render-asset plugin is **not** missing - it is in
- *  `epix/render/erased_render_asset.hpp`, with `ErasedRenderAssets` and
- *  `ErasedRenderAssetPlugin` - and neither are the specialization caches, so what
- *  the material path still needs is `ErasedMaterialPipelineKey`,
- *  `MaterialPipelineSpecializer` and the three systems that use them. The registry
+ *  What is absent is the render-world half and the bind-group allocator:
+ *  `add_material_bind_group_allocator` with `MaterialBindGroupAllocator`, then
+ *  `prepare_materials`, `specialize_material_meshes` and `queue_material_meshes`
+ *  (PBR-34, PBR-39). The PostUpdate bookkeeping is **not** missing - the four
+ *  `EntitiesNeedingSpecialization` systems (`check_`,
+ *  `extract_entities_needs_specialization`, `check_light_` and `sweep_`) and both
+ *  mesh-change markers are in this file and in `epix/mesh/components.hpp` - and
+ *  neither are the erased render-asset plugin
+ *  (`epix/render/erased_render_asset.hpp`), the specialization caches,
+ *  `ErasedMaterialPipelineKey` or `MaterialPipelineSpecializer`. The registry
  *  resource is inserted here rather than by Bevy's `MaterialsPlugin`, which is
  *  global and unported. */
 EPIX_EXPORT template <typename M>
