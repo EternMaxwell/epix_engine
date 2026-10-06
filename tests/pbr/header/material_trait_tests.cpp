@@ -127,3 +127,24 @@ TEST(MaterialTrait, PipelineCacheIsNonGenericAndKeyedPerEntity) {
     ASSERT_EQ(view_cache.map.size(), 1u);
     EXPECT_EQ(view_cache.map.begin()->second.first.get(), 3u);
 }
+
+/** @brief The erased material key keeps the payload's type, hash and equality
+ *  (Bevy `ErasedMaterialKey`, `material.rs:1430-1445`).
+ *
+ *  One specialization cache serves every material type, so this is what keeps two
+ *  types with equal bytes apart: the type is part of the key, not only the value.
+ *  Bevy stores the `TypeId`, a precomputed hash and the boxed value; a key that got
+ *  any of the three wrong would silently share a pipeline between materials. */
+TEST(MaterialTrait, ErasedKeyComparesTypeAndValue) {
+    const pbr::ErasedMaterialKey same_a{7};
+    const pbr::ErasedMaterialKey same_b{7};
+    const pbr::ErasedMaterialKey other_value{8};
+    const pbr::ErasedMaterialKey other_type{7u};
+
+    EXPECT_EQ(same_a, same_b);
+    EXPECT_EQ(same_a.hash(), same_b.hash()) << "the hash is precomputed from the value, as Bevy's is";
+    EXPECT_NE(same_a, other_value);
+    EXPECT_NE(same_a, other_type) << "same numeric value, different type: still a different key";
+    EXPECT_TRUE(same_a.type_id() == same_b.type_id());
+    EXPECT_FALSE(same_a.type_id() == other_type.type_id());
+}

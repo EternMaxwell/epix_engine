@@ -219,6 +219,67 @@ struct MaterialPipelineKey {
     bool operator==(const MaterialPipelineKey&) const noexcept = default;
 };
 
+namespace detail {
+/** @brief The erased key's payload interface (Bevy `ErasedMaterialKeyVTable`,
+ *  `material.rs:1438-1444`), as the base class C++ uses in place of a vtable
+ *  value. Bevy stores a clone function and a partial-equality function; the
+ *  virtual members are the same two operations. */
+struct ErasedMaterialKeyConcept {
+    virtual ~ErasedMaterialKeyConcept()                                          = default;
+    virtual std::shared_ptr<const ErasedMaterialKeyConcept> clone() const        = 0;
+    virtual bool equals(const ErasedMaterialKeyConcept& other) const             = 0;
+};
+
+template <typename T>
+struct ErasedMaterialKeyModel final : ErasedMaterialKeyConcept {
+    T value;
+    explicit ErasedMaterialKeyModel(T material_key) : value(std::move(material_key)) {}
+    std::shared_ptr<const ErasedMaterialKeyConcept> clone() const override {
+        return std::make_shared<ErasedMaterialKeyModel>(value);
+    }
+    bool equals(const ErasedMaterialKeyConcept& other) const override {
+        const auto* typed = dynamic_cast<const ErasedMaterialKeyModel*>(&other);
+        return typed != nullptr && typed->value == value;
+    }
+};
+}  // namespace detail
+
+/** @brief A material's bind-group key with its type erased (Bevy
+ *  `ErasedMaterialKey`, `material.rs:1430-1445`), which is what lets one
+ *  specialization cache serve every material type.
+ *
+ *  Bevy keeps the key's `TypeId`, a precomputed `FixedHasher` hash and the boxed
+ *  value; this holds the same three. The payload is shared rather than cloned on
+ *  copy - it is immutable, so the two are indistinguishable through the interface
+ *  (`clone` is kept for the case where a caller needs its own copy). */
+EPIX_EXPORT class ErasedMaterialKey {
+   public:
+    /** @brief Erase one material's bind-group data, which must be cloneable,
+     *  hashable and comparable (Bevy's `T: Clone + Hash + PartialEq`). */
+    template <typename T>
+        requires std::copy_constructible<T> && std::equality_comparable<T>
+    explicit ErasedMaterialKey(T material_key)
+        : m_type_id(meta::type_id<T>()),
+          m_hash(std::hash<T>{}(material_key)),
+          m_value(std::make_shared<detail::ErasedMaterialKeyModel<T>>(std::move(material_key))) {}
+
+    /** @brief Bevy derives `PartialEq`, comparing the type and then the value. */
+    bool operator==(const ErasedMaterialKey& other) const noexcept {
+        return m_type_id == other.m_type_id && m_value->equals(*other.m_value);
+    }
+
+    /** @brief Bevy's `FixedHasher::hash_one` over the same key. */
+    std::size_t hash() const noexcept { return m_hash; }
+
+    /** @brief The erased payload's type (Bevy's `type_id` field). */
+    const meta::type_index& type_id() const noexcept { return m_type_id; }
+
+   private:
+    meta::type_index m_type_id{};
+    std::size_t m_hash = 0;
+    std::shared_ptr<const detail::ErasedMaterialKeyConcept> m_value;
+};
+
 /** @brief A 3D material (Bevy `Material`, `bevy_pbr/src/material.rs:138-273`).  A
  *  material type derives from this and overrides only what it needs; the pipeline
  *  calls the derived members through static dispatch.
@@ -467,10 +528,14 @@ EPIX_EXPORT EPIX_API void init_material_pipeline(ecs::Commands commands, ecs::Re
  *  `MaterialProperties`, `MaterialPipeline` and the two specialization caches) are
  *  defined but never constructed and no material of any type reaches a phase. Also
  *  absent, each with its prerequisite: `EntitiesNeedingSpecialization`'s three
- *  systems, `add_material_bind_group_allocator` with `MaterialBindGroupAllocator`,
- *  the erased render-asset plugin and the PostUpdate mesh-change systems (PBR-34,
- *  PBR-39). The registry resource is inserted here rather than by Bevy's
- *  `MaterialsPlugin`, which is global and unported. */
+ *  systems and `add_material_bind_group_allocator` with `MaterialBindGroupAllocator`
+ *  (PBR-34, PBR-39). The erased render-asset plugin is **not** missing - it is in
+ *  `epix/render/erased_render_asset.hpp`, with `ErasedRenderAssets` and
+ *  `ErasedRenderAssetPlugin` - and neither are the specialization caches, so what
+ *  the material path still needs is `ErasedMaterialPipelineKey`,
+ *  `MaterialPipelineSpecializer` and the three systems that use them. The registry
+ *  resource is inserted here rather than by Bevy's `MaterialsPlugin`, which is
+ *  global and unported. */
 EPIX_EXPORT template <typename M>
     requires std::derived_from<M, Material<M>>
 struct MaterialPlugin {
@@ -642,3 +707,8 @@ EPIX_EXPORT struct PreparedMaterial {
 
 
 }  // namespace epix::pbr
+
+template <>
+struct std::hash<epix::pbr::ErasedMaterialKey> {
+    std::size_t operator()(const epix::pbr::ErasedMaterialKey& key) const noexcept { return key.hash(); }
+};
