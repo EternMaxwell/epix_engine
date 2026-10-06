@@ -200,6 +200,18 @@ EPIX_EXPORT struct RenderCubemapVisibleEntities {
     std::array<RenderVisibleMeshEntities, 6> data;
 };
 
+/** @brief The visible entities of each cascade frustum, per view (Bevy
+ *  `RenderCascadesVisibleEntities`, `bevy_pbr/src/components.rs:40-46`).
+ *
+ *  Bevy keys a map by the view and stores one list per cascade frustum, which is what
+ *  the shadow phase walks - the directional counterpart of the cubemap type above,
+ *  and the reason the two are shaped differently: a cube has six fixed faces, while a
+ *  cascade count is a setting. */
+EPIX_EXPORT struct RenderCascadesVisibleEntities {
+    /** @brief View entity to the visible entities of each of its cascade frusta. */
+    ::epix::render::sync_world::MainEntityHashMap<std::vector<RenderVisibleMeshEntities>> entities;
+};
+
 /** @brief A point light as extracted for the render world (Bevy
  *  `ExtractedPointLight`, `render/light.rs:69-86`).
  *

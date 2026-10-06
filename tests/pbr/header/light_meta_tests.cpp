@@ -40,6 +40,25 @@ glm::mat4 transform_looking_along(glm::vec3 direction) {
 static_assert(std::is_same_v<WithLight,
                              ecs::Or<ecs::With<PointLight>, ecs::With<SpotLight>, ecs::With<DirectionalLight>>>);
 
+// PBR-3 — `bevy_pbr/src/components.rs:40-46`.
+
+/** @brief The cascades' render-world visible entities are a per-view map of
+ *  per-cascade lists (Bevy `RenderCascadesVisibleEntities`).
+ *
+ *  Its cubemap counterpart is already here; this pins the directional one, because
+ *  the shadow phase walks it by view and then by cascade, and a map keyed on the wrong
+ *  entity - or one flattened to a single list - would still compile at every call
+ *  site. */
+TEST(LightMeta, CascadesVisibleEntitiesArePerViewAndPerCascade) {
+    RenderCascadesVisibleEntities cascades;
+    EXPECT_TRUE(cascades.entities.empty());
+
+    const auto view = render::sync_world::MainEntity{ecs::Entity::from_index(3)};
+    cascades.entities[view].push_back(RenderVisibleMeshEntities{});
+    ASSERT_EQ(cascades.entities.size(), 1u) << "one entry per view, not per cascade";
+    ASSERT_EQ(cascades.entities.at(view).size(), 1u) << "and one list per cascade inside it";
+}
+
 // PBR-842/PBR-843 — `bevy_pbr/src/components.rs:8-13`.
 TEST(pbr, light_meta_render_visible_mesh_entities_holds_render_and_main_pairs) {
     RenderVisibleMeshEntities list;
