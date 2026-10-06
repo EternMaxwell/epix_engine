@@ -2,9 +2,22 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <epix/common.hpp>
+#include <epix/ecs.hpp>
 #endif
 
+#include <epix/pbr/directional_light.hpp>
+#include <epix/pbr/point_light.hpp>
+#include <epix/pbr/spot_light.hpp>
+
 namespace epix::pbr {
+
+/** @brief Matches anything that is a light: a point, spot or directional light (Bevy
+ *  `WithLight`, `bevy_light/src/lib.rs:209`).
+ *
+ *  An alias rather than a marker component, as in Bevy: it is the filter the light
+ *  systems share, so it lives where its shape can change without every caller
+ *  spelling out the three-way `Or`. */
+EPIX_EXPORT using WithLight = ecs::Or<ecs::With<PointLight>, ecs::With<SpotLight>, ecs::With<DirectionalLight>>;
 
 /** @brief Add to a mesh to make it not cast shadows (Bevy `NotShadowCaster`,
  *  `bevy_light/src/lib.rs:211-214`).

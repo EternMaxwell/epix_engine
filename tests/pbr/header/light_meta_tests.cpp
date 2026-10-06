@@ -3,6 +3,7 @@
 // packing helpers `prepare_lights` writes into `GpuLights`/`GpuClusterableObject`
 // (`bevy_pbr/src/render/light.rs`).
 #include <epix/pbr/light_meta.hpp>
+#include <epix/pbr/light_markers.hpp>
 
 #include <gtest/gtest.h>
 
@@ -26,6 +27,18 @@ glm::mat4 transform_looking_along(glm::vec3 direction) {
     return transform;
 }
 }  // namespace
+
+/** @brief `WithLight` is Bevy's three-way light filter (Bevy `WithLight`,
+ *  `bevy_light/src/lib.rs:209`): a point, a spot or a directional light, and nothing
+ *  else.
+ *
+ *  Pinned as a type rather than by spawning lights and counting matches, because the
+ *  alias *is* its type expression: a filter widened with a fourth `With<..>` - or one
+ *  that dropped a light kind - would still pass a runtime count of the three lights a
+ *  test happened to spawn, and every call site that uses it as a filter would go on
+ *  compiling. */
+static_assert(std::is_same_v<WithLight,
+                             ecs::Or<ecs::With<PointLight>, ecs::With<SpotLight>, ecs::With<DirectionalLight>>>);
 
 // PBR-842/PBR-843 — `bevy_pbr/src/components.rs:8-13`.
 TEST(pbr, light_meta_render_visible_mesh_entities_holds_render_and_main_pairs) {
