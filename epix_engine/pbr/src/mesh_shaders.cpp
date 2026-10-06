@@ -1529,6 +1529,12 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
                 .in_set(MeshExtractionSystems::Extract)
                 .set_name("extract meshes for cpu building"));
 
+        render_app->get().add_systems(
+            epix::app::ScheduleInfo(epix::render::Render),
+            epix::ecs::into(epix::render::batching::write_batched_cpu_instance_buffer<MeshPipeline>)
+                .in_set(epix::render::RenderSystems::PrepareResourcesFlush)
+                .set_name("write batched cpu instance buffer"));
+
         // Bevy registers the CPU instance-buffer clear in this branch alone
         // (`render/mesh.rs:204`, inside the `else` of `use_gpu_instance_buffer_builder`).
         // Registered unconditionally it aborted every GPU-path app: the system takes
@@ -1641,6 +1647,15 @@ void MeshRenderPlugin::ready(epix::app::App& app) {
     if (!(use_gpu_instance_buffer_builder && gpu_preprocessing_supported)) {
         render_app->get().world_mut().insert_resource(
             epix::render::batching::BatchedInstanceBuffer<MeshUniform>{limits});
+        // The phase's batch-set kind and this branch have to agree: a view's
+        // preprocessing mode is `support.min(...)` (`core_3d.cpp`), and a mode above
+        // `None` makes the phase indirect while the CPU batching path requires
+        // dynamic sets - which is the mismatch that logged "Dynamic uniform batch
+        // sets are required when GPU preprocessing is disabled" every frame. Bevy
+        // keeps the two in step through the same effective support
+        // (`render/gpu_preprocess.rs:444`), so narrowing it here is that invariant
+        // rather than a workaround.
+        render_app->get().world_mut().insert_resource(epix::render::batching::GpuPreprocessingSupport{});
     }
 
     // Bevy creates `MeshPipeline` with `init_resource` (`render/mesh.rs:291`, whose
