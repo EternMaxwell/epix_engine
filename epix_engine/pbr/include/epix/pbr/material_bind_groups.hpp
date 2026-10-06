@@ -154,6 +154,92 @@ EPIX_EXPORT class MaterialBindGroupNonBindlessAllocator {
      *  length). */
     std::size_t len() const noexcept { return m_bind_groups.size(); }
 
+    /** @brief Prepare every bind group still waiting: pack each binding's `OwnedData`
+     *  into a uniform buffer, then create the bind group through the layout the
+     *  pipeline server holds (Bevy `prepare_bind_groups`,
+     *  `material_bind_groups.rs:1909-1975`).
+     *
+     *  Bevy takes only the device, because `RenderDevice::create_buffer_with_data`
+     *  uploads through a mapped-at-creation view the native wgpu C API does not expose
+     *  (as this port's buffer types note), so the queue comes in here and the data is
+     *  written through it. */
+    void prepare_bind_groups(const wgpu::Device& device,
+                             const wgpu::Queue& queue,
+                             const render::PipelineServer& pipeline_server) {
+        // Bevy's `mem::take`: the set is emptied first, so a group freed while this
+        // runs cannot be prepared after its allocation is gone.
+        const auto to_prepare = std::exchange(m_to_prepare, {});
+        for (const MaterialBindGroupIndex bind_group_index : to_prepare) {
+            auto& slot = m_bind_groups.at(bind_group_index.index);
+            assert(slot.has_value() &&
+                   std::holds_alternative<MaterialNonBindlessAllocatedBindGroup::Unprepared>(slot->value));
+
+            auto unprepared = std::get<MaterialNonBindlessAllocatedBindGroup::Unprepared>(std::move(slot->value));
+            slot            = std::nullopt;
+
+            // Pack any `Data` into uniform buffers, in binding order.
+            std::vector<wgpu::Buffer> uniform_buffers;
+            for (const auto& [binding, resource] : unprepared.bind_group.bindings.resources()) {
+                const auto* owned_data = std::get_if<render::render_resource::OwnedData>(&resource);
+                if (!owned_data) continue;
+
+                const std::string label = std::format("material uniform data {}", binding);
+                wgpu::Buffer uniform_buffer =
+                    device.createBuffer(wgpu::BufferDescriptor()
+                                            .setLabel(label.c_str())
+                                            .setSize(owned_data->bytes().size())
+                                            .setUsage(wgpu::BufferUsage::eUniform | wgpu::BufferUsage::eCopyDst));
+                queue.writeBuffer(uniform_buffer, 0, owned_data->bytes().data(),
+                                  static_cast<std::uint64_t>(owned_data->bytes().size()));
+                uniform_buffers.push_back(std::move(uniform_buffer));
+            }
+
+            // Create the bind group entries, pairing each `Data` binding with the
+            // buffer created for it above.
+            std::vector<wgpu::BindGroupEntry> entries;
+            entries.reserve(unprepared.bind_group.bindings.resources().size());
+            auto uniform_buffers_iter = uniform_buffers.begin();
+            for (const auto& [binding, resource] : unprepared.bind_group.bindings.resources()) {
+                if (std::holds_alternative<render::render_resource::OwnedData>(resource)) {
+                    assert(uniform_buffers_iter != uniform_buffers.end());
+                    entries.push_back(wgpu::BindGroupEntry()
+                                          .setBinding(binding)
+                                          .setBuffer(*uniform_buffers_iter)
+                                          .setOffset(0)
+                                          .setSize(std::numeric_limits<std::uint64_t>::max()));
+                    ++uniform_buffers_iter;
+                } else if (const auto* buffer = std::get_if<wgpu::Buffer>(&resource)) {
+                    entries.push_back(wgpu::BindGroupEntry()
+                                          .setBinding(binding)
+                                          .setBuffer(*buffer)
+                                          .setOffset(0)
+                                          .setSize(std::numeric_limits<std::uint64_t>::max()));
+                } else if (const auto* texture =
+                               std::get_if<std::pair<wgpu::TextureViewDimension, wgpu::TextureView>>(&resource)) {
+                    entries.push_back(wgpu::BindGroupEntry().setBinding(binding).setTextureView(texture->second));
+                } else {
+                    const auto* sampler = std::get_if<std::pair<wgpu::SamplerBindingType, wgpu::Sampler>>(&resource);
+                    assert(sampler != nullptr);
+                    entries.push_back(wgpu::BindGroupEntry().setBinding(binding).setSampler(sampler->second));
+                }
+            }
+
+            // Create the bind group through the layout the pipeline server holds.
+            const wgpu::BindGroup bind_group =
+                device.createBindGroup(wgpu::BindGroupDescriptor()
+                                           .setLabel(std::string(m_label).c_str())
+                                           .setLayout(pipeline_server.get_bind_group_layout(unprepared.layout))
+                                           .setEntries(entries));
+
+            m_bind_groups[bind_group_index.index] =
+                MaterialNonBindlessAllocatedBindGroup{.value = MaterialNonBindlessAllocatedBindGroup::Prepared{
+                                                          .bind_group      = render::render_resource::PreparedBindGroup{
+                                                              .bind_group = std::move(bind_group),
+                                                              .bindings   = std::move(unprepared.bind_group.bindings)},
+                                                          .uniform_buffers = std::move(uniform_buffers)}};
+        }
+    }
+
    private:
     std::string_view m_label;
     std::vector<std::optional<MaterialNonBindlessAllocatedBindGroup>> m_bind_groups;

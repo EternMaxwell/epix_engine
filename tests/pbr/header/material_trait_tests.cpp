@@ -1,11 +1,22 @@
+#include <epix/app.hpp>
+#include <epix/assets.hpp>
+#include <epix/image.hpp>
 #include <epix/pbr/material.hpp>
 #include <epix/pbr/material_bind_groups.hpp>
+#include <epix/render.hpp>
 #include <epix/render/alpha.hpp>
+#include <epix/shader.hpp>
+#include <epix/task.hpp>
+#include <epix/time.hpp>
+#include <epix/window.hpp>
 #include <gtest/gtest.h>
 #include <memory>
-
 #include <string_view>
 #include <type_traits>
+#include <vector>
+
+using namespace epix::app;
+using namespace epix::assets;
 
 namespace pbr    = epix::pbr;
 namespace render = epix::render;
@@ -248,4 +259,77 @@ TEST(MaterialBindGroupAllocator, NonBindlessAllocatesReusesAndFrees) {
         << "unprepared, so there is no bind group to draw with yet";
     EXPECT_THROW((void)allocator.get(pbr::MaterialBindGroupIndex{9}), std::out_of_range)
         << "an index the list does not cover is the panic Bevy's indexing would be";
+}
+
+namespace {
+// Attaching RenderPlugin loads an embedded shader, which spawns an async load task
+// that terminates the process when the IO task pool has not been initialized; the
+// same guard the other device-facing pbr tests use.
+struct IoTaskPoolInit {
+    IoTaskPoolInit() {
+        epix::task::IoTaskPool::get_or_init(epix::task::TaskPool{epix::task::TaskPoolBuilder{}.num_threads(4)});
+    }
+} g_io_task_pool_init;
+}  // namespace
+
+/** @brief Preparing an allocator turns its unprepared groups into usable ones (Bevy
+ *  `prepare_bind_groups`, `material_bind_groups.rs:1909-1975`).
+ *
+ *  This is the device-facing half, so it needs a real device: the `Data` binding is
+ *  packed into a uniform buffer, the group is created through the layout the pipeline
+ *  server holds, and the slab stops reporting itself as unprepared - which is the
+ *  state the draw path checks before it binds anything. */
+TEST(MaterialBindGroupAllocator, PrepareCreatesTheBindGroupFromData) {
+    App app = App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::time::TimePlugin{})
+        .add_plugins(AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::shader::ShaderPlugin{});
+    try {
+        app.add_plugins(render::RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+
+    auto render_app = app.get_sub_app_mut(render::Render);
+    ASSERT_TRUE(render_app.has_value());
+    auto& world = render_app->get().world_mut();
+
+    const auto device = world.get_resource<wgpu::Device>();
+    const auto queue  = world.get_resource<wgpu::Queue>();
+    const auto server = world.get_resource<render::PipelineServer>();
+    ASSERT_TRUE(device.has_value());
+    ASSERT_TRUE(queue.has_value());
+    ASSERT_TRUE(server.has_value());
+
+    // A layout with one uniform buffer at binding 0, which is what a `Data` binding is
+    // materialized into.
+    const std::array<wgpu::BindGroupLayoutEntry, 1> layout_entries{
+        wgpu::BindGroupLayoutEntry()
+            .setBinding(0)
+            .setVisibility(wgpu::ShaderStage::eVertex | wgpu::ShaderStage::eFragment)
+            .setBuffer(wgpu::BufferBindingLayout()
+                           .setType(wgpu::BufferBindingType::eUniform)
+                           .setHasDynamicOffset(false)
+                           .setMinBindingSize(16))};
+    render::BindGroupLayoutDescriptor layout =
+        render::BindGroupLayoutDescriptor().set_label("test material layout").set_entries(layout_entries);
+
+    render::render_resource::BindingResources bindings;
+    bindings.push_back(0, render::render_resource::BindingResources::data(
+                              render::render_resource::OwnedData{std::vector<std::byte>(16)}));
+
+    pbr::MaterialBindGroupNonBindlessAllocator allocator{"test material"};
+    const auto id = allocator.allocate_unprepared(
+        render::render_resource::UnpreparedBindGroup{.bindings = std::move(bindings)}, std::move(layout));
+    EXPECT_EQ(allocator.to_prepare().size(), 1u);
+
+    allocator.prepare_bind_groups(device->get(), queue->get(), server->get());
+
+    EXPECT_TRUE(allocator.to_prepare().empty()) << "a prepared group is no longer waiting";
+    const auto slab = allocator.get(id.group);
+    ASSERT_TRUE(slab.has_value());
+    EXPECT_TRUE(std::holds_alternative<std::reference_wrapper<const render::render_resource::PreparedBindGroup>>(*slab))
+        << "the slab is usable once prepared, which is what the draw path checks";
 }
