@@ -33,3 +33,12 @@ EPIX_EXPORT struct MaterialBindingId {
 };
 
 }  // namespace epix::pbr
+
+template <>
+struct std::hash<epix::pbr::MaterialBindGroupIndex> {
+    /** @brief Bevy derives `Hash` on the index; the allocator keeps the groups that
+     *  need preparing in a set. */
+    std::size_t operator()(const epix::pbr::MaterialBindGroupIndex& index) const noexcept {
+        return std::hash<std::uint32_t>{}(index.index);
+    }
+};

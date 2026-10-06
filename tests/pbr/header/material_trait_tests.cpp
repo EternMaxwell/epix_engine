@@ -1,4 +1,5 @@
 #include <epix/pbr/material.hpp>
+#include <epix/pbr/material_bind_groups.hpp>
 #include <epix/render/alpha.hpp>
 #include <gtest/gtest.h>
 #include <memory>
@@ -205,3 +206,46 @@ TEST(MaterialTrait, ShaderLookupIsByLabel) {
  *  since the pipeline it produces needs a device. */
 static_assert(render::SpecializedMeshPipeline<pbr::MaterialPipelineSpecializer>);
 static_assert(std::is_same_v<pbr::MaterialPipelineSpecializer::Key, pbr::ErasedMaterialPipelineKey>);
+
+/** @brief The non-bindless material allocator's index bookkeeping (Bevy
+ *  `MaterialBindGroupNonBindlessAllocator`, `material_bind_groups.rs:177-190` and
+ *  `:1833-1901`).
+ *
+ *  One bind group per material, always at slot 0, over a list that grows and shrinks.
+ *  The invariants pinned here are the ones a re-implementation gets wrong: a freed
+ *  index is reused before the list grows, a freed group stops waiting to be prepared,
+ *  and a group holding only an unprepared bind group answers with a slab that is not
+ *  yet usable rather than one that is. */
+TEST(MaterialBindGroupAllocator, NonBindlessAllocatesReusesAndFrees) {
+    pbr::MaterialBindGroupNonBindlessAllocator allocator{"test material"};
+    EXPECT_EQ(allocator.len(), 0u);
+
+    const auto first = allocator.allocate_unprepared(render::render_resource::UnpreparedBindGroup{},
+                                                     render::BindGroupLayoutDescriptor{});
+    EXPECT_EQ(first.group.index, 0u);
+    EXPECT_EQ(first.slot.slot, 0u) << "a non-bindless material always lives in slot 0";
+    EXPECT_EQ(allocator.len(), 1u);
+    EXPECT_TRUE(allocator.to_prepare().contains(first.group)) << "an unprepared group has to be prepared later";
+
+    const auto second = allocator.allocate_unprepared(render::render_resource::UnpreparedBindGroup{},
+                                                      render::BindGroupLayoutDescriptor{});
+    EXPECT_EQ(second.group.index, 1u) << "a second group grows the list";
+
+    allocator.free(first);
+    EXPECT_FALSE(allocator.to_prepare().contains(first.group))
+        << "preparing a freed group would prepare an allocation that is gone";
+    EXPECT_FALSE(allocator.get(first.group).has_value());
+
+    const auto reused = allocator.allocate_unprepared(render::render_resource::UnpreparedBindGroup{},
+                                                      render::BindGroupLayoutDescriptor{});
+    EXPECT_EQ(reused.group.index, 0u) << "the freed index is reused before the list grows";
+    EXPECT_EQ(allocator.len(), 2u) << "and reusing it did not grow the list";
+    EXPECT_TRUE(allocator.free_indices().empty());
+
+    const auto slab = allocator.get(reused.group);
+    ASSERT_TRUE(slab.has_value());
+    EXPECT_TRUE(std::holds_alternative<std::monostate>(*slab))
+        << "unprepared, so there is no bind group to draw with yet";
+    EXPECT_THROW((void)allocator.get(pbr::MaterialBindGroupIndex{9}), std::out_of_range)
+        << "an index the list does not cover is the panic Bevy's indexing would be";
+}
