@@ -195,3 +195,13 @@ TEST(MaterialTrait, ShaderLookupIsByLabel) {
     EXPECT_EQ(properties.get_shader<pbr::MaterialFragmentShader>(), nullptr)
         << "a label with no entry answers nothing rather than the first shader in the list";
 }
+
+/** @brief The material specializer is usable by the mesh specialization cache (Bevy
+ *  `SpecializedMeshPipeline for MaterialPipelineSpecializer`, `material.rs:456`).
+ *
+ *  The cache keys on `S::Key` and calls `specialize(key, layout)`, so this is what
+ *  makes the erased specializer usable at all: a key type or signature that drifted
+ *  would fail here rather than in a system no test drives. Checked at compile time,
+ *  since the pipeline it produces needs a device. */
+static_assert(render::SpecializedMeshPipeline<pbr::MaterialPipelineSpecializer>);
+static_assert(std::is_same_v<pbr::MaterialPipelineSpecializer::Key, pbr::ErasedMaterialPipelineKey>);

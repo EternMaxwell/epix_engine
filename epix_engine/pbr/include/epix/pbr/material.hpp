@@ -735,6 +735,34 @@ EPIX_EXPORT struct MaterialProperties {
     }
 };
 
+/** @brief Specializes a 3D material's pipeline against the mesh pipeline, with the
+ *  material type erased (Bevy `MaterialPipelineSpecializer`, `material.rs:451-504`).
+ *
+ *  Bevy holds the material pipeline and the prepared properties in an `Arc`; this
+ *  holds the pipeline and a `shared_ptr`, as `PreparedMaterial` does. Bevy declares
+ *  this before `MaterialProperties` and Rust does not care; C++ does, so it follows
+ *  them here.
+ *
+ *  Bevy's `specialize` member of the properties - an erased function pointer - is not
+ *  ported, so a material that customizes its own specialization is not yet
+ *  expressible through the erased path. */
+EPIX_EXPORT struct MaterialPipelineSpecializer {
+    /** @brief The key this specializer is cached under (Bevy's associated `Key`). */
+    using Key = ErasedMaterialPipelineKey;
+
+    /** @brief The mesh pipeline data the material specializes against. */
+    MaterialPipeline pipeline;
+    /** @brief What the pipeline needs to know about the prepared material. */
+    std::shared_ptr<MaterialProperties> properties;
+
+    /** @brief Specialize the mesh pipeline for this material (Bevy
+     *  `SpecializedMeshPipeline for MaterialPipelineSpecializer`): push the material
+     *  group's shader def and its layout, apply the material's shader overrides, and
+     *  add the `BINDLESS` define when the material is bindless. */
+    std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineError> specialize(
+        const Key& key, const mesh::MeshVertexBufferLayoutRef& layout) const;
+};
+
 /** @brief A material whose GPU data is ready (Bevy `PreparedMaterial`,
  *  `material.rs:1605-1610`): where its data lives, and what the pipeline needs to
  *  know. Bevy holds the properties in an `Arc`; this is a `shared_ptr`. */

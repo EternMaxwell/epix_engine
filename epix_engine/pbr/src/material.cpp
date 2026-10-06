@@ -35,4 +35,42 @@ void init_material_pipeline(ecs::Commands commands, ecs::Res<MeshPipeline> mesh_
     commands.insert_resource(MaterialPipeline{.mesh_pipeline = *mesh_pipeline});
 }
 
+std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineError>
+MaterialPipelineSpecializer::specialize(const Key& key, const mesh::MeshVertexBufferLayoutRef& layout) const {
+    // Bevy `SpecializedMeshPipeline for MaterialPipelineSpecializer`
+    // (`material.rs:456-503`), in its order: the mesh pipeline first, then the two
+    // shader defs, then the material's shader overrides, the bind group layout and
+    // finally the bindless define.
+    auto descriptor = pipeline.mesh_pipeline.specialize(key.mesh_key, layout);
+    if (!descriptor) return std::unexpected(render::SpecializedMeshPipelineError{descriptor.error()});
+
+    // The material's shader reads its bind group from this index, so the def and the
+    // layout insertion below have to agree on it - which is why both use the port's
+    // own constant rather than a literal.
+    const shader::ShaderDefVal material_bind_group =
+        shader::ShaderDefVal::from_uint("MATERIAL_BIND_GROUP", MATERIAL_BIND_GROUP_INDEX);
+    descriptor->vertex.shader_defs.push_back(material_bind_group);
+    if (descriptor->fragment) descriptor->fragment->shader_defs.push_back(material_bind_group);
+
+    if (const auto* vertex_shader = properties->get_shader<MaterialVertexShader>()) {
+        descriptor->vertex.shader = *vertex_shader;
+    }
+    if (const auto* fragment_shader = properties->get_shader<MaterialFragmentShader>()) {
+        if (descriptor->fragment) descriptor->fragment->shader = *fragment_shader;
+    }
+
+    if (properties->material_layout) {
+        descriptor->layouts.insert(descriptor->layouts.begin() + MATERIAL_BIND_GROUP_INDEX,
+                                   *properties->material_layout);
+    }
+
+    if (properties->bindless) {
+        const shader::ShaderDefVal bindless{std::string{"BINDLESS"}};
+        descriptor->vertex.shader_defs.push_back(bindless);
+        if (descriptor->fragment) descriptor->fragment->shader_defs.push_back(bindless);
+    }
+
+    return descriptor;
+}
+
 }  // namespace epix::pbr
