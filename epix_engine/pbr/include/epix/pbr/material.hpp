@@ -461,15 +461,16 @@ EPIX_EXPORT EPIX_API void init_material_pipeline(ecs::Commands commands, ecs::Re
  *  by another in the same frame.
  *
  *  What is **not** here is every system that would turn an extracted material into
- *  something drawable: there is no `prepare_materials`, no `specialize_materials`,
- *  no `queue_material_meshes` and nothing that prepares a material's bind group, so
- *  the types below (`PreparedMaterial`, `MaterialProperties`, `MaterialPipeline`) are
+ *  something drawable: there is no `prepare_materials`, no
+ *  `specialize_material_meshes`, no `queue_material_meshes` and nothing that
+ *  prepares a material's bind group, so the types below (`PreparedMaterial`,
+ *  `MaterialProperties`, `MaterialPipeline` and the two specialization caches) are
  *  defined but never constructed and no material of any type reaches a phase. Also
  *  absent, each with its prerequisite: `EntitiesNeedingSpecialization`'s three
  *  systems, `add_material_bind_group_allocator` with `MaterialBindGroupAllocator`,
- *  the erased render-asset plugin, the PostUpdate mesh-change systems, and the
- *  specialized pipeline caches (PBR-34). The registry resource is inserted here
- *  rather than by Bevy's `MaterialsPlugin`, which is global and unported. */
+ *  the erased render-asset plugin and the PostUpdate mesh-change systems (PBR-34,
+ *  PBR-39). The registry resource is inserted here rather than by Bevy's
+ *  `MaterialsPlugin`, which is global and unported. */
 EPIX_EXPORT template <typename M>
     requires std::derived_from<M, Material<M>>
 struct MaterialPlugin {

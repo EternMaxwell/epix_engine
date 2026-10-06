@@ -8,6 +8,7 @@
 
 namespace pbr    = epix::pbr;
 namespace render = epix::render;
+namespace ecs    = epix::ecs;
 
 namespace {
 /** @brief A material that overrides nothing: every member must then answer with
@@ -101,4 +102,28 @@ TEST(MaterialTrait, PreparedPropertiesDefaultToForwardOpaque) {
     const pbr::PreparedMaterial prepared{.binding = pbr::MaterialBindingId{}, .properties = shared};
     ASSERT_TRUE(prepared.properties != nullptr);
     EXPECT_EQ(prepared.properties.get(), shared.get()) << "the properties are shared, as Bevy shares them in an Arc";
+}
+
+/** @brief The material pipeline cache is non-generic and starts empty (Bevy
+ *  `SpecializedMaterialPipelineCache` and `SpecializedMaterialViewPipelineCache`,
+ *  `material.rs:952-967`).
+ *
+ *  Bevy 0.18's 3D cache holds no material type where the 2D counterpart is generic
+ *  over it - the ids it stores are already specialized - and it is keyed by the
+ *  retained view and then by the material's main entity, holding each entity's
+ *  pipeline id with the tick it was specialized at. */
+TEST(MaterialTrait, PipelineCacheIsNonGenericAndKeyedPerEntity) {
+    pbr::SpecializedMaterialPipelineCache cache;
+    EXPECT_TRUE(cache.map.empty()) << "a fresh cache holds no view";
+
+    pbr::SpecializedMaterialViewPipelineCache view_cache;
+    EXPECT_TRUE(view_cache.map.empty());
+    EXPECT_TRUE((std::is_same_v<decltype(view_cache.map),
+                                render::sync_world::MainEntityHashMap<std::pair<ecs::Tick, render::CachedRenderPipelineId>>>))
+        << "an entity maps to its pipeline id and the tick it was specialized at";
+
+    view_cache.map[render::sync_world::MainEntity{ecs::Entity::from_index(7)}] = {ecs::Tick{3},
+                                                                                render::CachedRenderPipelineId{9}};
+    ASSERT_EQ(view_cache.map.size(), 1u);
+    EXPECT_EQ(view_cache.map.begin()->second.first.get(), 3u);
 }
