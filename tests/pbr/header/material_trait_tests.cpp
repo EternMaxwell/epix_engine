@@ -148,3 +148,50 @@ TEST(MaterialTrait, ErasedKeyComparesTypeAndValue) {
     EXPECT_TRUE(same_a.type_id() == same_b.type_id());
     EXPECT_FALSE(same_a.type_id() == other_type.type_id());
 }
+
+/** @brief The erased pipeline key carries the mesh half, the erased material key and
+ *  the material type (Bevy `ErasedMaterialPipelineKey`, `material.rs:438-443`).
+ *
+ *  The two are not redundant and this pins that: `material_key` identifies the
+ *  bind-group data a material family specializes on, `type_id` the material type it
+ *  belongs to. A key that dropped either would send a material to a pipeline built
+ *  for another. */
+TEST(MaterialTrait, ErasedPipelineKeyComparesAllThreeParts) {
+    const pbr::ErasedMaterialKey material_key{11};
+    const pbr::ErasedMaterialKey other_material_key{12};
+
+    const pbr::ErasedMaterialPipelineKey base{
+        .mesh_key = {}, .material_key = material_key, .type_id = epix::meta::type_id<PlainMaterial>()};
+    const pbr::ErasedMaterialPipelineKey same{
+        .mesh_key = {}, .material_key = material_key, .type_id = epix::meta::type_id<PlainMaterial>()};
+    const pbr::ErasedMaterialPipelineKey other_material{
+        .mesh_key = {}, .material_key = other_material_key, .type_id = epix::meta::type_id<PlainMaterial>()};
+    const pbr::ErasedMaterialPipelineKey other_type{
+        .mesh_key = {}, .material_key = material_key, .type_id = epix::meta::type_id<CustomMaterial>()};
+
+    EXPECT_EQ(base, same);
+    EXPECT_EQ(std::hash<pbr::ErasedMaterialPipelineKey>{}(base),
+              std::hash<pbr::ErasedMaterialPipelineKey>{}(same));
+    EXPECT_NE(base, other_material) << "the erased bind-group data is part of the key";
+    EXPECT_NE(base, other_type) << "so is the material type, which Bevy keeps beside it";
+}
+
+/** @brief A prepared material's shader list is read back by label (Bevy
+ *  `MaterialProperties::get_shader`, `material.rs:1478-1490`).
+ *
+ *  The specialization applies these overrides, so a lookup that missed - or that
+ *  answered with the wrong slot - would silently specialize a material against the
+ *  default mesh shader. The list holds one entry per label, and the labels are
+ *  distinct types, so asking for the other one must answer nothing. */
+TEST(MaterialTrait, ShaderLookupIsByLabel) {
+    const auto vertex   = epix::assets::Handle<epix::shader::Shader>{
+        epix::assets::AssetId<epix::shader::Shader>::invalid()};
+    pbr::MaterialProperties properties;
+    properties.shaders.emplace_back(
+        render::label::intern(render::phase::ShaderLabel{pbr::MaterialVertexShader{}}), vertex);
+
+    ASSERT_NE(properties.get_shader<pbr::MaterialVertexShader>(), nullptr);
+    EXPECT_TRUE(*properties.get_shader<pbr::MaterialVertexShader>() == vertex);
+    EXPECT_EQ(properties.get_shader<pbr::MaterialFragmentShader>(), nullptr)
+        << "a label with no entry answers nothing rather than the first shader in the list";
+}

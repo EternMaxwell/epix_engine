@@ -280,6 +280,25 @@ EPIX_EXPORT class ErasedMaterialKey {
     std::shared_ptr<const detail::ErasedMaterialKeyConcept> m_value;
 };
 
+/** @brief The specialization key of a material whose data is erased (Bevy
+ *  `ErasedMaterialPipelineKey`, `material.rs:438-443`): the mesh half, the erased
+ *  material bind-group key, and the material type itself.
+ *
+ *  Bevy holds both a `material_key` and a `type_id`, which are not redundant: the
+ *  first identifies the *bind-group data* a material family specializes on, the
+ *  second the material type it belongs to. Bevy derives `PartialEq`, `Eq` and `Hash`
+ *  and has no `Default`, and this follows it. */
+EPIX_EXPORT struct ErasedMaterialPipelineKey {
+    /** @brief The mesh half of the key. */
+    MeshPipelineKey mesh_key{};
+    /** @brief The material's bind-group data, with its type erased. */
+    ErasedMaterialKey material_key;
+    /** @brief The material type this key belongs to (Bevy's `type_id`). */
+    meta::type_index type_id{};
+
+    bool operator==(const ErasedMaterialPipelineKey&) const noexcept = default;
+};
+
 /** @brief A 3D material (Bevy `Material`, `bevy_pbr/src/material.rs:138-273`).  A
  *  material type derives from this and overrides only what it needs; the pipeline
  *  calls the derived members through static dispatch.
@@ -658,6 +677,14 @@ EPIX_EXPORT enum class RenderPhaseType {
     Transparent,  /**< Drawn in the transparent phase. */
 };
 
+/** @brief The vertex shader a material supplies (Bevy `MaterialVertexShader`,
+ *  `material.rs:1381`). Empty, as Bevy's is: the port's label machinery turns an
+ *  empty type into a label. */
+EPIX_EXPORT struct MaterialVertexShader {};
+/** @brief The fragment shader a material supplies (Bevy `MaterialFragmentShader`,
+ *  `material.rs:1384`). */
+EPIX_EXPORT struct MaterialFragmentShader {};
+
 /** @brief Everything the pipeline needs to know about a prepared material (Bevy
  *  `MaterialProperties`, `material.rs:1510-1585`).
  *
@@ -692,6 +719,20 @@ EPIX_EXPORT struct MaterialProperties {
     /** @brief Whether this material actually uses bindless resources, once platform
      *  support is taken into account. */
     bool bindless = false;
+
+    /** @brief The shader this material supplies under the given label, or null
+     *  (Bevy `MaterialProperties::get_shader`, `material.rs:1478-1490`). Bevy returns
+     *  `Option<&Handle<Shader>>`; this port spells an optional reference as a
+     *  pointer. The list is keyed by interned shader label on both sides. */
+    template <typename Label>
+    const assets::Handle<shader::Shader>* get_shader() const noexcept {
+        const render::phase::InternedShaderLabel wanted =
+            render::label::intern(render::phase::ShaderLabel{Label{}});
+        for (const auto& [label, shader] : shaders) {
+            if (label == wanted) return &shader;
+        }
+        return nullptr;
+    }
 };
 
 /** @brief A material whose GPU data is ready (Bevy `PreparedMaterial`,
@@ -711,4 +752,14 @@ EPIX_EXPORT struct PreparedMaterial {
 template <>
 struct std::hash<epix::pbr::ErasedMaterialKey> {
     std::size_t operator()(const epix::pbr::ErasedMaterialKey& key) const noexcept { return key.hash(); }
+};
+
+template <>
+struct std::hash<epix::pbr::ErasedMaterialPipelineKey> {
+    std::size_t operator()(const epix::pbr::ErasedMaterialPipelineKey& key) const noexcept {
+        std::size_t h = static_cast<std::size_t>(key.mesh_key.bits());
+        h ^= key.material_key.hash() + 0x9e3779b9 + (h << 6) + (h >> 2);
+        h ^= std::hash<epix::meta::type_index>{}(key.type_id) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        return h;
+    }
 };
