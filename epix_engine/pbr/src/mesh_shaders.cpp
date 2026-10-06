@@ -1528,6 +1528,19 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
             epix::ecs::into(extract_meshes_for_cpu_building)
                 .in_set(MeshExtractionSystems::Extract)
                 .set_name("extract meshes for cpu building"));
+
+        // Bevy registers the CPU instance-buffer clear in this branch alone
+        // (`render/mesh.rs:204`, inside the `else` of `use_gpu_instance_buffer_builder`).
+        // Registered unconditionally it aborted every GPU-path app: the system takes
+        // `BatchedInstanceBuffer<MeshUniform>`, which only the CPU path creates, and
+        // this port aborts on a missing system parameter. That is what stopped
+        // `core3d_mesh_specialization`, which builds on the GPU path (PBR-37).
+        render_app->get().add_systems(
+            epix::app::ScheduleInfo(epix::render::Render),
+            epix::ecs::into(epix::render::batching::clear_batched_cpu_instance_buffers<MeshPipeline>)
+                .in_set(epix::render::RenderSystems::Cleanup)
+                .after(epix::render::RenderSystems::Render)
+                .set_name("clear batched cpu instance buffers"));
     }
 
     // The extraction systems Bevy adds alongside: the skin and morph extraction,
@@ -1599,12 +1612,6 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
     render_app->get().add_systems(
         epix::app::ScheduleInfo(epix::render::Render),
         epix::ecs::into(prepare_morphs).in_set(epix::render::RenderSystems::PrepareResources).set_name("prepare morphs"));
-    render_app->get().add_systems(
-        epix::app::ScheduleInfo(epix::render::Render),
-        epix::ecs::into(epix::render::batching::clear_batched_cpu_instance_buffers<MeshPipeline>)
-            .in_set(epix::render::RenderSystems::Cleanup)
-            .after(epix::render::RenderSystems::Render)
-            .set_name("clear batched cpu instance buffers"));
 }
 
 void MeshRenderPlugin::ready(epix::app::App& app) {
@@ -1620,6 +1627,21 @@ void MeshRenderPlugin::ready(epix::app::App& app) {
     wgpu::Limits limits{};
     device->get().getLimits(&limits);
     render_app->get().world_mut().insert_resource(SkinUniforms::make(device->get(), limits));
+
+    // Bevy's CPU branch creates the CPU instance buffer and inserts it, together with
+    // `write_batched_instance_buffer` (`render/mesh.rs:261-277`). Without the buffer,
+    // that branch's own clear system aborts: it takes
+    // `BatchedInstanceBuffer<MeshUniform>`, and this port aborts on a missing system
+    // parameter. The writer Bevy registers with it has no counterpart yet, so the
+    // buffer exists but is not yet filled - that is the next gap, not this one.
+    bool gpu_preprocessing_supported = false;
+    if (const auto support = render_app->get().world().get_resource<epix::render::batching::GpuPreprocessingSupport>()) {
+        gpu_preprocessing_supported = support->get().is_available();
+    }
+    if (!(use_gpu_instance_buffer_builder && gpu_preprocessing_supported)) {
+        render_app->get().world_mut().insert_resource(
+            epix::render::batching::BatchedInstanceBuffer<MeshUniform>{limits});
+    }
 
     // Bevy creates `MeshPipeline` with `init_resource` (`render/mesh.rs:291`, whose
     // `impl FromWorld` is `:1883-1912`), and that needs the device and the adapter -
