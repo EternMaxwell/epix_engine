@@ -8,6 +8,7 @@
 #include <epix/render/bindless.hpp>
 #include <epix/render/render_resource.hpp>
 #include <optional>
+#include <spdlog/spdlog.h>
 #include <string_view>
 #include <unordered_set>
 #include <variant>
@@ -655,6 +656,17 @@ struct MaterialBindlessBindingArray {
     }
 };
 
+/** @brief Whether a slab could hold a material, and what that would cost (Bevy
+ *  `BindlessAllocationCandidate`, `material_bind_groups.rs:308-330`): which of the
+ *  material's bindless indices already have a slot in the slab, and how many free slots
+ *  the rest would need. */
+EPIX_EXPORT struct BindlessAllocationCandidate {
+    /** @brief Bindless index to the slot already holding that resource here. */
+    std::unordered_map<render::render_resource::BindlessIndex, std::uint32_t> pre_existing_resources;
+    /** @brief How many slots the resources not already present would need. */
+    std::uint32_t needed_free_slots = 0;
+};
+
 /** @brief One bind group of a bindless allocator, with the bookkeeping needed to
  *  allocate into it (Bevy `MaterialBindlessSlab`, `material_bind_groups.rs:80-114`). */
 EPIX_EXPORT struct MaterialBindlessSlab {
@@ -683,6 +695,218 @@ EPIX_EXPORT struct MaterialBindlessSlab {
     std::uint32_t live_allocation_count = 0;
     /** @brief How many resources are allocated across its binding arrays. */
     std::uint32_t allocated_resource_count = 0;
+
+    /** @brief Build a slab for a material with the given bindless descriptor (Bevy
+     *  `MaterialBindlessSlab::new`, `material_bind_groups.rs:1695-1792`).
+     *
+     *  Every bindless resource in the descriptor gets the array it belongs in: keyed by
+     *  resource type for samplers and textures, and by bindless index for buffers and
+     *  data buffers, since buffers are not interchangeable with one another and so cannot
+     *  share an array. The index tables come from the descriptor's own list. */
+    static MaterialBindlessSlab make(const render::render_resource::BindlessDescriptor& descriptor) {
+        using render::render_resource::BindlessIndex;
+        using render::render_resource::BindlessResourceType;
+
+        MaterialBindlessSlab slab;
+
+        for (std::size_t index = 0; index < descriptor.resources.size(); ++index) {
+            const BindlessIndex bindless_index{static_cast<std::uint32_t>(index)};
+            const BindlessResourceType resource_type = descriptor.resources[index];
+
+            // A buffer's descriptor carries the binding number the array binds at, and for
+            // a data buffer the element size as well.
+            const auto buffer_descriptor = std::ranges::find_if(
+                descriptor.buffers, [bindless_index](const auto& candidate) {
+                    return candidate.bindless_index == bindless_index;
+                });
+
+            const auto array_binding_number = [resource_type]() -> render::render_resource::BindingNumber {
+                const auto* binding_number = render::render_resource::bindless_binding_number(resource_type);
+                assert(binding_number != nullptr);
+                return *binding_number;
+            };
+
+            switch (resource_type) {
+                case BindlessResourceType::None: break;
+                case BindlessResourceType::Buffer:
+                    assert(buffer_descriptor != descriptor.buffers.end());
+                    slab.buffers.emplace(bindless_index, MaterialBindlessBindingArray<wgpu::Buffer>::make(
+                                                             buffer_descriptor->binding_number, resource_type));
+                    break;
+                case BindlessResourceType::DataBuffer:
+                    assert(buffer_descriptor != descriptor.buffers.end());
+                    assert(buffer_descriptor->size.has_value());
+                    slab.data_buffers.emplace(
+                        bindless_index, MaterialDataBuffer{buffer_descriptor->binding_number,
+                                                           static_cast<std::uint32_t>(*buffer_descriptor->size)});
+                    break;
+                case BindlessResourceType::SamplerFiltering:
+                case BindlessResourceType::SamplerNonFiltering:
+                case BindlessResourceType::SamplerComparison:
+                    slab.samplers.emplace(
+                        resource_type,
+                        MaterialBindlessBindingArray<wgpu::Sampler>::make(array_binding_number(), resource_type));
+                    break;
+                case BindlessResourceType::Texture1d:
+                case BindlessResourceType::Texture2d:
+                case BindlessResourceType::Texture2dArray:
+                case BindlessResourceType::Texture3d:
+                case BindlessResourceType::TextureCube:
+                case BindlessResourceType::TextureCubeArray:
+                    slab.textures.emplace(
+                        resource_type,
+                        MaterialBindlessBindingArray<std::pair<wgpu::TextureViewDimension, wgpu::TextureView>>::make(
+                            array_binding_number(), resource_type));
+                    break;
+            }
+        }
+
+        for (const auto& table : descriptor.index_tables) slab.bindless_index_tables.emplace_back(table);
+        return slab;
+    }
+
+    /** @brief Whether this slab could hold @p unprepared_bind_group, and what that would
+     *  need (Bevy `check_allocation`, `material_bind_groups.rs:962-1039`).
+     *
+     *  Nothing when a resource's binding array is missing - Bevy logs and gives up rather
+     *  than placing the material somewhere wrong. Plain old data contributes no free slot:
+     *  it lives in its own buffer per bindless index rather than in a bounded array, which
+     *  is why Bevy calls its size unlimited. */
+    [[nodiscard]] std::optional<BindlessAllocationCandidate> check_allocation(
+        const render::render_resource::UnpreparedBindGroup& unprepared_bind_group) const {
+        using render::render_resource::BindlessIndex;
+        using render::render_resource::BindlessResourceType;
+
+        BindlessAllocationCandidate candidate;
+
+        for (const auto& [binding_number, resource] : unprepared_bind_group.bindings.resources()) {
+            const BindlessIndex bindless_index{binding_number};
+
+            const auto record = [&candidate, bindless_index](const std::optional<std::uint32_t>& slot) {
+                if (slot.has_value()) {
+                    candidate.pre_existing_resources.emplace(bindless_index, *slot);
+                } else {
+                    candidate.needed_free_slots += 1;
+                }
+            };
+
+            if (const auto* buffer = std::get_if<wgpu::Buffer>(&resource)) {
+                const auto array = buffers.find(bindless_index);
+                if (array == buffers.end()) {
+                    spdlog::error("[pbr] no bindless array for the buffer at index {}", bindless_index.index);
+                    return std::nullopt;
+                }
+                record(array->second.find(binding_resource_id(*buffer, array->second.resource_type)));
+                continue;
+            }
+            if (std::holds_alternative<render::render_resource::OwnedData>(resource)) continue;
+
+            if (const auto* texture =
+                    std::get_if<std::pair<wgpu::TextureViewDimension, wgpu::TextureView>>(&resource)) {
+                const BindlessResourceType resource_type =
+                    render::render_resource::bindless_resource_type_from(texture->first);
+                const auto array = textures.find(resource_type);
+                if (array == textures.end()) {
+                    spdlog::error("[pbr] no bindless array for the texture at index {}", bindless_index.index);
+                    return std::nullopt;
+                }
+                record(array->second.find(binding_resource_id(*texture, resource_type)));
+                continue;
+            }
+
+            const auto* sampler = std::get_if<std::pair<wgpu::SamplerBindingType, wgpu::Sampler>>(&resource);
+            assert(sampler != nullptr);
+            const BindlessResourceType resource_type =
+                render::render_resource::bindless_resource_type_from(sampler->first);
+            const auto array = samplers.find(resource_type);
+            if (array == samplers.end()) {
+                spdlog::error("[pbr] no bindless array for the sampler at index {}", bindless_index.index);
+                return std::nullopt;
+            }
+            record(array->second.find(binding_resource_id(sampler->second, resource_type)));
+        }
+        return candidate;
+    }
+
+    /** @brief Place @p bindings into this slab's arrays and report each bindless index's
+     *  slot (Bevy `insert_resources`, `material_bind_groups.rs:1045-1134`).
+     *
+     *  A resource the candidate found already present has to land in the same slot it was
+     *  found in - the assert Bevy makes - and does not count as a newly allocated
+     *  resource, which is what keeps `allocated_resource_count` measuring the slab's
+     *  occupancy rather than the number of materials. */
+    std::unordered_map<render::render_resource::BindlessIndex, std::uint32_t> insert_resources(
+        render::render_resource::BindingResources bindings, const BindlessAllocationCandidate& candidate) {
+        using render::render_resource::BindlessIndex;
+        using render::render_resource::BindlessResourceType;
+        using render::render_resource::OwnedData;
+
+        std::unordered_map<BindlessIndex, std::uint32_t> allocated_resource_slots;
+
+        for (auto& [binding_number, resource] : bindings.resources_mut()) {
+            const BindlessIndex bindless_index{binding_number};
+            const auto pre_existing = candidate.pre_existing_resources.find(bindless_index);
+
+            bool counts_as_new = false;
+            std::uint32_t slot = 0;
+
+            if (auto* buffer = std::get_if<wgpu::Buffer>(&resource)) {
+                auto array = buffers.find(bindless_index);
+                assert(array != buffers.end());
+                slot         = array->second.insert(binding_resource_id(*buffer, array->second.resource_type), *buffer);
+                if (pre_existing != candidate.pre_existing_resources.end()) {
+                    // Bevy's assert: a resource the candidate found in this slab has to be
+                    // inserted into the same slot it was found in.
+                    assert(pre_existing->second == slot);
+                    counts_as_new = false;
+                } else {
+                    counts_as_new = true;
+                }
+            } else if (auto* data = std::get_if<OwnedData>(&resource)) {
+                assert(pre_existing == candidate.pre_existing_resources.end());
+                auto array = data_buffers.find(bindless_index);
+                assert(array != data_buffers.end());
+                const std::span<const std::byte> bytes = data->bytes();
+                slot = array->second.insert(
+                    {reinterpret_cast<const std::uint8_t*>(bytes.data()), bytes.size()});
+            } else if (auto* texture = std::get_if<std::pair<wgpu::TextureViewDimension, wgpu::TextureView>>(&resource)) {
+                const BindlessResourceType resource_type =
+                    render::render_resource::bindless_resource_type_from(texture->first);
+                auto array = textures.find(resource_type);
+                assert(array != textures.end());
+                slot          = array->second.insert(binding_resource_id(*texture, resource_type), *texture);
+                if (pre_existing != candidate.pre_existing_resources.end()) {
+                    // Bevy's assert: a resource the candidate found in this slab has to be
+                    // inserted into the same slot it was found in.
+                    assert(pre_existing->second == slot);
+                    counts_as_new = false;
+                } else {
+                    counts_as_new = true;
+                }
+            } else {
+                auto* sampler = std::get_if<std::pair<wgpu::SamplerBindingType, wgpu::Sampler>>(&resource);
+                assert(sampler != nullptr);
+                const BindlessResourceType resource_type =
+                    render::render_resource::bindless_resource_type_from(sampler->first);
+                auto array = samplers.find(resource_type);
+                assert(array != samplers.end());
+                slot          = array->second.insert(binding_resource_id(sampler->second, resource_type), sampler->second);
+                if (pre_existing != candidate.pre_existing_resources.end()) {
+                    // Bevy's assert: a resource the candidate found in this slab has to be
+                    // inserted into the same slot it was found in.
+                    assert(pre_existing->second == slot);
+                    counts_as_new = false;
+                } else {
+                    counts_as_new = true;
+                }
+            }
+
+            allocated_resource_slots.emplace(bindless_index, slot);
+            if (counts_as_new) allocated_resource_count += 1;
+        }
+
+        return allocated_resource_slots;
+    }
 };
 
 /** @brief The allocator that places bindless materials into bind groups (Bevy

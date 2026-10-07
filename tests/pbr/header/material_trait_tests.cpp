@@ -638,3 +638,87 @@ TEST(MaterialBindGroupAllocator, BindingArraySharesSlotsByResourceIdentity) {
     EXPECT_EQ(array.insert(third_id, third), 0u) << "the freed slot comes back before a new one is made";
     EXPECT_EQ(array.bindings.size(), 2u) << "and reusing it did not grow the array past the second slot";
 }
+
+/** @brief The slab's construction and allocation walk (Bevy `MaterialBindlessSlab::new`,
+ *  `check_allocation` and `insert_resources`, `material_bind_groups.rs:1695-1792`,
+ *  `:962-1039` and `:1045-1134`), on a real device.
+ *
+ *  Two materials of the same type share the buffer they both bind, so the second needs no
+ *  free slot, has to be placed in the same slot the first used - Bevy asserts that - and
+ *  must not count as a newly allocated resource. That count is what decides when a new
+ *  slab is needed, so counting a reuse would fill slabs early and start bind groups for
+ *  no reason. */
+TEST(MaterialBindGroupAllocator, SlabBuildsArraysAndSharesResourcesAcrossMaterials) {
+    App app = App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::time::TimePlugin{})
+        .add_plugins(AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::shader::ShaderPlugin{});
+    try {
+        app.add_plugins(render::RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+
+    auto render_app = app.get_sub_app_mut(render::Render);
+    ASSERT_TRUE(render_app.has_value());
+    const auto device = render_app->get().world().get_resource<wgpu::Device>();
+    ASSERT_TRUE(device.has_value());
+
+    using render::render_resource::BindlessIndex;
+    using render::render_resource::BindlessResourceType;
+
+    const auto buffer_descriptor = [](render::render_resource::BindingNumber binding, BindlessIndex index,
+                                      std::optional<std::size_t> size) {
+        return render::render_resource::BindlessBufferDescriptor{
+            .binding_number = binding, .bindless_index = index, .size = size};
+    };
+
+    render::render_resource::BindlessDescriptor descriptor;
+    descriptor.resources = {BindlessResourceType::Buffer, BindlessResourceType::DataBuffer};
+    descriptor.buffers.push_back(
+        buffer_descriptor(render::render_resource::BindingNumber{2}, BindlessIndex{0}, std::nullopt));
+    descriptor.buffers.push_back(buffer_descriptor(render::render_resource::BindingNumber{3}, BindlessIndex{1}, 16));
+    descriptor.index_tables.push_back(render::render_resource::BindlessIndexTableDescriptor{
+        .indices        = {.start = BindlessIndex{0}, .end = BindlessIndex{2}},
+        .binding_number = render::render_resource::BindingNumber{0}});
+
+    pbr::MaterialBindlessSlab slab = pbr::MaterialBindlessSlab::make(descriptor);
+    ASSERT_EQ(slab.buffers.size(), 1u) << "one array per bindless buffer, keyed by its bindless index";
+    ASSERT_EQ(slab.data_buffers.size(), 1u) << "plain old data gets a buffer, not a binding array";
+    ASSERT_EQ(slab.bindless_index_tables.size(), 1u);
+    EXPECT_FALSE(slab.bind_group.has_value()) << "a new slab has no bind group until it is prepared";
+
+    const auto buffer = device->get().createBuffer(
+        wgpu::BufferDescriptor().setSize(16).setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst));
+
+    // Two materials of the same type: the same buffer, each with its own data.
+    const auto make_material = [&buffer](std::uint8_t tag) {
+        render::render_resource::BindingResources bindings;
+        bindings.push_back(0, render::render_resource::BindingResources::buffer(buffer));
+        bindings.push_back(1, render::render_resource::BindingResources::data(
+                                  render::render_resource::OwnedData{std::vector<std::byte>(16, std::byte{tag})}));
+        return render::render_resource::UnpreparedBindGroup{.bindings = std::move(bindings)};
+    };
+
+    auto first                 = make_material(1);
+    const auto first_candidate = slab.check_allocation(first);
+    ASSERT_TRUE(first_candidate.has_value());
+    EXPECT_EQ(first_candidate->needed_free_slots, 1u)
+        << "the buffer needs a slot; the data buffer lives in its own buffer and needs none";
+    const auto first_slots = slab.insert_resources(std::move(first.bindings), *first_candidate);
+    EXPECT_EQ(first_slots.at(BindlessIndex{0}), 0u);
+    EXPECT_EQ(slab.allocated_resource_count, 1u) << "only the buffer occupies a bounded array";
+
+    auto second                 = make_material(2);
+    const auto second_candidate = slab.check_allocation(second);
+    ASSERT_TRUE(second_candidate.has_value());
+    EXPECT_EQ(second_candidate->needed_free_slots, 0u) << "the second material reuses the buffer's slot";
+    EXPECT_EQ(second_candidate->pre_existing_resources.at(BindlessIndex{0}), 0u);
+    slab.insert_resources(std::move(second.bindings), *second_candidate);
+
+    EXPECT_EQ(slab.allocated_resource_count, 1u) << "and reusing a slot is not a new allocation";
+    ASSERT_EQ(slab.buffers.at(BindlessIndex{0}).len, 1u) << "one slot for two materials";
+    EXPECT_EQ(slab.buffers.at(BindlessIndex{0}).bindings.at(0)->ref_count, 2u) << "held by both of them";
+}
