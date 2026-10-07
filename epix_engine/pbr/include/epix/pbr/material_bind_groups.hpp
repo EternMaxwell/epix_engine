@@ -536,6 +536,37 @@ struct std::hash<epix::pbr::BindingResourceId> {
 
 namespace epix::pbr {
 
+/** @brief The identity of a buffer as a bindless resource (Bevy's `GetBindingResourceId`
+ *  for `Buffer`, `material_bind_groups.rs:428-433`): plain old data is its own kind, since
+ *  it has no GPU resource of its own. */
+[[nodiscard]] inline BindingResourceId binding_resource_id(const wgpu::Buffer& buffer,
+                                                          render::render_resource::BindlessResourceType resource_type) {
+    if (resource_type == render::render_resource::BindlessResourceType::DataBuffer) {
+        return BindingResourceId{BindingResourceId::DataBuffer{}};
+    }
+    return BindingResourceId{BindingResourceId::Buffer{.buffer = buffer}};
+}
+
+/** @brief The identity of a texture view (Bevy's `GetBindingResourceId` for
+ *  `TextureView`, `:440-445`).
+ *
+ *  Bevy reads the view's dimension from its own wrapper; this port's `wgpu::TextureView`
+ *  has no such accessor, so the dimension travels with the view - the same pairing
+ *  `OwnedBindingResource` uses. */
+[[nodiscard]] inline BindingResourceId
+binding_resource_id(const std::pair<wgpu::TextureViewDimension, wgpu::TextureView>& texture,
+                    render::render_resource::BindlessResourceType) {
+    return BindingResourceId{
+        BindingResourceId::TextureView{.dimension = texture.first, .view = texture.second}};
+}
+
+/** @brief The identity of a sampler (Bevy's `GetBindingResourceId` for `Sampler`,
+ *  `:434-439`). */
+[[nodiscard]] inline BindingResourceId binding_resource_id(const wgpu::Sampler& sampler,
+                                                          render::render_resource::BindlessResourceType) {
+    return BindingResourceId{BindingResourceId::Sampler{.sampler = sampler}};
+}
+
 /** @brief One binding array of a slab (Bevy `MaterialBindlessBindingArray<R>`,
  *  `material_bind_groups.rs:139-158`): the resources in their slots, the inverse mapping
  *  from resource identity to slot, the free slots, and how many are allocated.
@@ -557,6 +588,71 @@ struct MaterialBindlessBindingArray {
     std::vector<std::uint32_t> free_slots;
     /** @brief How many slots are allocated. */
     std::uint32_t len = 0;
+
+    /** @brief An empty array of one resource kind at a binding (Bevy `new`,
+     *  `material_bind_groups.rs:1584-1596`). */
+    static MaterialBindlessBindingArray make(render::render_resource::BindingNumber binding_number,
+                                             render::render_resource::BindlessResourceType resource_type) {
+        MaterialBindlessBindingArray array;
+        array.binding_number = binding_number;
+        array.resource_type  = resource_type;
+        return array;
+    }
+
+    /** @brief The slot holding @p id, or nothing when the array does not hold it (Bevy
+     *  `find`, `:1602-1604`). */
+    [[nodiscard]] std::optional<std::uint32_t> find(const BindingResourceId& id) const {
+        const auto found = resource_to_slot.find(id);
+        if (found == resource_to_slot.end()) return std::nullopt;
+        return found->second;
+    }
+
+    /** @brief Add a resource, or count one more user of one already present (Bevy
+     *  `insert`, `:1608-1633`).
+     *
+     *  The second case is what makes slots shared: two materials using the same texture
+     *  occupy one slot in the array rather than two, which is the whole point of a
+     *  bindless array. */
+    std::uint32_t insert(const BindingResourceId& id, R resource) {
+        if (const auto found = resource_to_slot.find(id); found != resource_to_slot.end()) {
+            const std::uint32_t slot = found->second;
+            assert(bindings.at(slot).has_value());
+            bindings.at(slot)->ref_count += 1;
+            return slot;
+        }
+
+        std::uint32_t slot = len;
+        if (!free_slots.empty()) {
+            slot = free_slots.back();
+            free_slots.pop_back();
+        }
+        resource_to_slot.emplace(id, slot);
+
+        if (bindings.size() < static_cast<std::size_t>(slot) + 1) bindings.resize(static_cast<std::size_t>(slot) + 1);
+        bindings.at(slot) = MaterialBindlessBinding<R>{.resource = std::move(resource), .ref_count = 1};
+
+        ++len;
+        return slot;
+    }
+
+    /** @brief Drop one reference to a slot's resource, freeing the slot when the last one
+     *  goes (Bevy `remove`, `:1640-1658`). Returns whether the slot was freed.
+     *
+     *  The identity is rebuilt from the stored resource, which is why the caller's
+     *  resource type comes in: a `DataBuffer` slot has no GPU resource of its own. */
+    bool remove(std::uint32_t slot) {
+        assert(bindings.at(slot).has_value());
+        auto& binding = *bindings.at(slot);
+
+        binding.ref_count -= 1;
+        if (binding.ref_count != 0) return false;
+
+        resource_to_slot.erase(binding_resource_id(binding.resource, resource_type));
+        bindings.at(slot) = std::nullopt;
+        free_slots.push_back(slot);
+        --len;
+        return true;
+    }
 };
 
 /** @brief One bind group of a bindless allocator, with the bookkeeping needed to
@@ -570,8 +666,12 @@ EPIX_EXPORT struct MaterialBindlessSlab {
     /** @brief The sampler binding arrays, by resource type. */
     std::unordered_map<render::render_resource::BindlessResourceType, MaterialBindlessBindingArray<wgpu::Sampler>>
         samplers;
-    /** @brief The texture binding arrays, by resource type. */
-    std::unordered_map<render::render_resource::BindlessResourceType, MaterialBindlessBindingArray<wgpu::TextureView>>
+    /** @brief The texture binding arrays, by resource type. Bevy stores the view alone
+     *  and reads its dimension when it needs the resource's identity; this port's
+     *  `wgpu::TextureView` has no dimension accessor, so the pairing
+     *  `OwnedBindingResource` uses travels here instead. */
+    std::unordered_map<render::render_resource::BindlessResourceType,
+                       MaterialBindlessBindingArray<std::pair<wgpu::TextureViewDimension, wgpu::TextureView>>>
         textures;
     /** @brief The buffer binding arrays, by bindless index. */
     std::unordered_map<render::render_resource::BindlessIndex, MaterialBindlessBindingArray<wgpu::Buffer>> buffers;

@@ -577,3 +577,64 @@ TEST(MaterialBindGroupAllocator, BindlessConstructionBuildsFallbackBuffersAndCho
         device->get(), "plain material", std::nullopt, render::BindGroupLayoutDescriptor{}, std::nullopt);
     EXPECT_TRUE(std::holds_alternative<pbr::MaterialBindGroupNonBindlessAllocator>(plain.value));
 }
+
+/** @brief A binding array shares slots by resource identity (Bevy
+ *  `MaterialBindlessBindingArray`, `material_bind_groups.rs:1578-1658`), on a real device.
+ *
+ *  This is what makes a bindless array worth having: two materials using the same texture
+ *  take one slot rather than two, and the slot is released only when the last of them
+ *  stops using it. A reference count that went wrong either frees a resource another
+ *  material is still drawing with, or leaks a slot the array can never reuse. */
+TEST(MaterialBindGroupAllocator, BindingArraySharesSlotsByResourceIdentity) {
+    App app = App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::time::TimePlugin{})
+        .add_plugins(AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::shader::ShaderPlugin{});
+    try {
+        app.add_plugins(render::RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+
+    auto render_app = app.get_sub_app_mut(render::Render);
+    ASSERT_TRUE(render_app.has_value());
+    const auto device = render_app->get().world().get_resource<wgpu::Device>();
+    ASSERT_TRUE(device.has_value());
+
+    const wgpu::BufferDescriptor buffer_descriptor =
+        wgpu::BufferDescriptor().setSize(16).setUsage(wgpu::BufferUsage::eUniform | wgpu::BufferUsage::eCopyDst);
+    const auto first  = device->get().createBuffer(buffer_descriptor);
+    const auto second = device->get().createBuffer(buffer_descriptor);
+    const auto third  = device->get().createBuffer(buffer_descriptor);
+
+    using Array = pbr::MaterialBindlessBindingArray<wgpu::Buffer>;
+    Array array = Array::make(render::render_resource::BindingNumber{1},
+                              render::render_resource::BindlessResourceType::Buffer);
+
+    const auto resource_type = render::render_resource::BindlessResourceType::Buffer;
+    const auto first_id      = pbr::binding_resource_id(first, resource_type);
+    const auto second_id     = pbr::binding_resource_id(second, resource_type);
+    const auto third_id      = pbr::binding_resource_id(third, resource_type);
+
+    EXPECT_EQ(array.insert(first_id, first), 0u);
+    EXPECT_EQ(array.insert(first_id, first), 0u) << "the same resource takes one slot, not two";
+    EXPECT_EQ(array.len, 1u) << "and the second use is a reference, not an allocation";
+    EXPECT_EQ(array.bindings.at(0)->ref_count, 2u) << "which is what the count has to say";
+
+    EXPECT_EQ(array.insert(second_id, second), 1u);
+    EXPECT_EQ(array.len, 2u);
+    EXPECT_EQ(array.find(first_id), 0u);
+    EXPECT_EQ(array.find(third_id), std::nullopt) << "a resource the array does not hold has no slot";
+
+    EXPECT_FALSE(array.remove(0)) << "the first material's reference is not the last one";
+    EXPECT_EQ(array.len, 2u) << "`len` counts allocated slots, not references: a slot with a user left is still allocated";
+    EXPECT_EQ(array.find(first_id), 0u) << "the resource stays while a material still uses it";
+    EXPECT_TRUE(array.remove(0)) << "the second reference is the one that frees it";
+    EXPECT_EQ(array.find(first_id), std::nullopt);
+    EXPECT_EQ(array.len, 1u) << "and only the freed slot goes away";
+
+    EXPECT_EQ(array.insert(third_id, third), 0u) << "the freed slot comes back before a new one is made";
+    EXPECT_EQ(array.bindings.size(), 2u) << "and reusing it did not grow the array past the second slot";
+}
