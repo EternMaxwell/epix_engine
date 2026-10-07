@@ -606,6 +606,41 @@ EPIX_EXPORT struct MaterialBindGroupBindlessAllocator {
     std::unordered_map<render::render_resource::BindlessIndex, wgpu::Buffer> fallback_buffers;
     /** @brief The maximum number of resources one slab holds (Bevy's `SLAB_CAPACITY`). */
     std::uint32_t slab_capacity = 0;
+
+    /** @brief Create the allocator for one bindless material (Bevy's `new`,
+     *  `material_bind_groups.rs:770-806`): one fallback buffer per bindless buffer, sized
+     *  by the descriptor or by the standard fallback size, and the slab capacity resolved
+     *  from the material's limit.
+     *
+     *  Bevy expects a capacity here - `slab_capacity.expect(..)` - because a material
+     *  without one is non-bindless and should never reach this allocator; that is an
+     *  assert rather than a fallback, and the dispatch below is what guarantees it. */
+    static MaterialBindGroupBindlessAllocator make(
+        const wgpu::Device& device,
+        std::string_view label,
+        render::render_resource::BindlessDescriptor bindless_descriptor,
+        render::BindGroupLayoutDescriptor bind_group_layout,
+        std::optional<render::render_resource::BindlessSlabResourceLimit> slab_capacity) {
+        assert(slab_capacity.has_value());
+
+        MaterialBindGroupBindlessAllocator allocator;
+        allocator.label               = label;
+        allocator.bind_group_layout   = std::move(bind_group_layout);
+        allocator.bindless_descriptor = std::move(bindless_descriptor);
+        allocator.slab_capacity       = slab_capacity->resolve();
+
+        for (const auto& bindless_buffer : allocator.bindless_descriptor.buffers) {
+            const std::uint64_t size =
+                bindless_buffer.size.has_value() ? *bindless_buffer.size : DEFAULT_BINDLESS_FALLBACK_BUFFER_SIZE;
+            allocator.fallback_buffers.emplace(
+                bindless_buffer.bindless_index,
+                device.createBuffer(wgpu::BufferDescriptor()
+                                        .setLabel("bindless fallback buffer")
+                                        .setSize(size)
+                                        .setUsage(wgpu::BufferUsage::eStorage)));
+        }
+        return allocator;
+    }
 };
 
 /** @brief The allocator for one material type: the bindless one or the non-bindless one
@@ -616,6 +651,26 @@ EPIX_EXPORT struct MaterialBindGroupBindlessAllocator {
  *  which is what C++ has. */
 EPIX_EXPORT struct MaterialBindGroupAllocator {
     std::variant<MaterialBindGroupBindlessAllocator, MaterialBindGroupNonBindlessAllocator> value;
+
+    /** @brief Choose the allocator for one material type (Bevy
+     *  `MaterialBindGroupAllocator::new`, `material_bind_groups.rs:458-478`): the
+     *  bindless one when the material has a bindless descriptor, the non-bindless one
+     *  when it does not.
+     *
+     *  This is the whole dispatch, and it is decided once per material type rather than
+     *  per material. */
+    static MaterialBindGroupAllocator make(
+        const wgpu::Device& device,
+        std::string_view label,
+        std::optional<render::render_resource::BindlessDescriptor> bindless_descriptor,
+        render::BindGroupLayoutDescriptor bind_group_layout,
+        std::optional<render::render_resource::BindlessSlabResourceLimit> slab_capacity) {
+        if (bindless_descriptor.has_value()) {
+            return MaterialBindGroupAllocator{MaterialBindGroupBindlessAllocator::make(
+                device, label, std::move(*bindless_descriptor), std::move(bind_group_layout), slab_capacity)};
+        }
+        return MaterialBindGroupAllocator{MaterialBindGroupNonBindlessAllocator{label}};
+    }
 };
 
 /** @brief One allocator per material type (Bevy `MaterialBindGroupAllocators`,

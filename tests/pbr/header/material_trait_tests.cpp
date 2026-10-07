@@ -526,3 +526,54 @@ TEST(MaterialBindGroupAllocator, DispatchIsKeyedByMaterialType) {
     EXPECT_EQ(std::get<pbr::MaterialBindGroupNonBindlessAllocator>(plain).label(), "plain material")
         << "and each carries its own label, which is what its bind groups are created under";
 }
+
+/** @brief Constructing the bindless allocator and choosing between the two (Bevy
+ *  `MaterialBindGroupBindlessAllocator::new` and `MaterialBindGroupAllocator::new`,
+ *  `material_bind_groups.rs:770-806` and `:458-478`), on a real device.
+ *
+ *  The dispatch is the decision that decides which layout a material's bind groups use,
+ *  and the fallback buffers are what an unused slot in a binding array points at - a
+ *  missing one is a hole the shader reads. Both need a device, which is why this is a
+ *  GPU test. */
+TEST(MaterialBindGroupAllocator, BindlessConstructionBuildsFallbackBuffersAndChoosesByDescriptor) {
+    App app = App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::time::TimePlugin{})
+        .add_plugins(AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::shader::ShaderPlugin{});
+    try {
+        app.add_plugins(render::RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+
+    auto render_app = app.get_sub_app_mut(render::Render);
+    ASSERT_TRUE(render_app.has_value());
+    const auto device = render_app->get().world().get_resource<wgpu::Device>();
+    ASSERT_TRUE(device.has_value());
+
+    render::render_resource::BindlessDescriptor descriptor;
+    descriptor.buffers.push_back(render::render_resource::BindlessBufferDescriptor{
+        .binding_number = render::render_resource::BindingNumber{4},
+        .bindless_index = render::render_resource::BindlessIndex{2},
+        .size           = 64});
+    const render::render_resource::BindlessSlabResourceLimit limit{.custom = 32u};
+
+    const auto allocator = pbr::MaterialBindGroupAllocator::make(
+        device->get(), "bindless material", descriptor, render::BindGroupLayoutDescriptor{}, limit);
+    ASSERT_TRUE(std::holds_alternative<pbr::MaterialBindGroupBindlessAllocator>(allocator.value))
+        << "a material with a bindless descriptor gets the bindless allocator";
+
+    const auto& bindless = std::get<pbr::MaterialBindGroupBindlessAllocator>(allocator.value);
+    EXPECT_EQ(bindless.slab_capacity, 32u) << "the capacity comes from the material's limit, not a default";
+    EXPECT_TRUE(bindless.slabs.empty()) << "slabs are created on demand, not up front";
+    ASSERT_EQ(bindless.fallback_buffers.size(), 1u) << "one fallback per bindless buffer";
+    EXPECT_EQ(bindless.fallback_buffers.at(render::render_resource::BindlessIndex{2}).getSize(), 64u)
+        << "sized by the descriptor when it gives a size";
+
+    // And the other arm: a material with no bindless descriptor never builds one.
+    const auto plain = pbr::MaterialBindGroupAllocator::make(
+        device->get(), "plain material", std::nullopt, render::BindGroupLayoutDescriptor{}, std::nullopt);
+    EXPECT_TRUE(std::holds_alternative<pbr::MaterialBindGroupNonBindlessAllocator>(plain.value));
+}
