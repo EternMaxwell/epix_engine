@@ -536,6 +536,11 @@ void RenderPlugin::attach(App& app) {
         // by the selected adapter. Compatibility starts from the WebGPU defaults.
         std::vector<wgpu::FeatureName> required_features;
         wgpu::Limits required_limits = settings->limits;
+        // The binding-array limits are wgpu-native extras: the core `wgpu::Limits` has no
+        // fields for them, so they travel on the required-limits chain. Their default is
+        // zero, and a counted binding-array layout does not fail against a zero limit - it
+        // aborts inside wgpu - so this is what makes binding arrays usable at all.
+        wgpu::NativeLimits native_limits;
         if (settings->priority == WgpuSettingsPriority::Functionality) {
             wgpu::SupportedFeatures supported_features;
             adapter.getFeatures(&supported_features);
@@ -551,8 +556,22 @@ void RenderPlugin::attach(App& app) {
                 return feature == wgpu::FeatureName(wgpu::NativeFeature::eRayQuery) ||
                        feature == wgpu::FeatureName(wgpu::NativeFeature::eCooperativeMatrix);
             });
+            // The adapter's binding-array limits come back only when the queried struct
+            // carries a native chain, because the core `wgpu::Limits` has no room for
+            // them.
+            wgpu::NativeLimits supported_native_limits;
             wgpu::Limits supported_limits;
-            if (adapter.getLimits(&supported_limits) == wgpu::Status::eSuccess) required_limits = supported_limits;
+            supported_limits.setNextInChain(supported_native_limits);
+            if (adapter.getLimits(&supported_limits) == wgpu::Status::eSuccess) {
+                required_limits = supported_limits;
+                native_limits.maxBindingArrayElementsPerShaderStage =
+                    supported_native_limits.maxBindingArrayElementsPerShaderStage;
+                native_limits.maxBindingArraySamplerElementsPerShaderStage =
+                    supported_native_limits.maxBindingArraySamplerElementsPerShaderStage;
+                // The assignment above copied a pointer to the query's local chain, which
+                // is about to go out of scope.
+                required_limits.setNextInChain(native_limits);
+            }
         }
         if (settings->disabled_features.has_value()) {
             for (const auto feature : *settings->disabled_features) std::erase(required_features, feature);
@@ -629,6 +648,9 @@ void RenderPlugin::attach(App& app) {
         if (settings->device_label.has_value()) {
             automatic_device_descriptor->setLabel(wgpu::StringView(*settings->device_label));
         }
+        // Attached after `constrain_limits`, which rebuilds the limits struct and would
+        // have dropped a chain set earlier.
+        required_limits.setNextInChain(native_limits);
         automatic_device_descriptor->setRequiredLimits(required_limits);
         device = adapter.requestDevice(*automatic_device_descriptor);
         spdlog::debug("[render] WebGPU device created.");
