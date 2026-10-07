@@ -500,3 +500,29 @@ TEST(MaterialBindGroupAllocator, ResourceIdsCompareAndHashByHandle) {
     EXPECT_EQ(slots.size(), 2u) << "one resource cannot hold two slots";
     EXPECT_EQ(slots.at(first_again), 0u) << "and the first insert is the one that stands";
 }
+
+/** @brief The allocator dispatch is per material type (Bevy `MaterialBindGroupAllocators`
+ *  and `MaterialBindGroupAllocator`, `material_bind_groups.rs:36`, `:44-49`).
+ *
+ *  Each material type decides for itself whether it is bindless, so the choice is stored
+ *  per type rather than once for all materials. A single shared allocator would put a
+ *  bindless material's resources through the non-bindless path - one bind group per
+ *  material, slot 0 - which is not a slower version of the same thing but a different
+ *  layout the shader does not read. */
+TEST(MaterialBindGroupAllocator, DispatchIsKeyedByMaterialType) {
+    pbr::MaterialBindGroupAllocators allocators;
+    allocators.allocators.emplace(
+        epix::meta::type_id<PlainMaterial>(),
+        pbr::MaterialBindGroupAllocator{pbr::MaterialBindGroupNonBindlessAllocator{"plain material"}});
+    allocators.allocators.emplace(epix::meta::type_id<CustomMaterial>(),
+                                  pbr::MaterialBindGroupAllocator{pbr::MaterialBindGroupBindlessAllocator{}});
+
+    ASSERT_EQ(allocators.allocators.size(), 2u) << "one allocator per material type";
+    const auto& plain = allocators.allocators.at(epix::meta::type_id<PlainMaterial>()).value;
+    const auto& custom = allocators.allocators.at(epix::meta::type_id<CustomMaterial>()).value;
+    EXPECT_TRUE(std::holds_alternative<pbr::MaterialBindGroupNonBindlessAllocator>(plain))
+        << "a material without a bindless descriptor gets the non-bindless allocator";
+    EXPECT_TRUE(std::holds_alternative<pbr::MaterialBindGroupBindlessAllocator>(custom));
+    EXPECT_EQ(std::get<pbr::MaterialBindGroupNonBindlessAllocator>(plain).label(), "plain material")
+        << "and each carries its own label, which is what its bind groups are created under";
+}

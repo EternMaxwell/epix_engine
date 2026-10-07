@@ -16,6 +16,16 @@
 
 #include <epix/pbr/material_bindings.hpp>
 
+template <>
+struct std::hash<epix::render::render_resource::BindlessResourceType> {
+    /** @brief Bevy derives `Hash` on the resource type; the slab's sampler and texture
+     *  arrays are keyed by it. Declared before those maps, since a specialization has to
+     *  precede the first use that instantiates it. */
+    std::size_t operator()(const epix::render::render_resource::BindlessResourceType& type) const noexcept {
+        return std::hash<std::uint32_t>{}(static_cast<std::uint32_t>(type));
+    }
+};
+
 namespace epix::pbr {
 
 /** @brief The interface to a slab - a single bind group - when it is not bindless
@@ -547,6 +557,74 @@ struct MaterialBindlessBindingArray {
     std::vector<std::uint32_t> free_slots;
     /** @brief How many slots are allocated. */
     std::uint32_t len = 0;
+};
+
+/** @brief One bind group of a bindless allocator, with the bookkeeping needed to
+ *  allocate into it (Bevy `MaterialBindlessSlab`, `material_bind_groups.rs:80-114`). */
+EPIX_EXPORT struct MaterialBindlessSlab {
+    /** @brief The bind group, or nothing when it is dirty and has to be regenerated. */
+    std::optional<wgpu::BindGroup> bind_group;
+    /** @brief The buffers mapping bindless index to slot. The shader binary-searches
+     *  them, so their entries have to stay sorted by bindless index. */
+    std::vector<MaterialBindlessIndexTable> bindless_index_tables;
+    /** @brief The sampler binding arrays, by resource type. */
+    std::unordered_map<render::render_resource::BindlessResourceType, MaterialBindlessBindingArray<wgpu::Sampler>>
+        samplers;
+    /** @brief The texture binding arrays, by resource type. */
+    std::unordered_map<render::render_resource::BindlessResourceType, MaterialBindlessBindingArray<wgpu::TextureView>>
+        textures;
+    /** @brief The buffer binding arrays, by bindless index. */
+    std::unordered_map<render::render_resource::BindlessIndex, MaterialBindlessBindingArray<wgpu::Buffer>> buffers;
+    /** @brief The buffers holding plain old data, by bindless index. */
+    std::unordered_map<render::render_resource::BindlessIndex, MaterialDataBuffer> data_buffers;
+    /** @brief The slot ids that are free. */
+    std::vector<MaterialBindGroupSlot> free_slots;
+    /** @brief How many materials are allocated in this slab. */
+    std::uint32_t live_allocation_count = 0;
+    /** @brief How many resources are allocated across its binding arrays. */
+    std::uint32_t allocated_resource_count = 0;
+};
+
+/** @brief The allocator that places bindless materials into bind groups (Bevy
+ *  `MaterialBindGroupBindlessAllocator`, `material_bind_groups.rs:53-77`).
+ *
+ *  Its allocation logic is not ported yet (PBR-46), so this is the shape the logic will
+ *  work on: the slabs, the layout they are built from, the descriptor saying which
+ *  resources are bindless, and one fallback buffer per bindless buffer to fill the slots
+ *  no material uses. */
+EPIX_EXPORT struct MaterialBindGroupBindlessAllocator {
+    /** @brief The label its bind groups are created under. */
+    std::string_view label;
+    /** @brief The slabs, each holding one bind group. */
+    std::vector<MaterialBindlessSlab> slabs;
+    /** @brief The layout of the bind groups it produces. */
+    render::BindGroupLayoutDescriptor bind_group_layout;
+    /** @brief Which resources of the material are bindless, and where. */
+    render::render_resource::BindlessDescriptor bindless_descriptor;
+    /** @brief One dummy buffer per bindless buffer, sized for one element, filling the
+     *  slots no material uses. */
+    std::unordered_map<render::render_resource::BindlessIndex, wgpu::Buffer> fallback_buffers;
+    /** @brief The maximum number of resources one slab holds (Bevy's `SLAB_CAPACITY`). */
+    std::uint32_t slab_capacity = 0;
+};
+
+/** @brief The allocator for one material type: the bindless one or the non-bindless one
+ *  (Bevy `MaterialBindGroupAllocator`, `material_bind_groups.rs:44-49`).
+ *
+ *  Bevy's two-arm enum with boxed payloads becomes a variant of the two allocators; the
+ *  arms are named in Bevy's comments above each accessor rather than by the variant,
+ *  which is what C++ has. */
+EPIX_EXPORT struct MaterialBindGroupAllocator {
+    std::variant<MaterialBindGroupBindlessAllocator, MaterialBindGroupNonBindlessAllocator> value;
+};
+
+/** @brief One allocator per material type (Bevy `MaterialBindGroupAllocators`,
+ *  `material_bind_groups.rs:36`).
+ *
+ *  Keyed by the material's type because each type decides for itself whether it is
+ *  bindless, and so which allocator it needs. */
+EPIX_EXPORT struct MaterialBindGroupAllocators {
+    std::unordered_map<meta::type_index, MaterialBindGroupAllocator> allocators;
 };
 
 }  // namespace epix::pbr
