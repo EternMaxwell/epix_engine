@@ -365,3 +365,87 @@ TEST(MaterialBindGroupAllocator, DataBufferSlotsAreReusedAndWrittenInPlace) {
     EXPECT_EQ(data.buffer.values().size(), 8u) << "and reusing it did not grow the buffer";
     EXPECT_EQ(data.buffer.values()[0], 9u) << "and its bytes are overwritten in place";
 }
+
+/** @brief The retained buffer's lazy-update state machine (Bevy `RetainedRawBufferVec`,
+ *  `material_bind_groups.rs:736-764`), on a real device.
+ *
+ *  The states are the point: a new buffer needs uploading but not reserving, a buffer
+ *  whose contents changed needs reserving first, and only then is it clean again. A
+ *  machine that skipped the reserve would upload into a buffer too small for its
+ *  contents, which fails at the draw rather than at the write. */
+TEST(MaterialBindGroupAllocator, RetainedBufferReservesThenUploads) {
+    App app = App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::time::TimePlugin{})
+        .add_plugins(AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::shader::ShaderPlugin{});
+    try {
+        app.add_plugins(render::RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+
+    auto render_app = app.get_sub_app_mut(render::Render);
+    ASSERT_TRUE(render_app.has_value());
+    auto& world = render_app->get().world_mut();
+    const auto device = world.get_resource<wgpu::Device>();
+    const auto queue  = world.get_resource<wgpu::Queue>();
+    ASSERT_TRUE(device.has_value());
+    ASSERT_TRUE(queue.has_value());
+
+    pbr::RetainedRawBufferVec<std::uint32_t> retained{wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst};
+    EXPECT_EQ(retained.dirty, pbr::BufferDirtyState::NeedsUpload)
+        << "a new buffer has nothing to reserve, but its contents are not written either";
+
+    retained.push(7u);
+    retained.prepare(device->get());
+    EXPECT_EQ(retained.dirty, pbr::BufferDirtyState::NeedsUpload)
+        << "prepare only recreates the buffer, so the contents are still to be written";
+    retained.write(device->get(), queue->get());
+    EXPECT_EQ(retained.dirty, pbr::BufferDirtyState::Clean);
+    EXPECT_NE(retained.gpu_buffer(), nullptr) << "writing creates the GPU buffer";
+
+    // What a caller that changed the contents sets, as the index table does.
+    retained.dirty = pbr::BufferDirtyState::NeedsReserve;
+    retained.prepare(device->get());
+    EXPECT_EQ(retained.dirty, pbr::BufferDirtyState::NeedsUpload) << "reserving moves it along, it does not finish it";
+    retained.write(device->get(), queue->get());
+    EXPECT_EQ(retained.dirty, pbr::BufferDirtyState::Clean);
+}
+
+/** @brief The bindless index table: a slice per material mapping bindless indices to
+ *  binding-array slots (Bevy `MaterialBindlessIndexTable`, `material_bind_groups.rs:122-135`
+ *  and `:639-727`).
+ *
+ *  The shader binary-searches these entries, and every material reads its own slice, so
+ *  the two things worth pinning are the offset arithmetic and that one material's write
+ *  cannot land in another's slice. */
+TEST(MaterialBindGroupAllocator, IndexTableMapsBindlessIndicesToSlotsPerMaterial) {
+    const render::render_resource::BindlessIndexTableDescriptor descriptor{
+        .indices = {.start = {4}, .end = {7}}, .binding_number = render::render_resource::BindingNumber{0}};
+    pbr::MaterialBindlessIndexTable table{descriptor};
+
+    EXPECT_EQ(table.table_length(), 3u);
+    EXPECT_EQ(table.get(pbr::MaterialBindGroupSlot{0}).size(), 3u) << "one slice per material slot";
+    EXPECT_EQ(table.get_binding(pbr::MaterialBindGroupSlot{0}, {4}), 0u) << "a fresh table is all zeros";
+    EXPECT_EQ(table.get_binding(pbr::MaterialBindGroupSlot{0}, {7}), std::nullopt)
+        << "the range is half-open, so index 7 is outside a 4..7 table";
+
+    // One material's mapping, deliberately out of index order so the arithmetic is what
+    // decides where each lands.
+    table.set(pbr::MaterialBindGroupSlot{0}, {{render::render_resource::BindlessIndex{5}, 2u},
+                                              {render::render_resource::BindlessIndex{4}, 9u}});
+    EXPECT_EQ(table.get_binding(pbr::MaterialBindGroupSlot{0}, {4}), 9u)
+        << "index 4 is the first entry of a 4..7 table, whatever order it was written in";
+    EXPECT_EQ(table.get_binding(pbr::MaterialBindGroupSlot{0}, {5}), 2u);
+    EXPECT_EQ(table.get_binding(pbr::MaterialBindGroupSlot{0}, {6}), 0u) << "an untouched entry stays zero";
+    EXPECT_EQ(table.buffer.dirty, pbr::BufferDirtyState::NeedsReserve)
+        << "a written table has to be recreated and uploaded";
+
+    table.set(pbr::MaterialBindGroupSlot{1}, {{render::render_resource::BindlessIndex{6}, 7u}});
+    EXPECT_EQ(table.get_binding(pbr::MaterialBindGroupSlot{1}, {6}), 7u);
+    EXPECT_EQ(table.get_binding(pbr::MaterialBindGroupSlot{0}, {6}), 0u)
+        << "the second material's write must not land in the first material's slice";
+    EXPECT_EQ(table.buffer.values().size(), 6u) << "two slices of three entries";
+}

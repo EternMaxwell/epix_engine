@@ -281,14 +281,37 @@ struct RetainedRawBufferVec {
     /** @brief The contents of the buffer. */
     render::render_resource::RawBufferVec<T> buffer;
     /** @brief Whether the contents have been uploaded to the GPU. */
-    BufferDirtyState dirty = BufferDirtyState::NeedsReserve;
+    BufferDirtyState dirty = BufferDirtyState::NeedsUpload;
 
+    /** @brief A new empty buffer with the given usage (Bevy `new`,
+     *  `material_bind_groups.rs:736-741`). It starts as `NeedsUpload`: there is nothing
+     *  to reserve, but the (empty) contents have not been written either. */
     explicit RetainedRawBufferVec(wgpu::BufferUsage usage) : buffer(usage) {}
 
     void push(T value) { buffer.push(std::move(value)); }
+    void set(std::size_t index, T value) { buffer.set(index, std::move(value)); }
     [[nodiscard]] std::size_t len() const noexcept { return buffer.len(); }
     [[nodiscard]] std::span<const T> values() const noexcept { return buffer.values(); }
     [[nodiscard]] std::span<T> values_mut() noexcept { return buffer.values_mut(); }
+    /** @brief The GPU buffer, once it exists (Bevy's deref to `RawBufferVec::buffer`). */
+    [[nodiscard]] const wgpu::Buffer* gpu_buffer() const noexcept { return buffer.buffer(); }
+
+    /** @brief Recreate the GPU backing buffer if its capacity no longer covers the
+     *  contents (Bevy `prepare`, `:744-753`). */
+    void prepare(const wgpu::Device& device) {
+        if (dirty != BufferDirtyState::NeedsReserve) return;
+        buffer.reserve(buffer.len(), device);
+        dirty = BufferDirtyState::NeedsUpload;
+    }
+
+    /** @brief Write the contents to the GPU if they are not already there (Bevy `write`,
+     *  `:756-764`). Both dirty states write: a resize leaves the contents to be uploaded
+     *  as well. */
+    void write(const wgpu::Device& device, const wgpu::Queue& queue) {
+        if (dirty == BufferDirtyState::Clean) return;
+        buffer.write_buffer(device, queue);
+        dirty = BufferDirtyState::Clean;
+    }
 };
 
 /** @brief Untyped plain old data on the GPU, allocated in slots (Bevy
@@ -346,6 +369,79 @@ EPIX_EXPORT struct MaterialDataBuffer {
     void remove(std::uint32_t slot) {
         free_slots.push_back(slot);
         --len;
+    }
+};
+
+/** @brief A GPU-accessible buffer mapping bindless indices to binding-array slots (Bevy
+ *  `MaterialBindlessIndexTable`, `material_bind_groups.rs:122-135`).
+ *
+ *  Each material gets one slice of the table, of `index_range.length()` entries, and its
+ *  entries are sorted by bindless index because the shader binary-searches them. The
+ *  table is conventionally bound to binding 0, which the descriptor can move. */
+EPIX_EXPORT struct MaterialBindlessIndexTable {
+    /** @brief The mappings, one slice per material. */
+    RetainedRawBufferVec<std::uint32_t> buffer;
+    /** @brief The bindless indices this table covers: if it is M..N, entry *i* of a
+     *  slice holds the slot for bindless index *i* + M. */
+    render::render_resource::BindlessIndexRange index_range{};
+    /** @brief The binding the table itself is bound at. */
+    render::render_resource::BindingNumber binding_number{};
+
+    /** @brief A table for one slab, preallocated so a buffer always exists (Bevy `new`,
+     *  `:639-655`). */
+    explicit MaterialBindlessIndexTable(const render::render_resource::BindlessIndexTableDescriptor& descriptor)
+        : buffer(wgpu::BufferUsage::eStorage),
+          index_range(descriptor.indices),
+          binding_number(descriptor.binding_number) {
+        for (std::uint32_t index = index_range.start.index; index < index_range.end.index; ++index) buffer.push(0);
+    }
+
+    /** @brief The slice belonging to one material (Bevy `get`, `:662-666`). */
+    [[nodiscard]] std::span<const std::uint32_t> get(MaterialBindGroupSlot slot) const {
+        const std::size_t struct_size = index_range.length();
+        return buffer.values().subspan(struct_size * slot.slot, struct_size);
+    }
+
+    /** @brief One entry of a material's slice, or nothing when the index is outside the
+     *  table (Bevy `get_binding`, `:669-680`). */
+    [[nodiscard]] std::optional<std::uint32_t> get_binding(MaterialBindGroupSlot slot,
+                                                           render::render_resource::BindlessIndex bindless_index) const {
+        if (!index_range.contains(bindless_index)) return std::nullopt;
+        return get(slot)[bindless_index.index - index_range.start.index];
+    }
+
+    /** @brief How many bindless indices the table covers (Bevy `table_length`, `:682-684`). */
+    [[nodiscard]] std::uint32_t table_length() const noexcept { return index_range.length(); }
+
+    /** @brief Serialize one material's bindless index to slot mapping into its slice, so
+     *  the shader can read it (Bevy `set`, `:693-715`). */
+    void set(MaterialBindGroupSlot slot,
+             const std::unordered_map<render::render_resource::BindlessIndex, std::uint32_t>& allocated_resource_slots) {
+        const std::size_t table_len = table_length();
+        const std::size_t range_start = static_cast<std::size_t>(slot.slot) * table_len;
+        const std::size_t range_end   = (static_cast<std::size_t>(slot.slot) + 1) * table_len;
+        while (buffer.values().size() < range_end) buffer.push(0);
+
+        for (const auto& [bindless_index, resource_slot] : allocated_resource_slots) {
+            if (!index_range.contains(bindless_index)) continue;
+            buffer.set(range_start + bindless_index.index - index_range.start.index, resource_slot);
+        }
+
+        // The buffer may have grown, so it has to be recreated before it is written.
+        buffer.dirty = BufferDirtyState::NeedsReserve;
+    }
+
+    /** @brief The bind group entry for the table itself (Bevy `bind_group_entry`,
+     *  `:718-727`). Bevy expects the buffer to exist and panics otherwise; a table always
+     *  has one because `new` preallocates. */
+    [[nodiscard]] wgpu::BindGroupEntry bind_group_entry() const {
+        const wgpu::Buffer* gpu_buffer = buffer.gpu_buffer();
+        assert(gpu_buffer != nullptr);
+        return wgpu::BindGroupEntry()
+            .setBinding(binding_number.number)
+            .setBuffer(*gpu_buffer)
+            .setOffset(0)
+            .setSize(std::numeric_limits<std::uint64_t>::max());
     }
 };
 
