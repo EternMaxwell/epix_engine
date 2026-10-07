@@ -556,22 +556,26 @@ void RenderPlugin::attach(App& app) {
                 return feature == wgpu::FeatureName(wgpu::NativeFeature::eRayQuery) ||
                        feature == wgpu::FeatureName(wgpu::NativeFeature::eCooperativeMatrix);
             });
-            // The adapter's binding-array limits come back only when the queried struct
-            // carries a native chain, because the core `wgpu::Limits` has no room for
-            // them.
-            wgpu::NativeLimits supported_native_limits;
             wgpu::Limits supported_limits;
-            supported_limits.setNextInChain(supported_native_limits);
-            if (adapter.getLimits(&supported_limits) == wgpu::Status::eSuccess) {
-                required_limits = supported_limits;
-                native_limits.maxBindingArrayElementsPerShaderStage =
-                    supported_native_limits.maxBindingArrayElementsPerShaderStage;
-                native_limits.maxBindingArraySamplerElementsPerShaderStage =
-                    supported_native_limits.maxBindingArraySamplerElementsPerShaderStage;
-                // The assignment above copied a pointer to the query's local chain, which
-                // is about to go out of scope.
-                required_limits.setNextInChain(native_limits);
-            }
+            if (adapter.getLimits(&supported_limits) == wgpu::Status::eSuccess) required_limits = supported_limits;
+
+            // The absolute core limits come back above; the binding-array ones are not read
+            // back, because wgpu-native does not fill a chained native-limits struct from an
+            // adapter query - a device asked for the queried value gets zero array elements,
+            // and a layout with any counted array is then invalid. Bevy takes the adapter's
+            // own `max_binding_array_elements_per_shader_stage` here
+            // (`bevy_render/src/renderer/mod.rs:359-361`); this port cannot read that value
+            // through `webgpu.h`, so it requests `AUTO_BINDLESS_SLAB_RESOURCE_LIMIT`
+            // instead - the slab capacity Bevy itself defaults a bindless material to. That
+            // covers a layout of the nine common arrays at that capacity, and a device that
+            // cannot supply it fails creation with a clear error rather than silently
+            // invalidating every bindless layout.
+            constexpr std::uint32_t binding_array_elements = 2048;  // Bevy's
+            // `AUTO_BINDLESS_SLAB_RESOURCE_LIMIT`; spelled here because this translation
+            // unit does not carry the bindless header.
+            native_limits.maxBindingArrayElementsPerShaderStage        = binding_array_elements;
+            native_limits.maxBindingArraySamplerElementsPerShaderStage = binding_array_elements;
+            required_limits.setNextInChain(native_limits);
         }
         if (settings->disabled_features.has_value()) {
             for (const auto feature : *settings->disabled_features) std::erase(required_features, feature);
