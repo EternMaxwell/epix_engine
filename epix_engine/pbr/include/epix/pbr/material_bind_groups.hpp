@@ -991,6 +991,84 @@ EPIX_EXPORT struct MaterialBindlessSlab {
         return slot;
     }
 
+    /** @brief Remove the material in @p slot from this slab (Bevy `free`,
+     *  `material_bind_groups.rs:1138-1201`).
+     *
+     *  Every binding is released through its array's reference count, so a resource
+     *  another material still uses survives - and the slab's allocated-resource count
+     *  falls only when a slot really was freed, which is what keeps its occupancy honest
+     *  and decides when the next slab is needed. The material's slot goes back to the
+     *  free list for the next one. */
+    void free(MaterialBindGroupSlot slot, const render::render_resource::BindlessDescriptor& bindless_descriptor) {
+        using render::render_resource::BindlessIndex;
+        using render::render_resource::BindlessResourceType;
+
+        for (std::size_t index = 0; index < bindless_descriptor.resources.size(); ++index) {
+            const BindlessIndex bindless_index{static_cast<std::uint32_t>(index)};
+            const BindlessResourceType resource_type = bindless_descriptor.resources[index];
+
+            // A resource without a table or without an entry in this material's slice was
+            // never allocated through this slab.
+            const MaterialBindlessIndexTable* table = get_bindless_index_table(bindless_index);
+            if (table == nullptr) continue;
+            const auto binding = table->get_binding(slot, bindless_index);
+            if (!binding.has_value()) continue;
+
+            bool freed_a_resource = false;
+            switch (resource_type) {
+                case BindlessResourceType::None: break;
+                case BindlessResourceType::Buffer: {
+                    const auto array = buffers.find(bindless_index);
+                    assert(array != buffers.end());
+                    freed_a_resource = array->second.remove(*binding);
+                    break;
+                }
+                case BindlessResourceType::DataBuffer: {
+                    // Plain old data has no reference count: it is this material's alone,
+                    // which is why `insert_resources` refused to deduplicate it.
+                    const auto array = data_buffers.find(bindless_index);
+                    assert(array != data_buffers.end());
+                    array->second.remove(*binding);
+                    freed_a_resource = false;
+                    break;
+                }
+                case BindlessResourceType::SamplerFiltering:
+                case BindlessResourceType::SamplerNonFiltering:
+                case BindlessResourceType::SamplerComparison: {
+                    const auto array = samplers.find(resource_type);
+                    assert(array != samplers.end());
+                    freed_a_resource = array->second.remove(*binding);
+                    break;
+                }
+                case BindlessResourceType::Texture1d:
+                case BindlessResourceType::Texture2d:
+                case BindlessResourceType::Texture2dArray:
+                case BindlessResourceType::Texture3d:
+                case BindlessResourceType::TextureCube:
+                case BindlessResourceType::TextureCubeArray: {
+                    const auto array = textures.find(resource_type);
+                    assert(array != textures.end());
+                    freed_a_resource = array->second.remove(*binding);
+                    break;
+                }
+            }
+
+            if (freed_a_resource) allocated_resource_count -= 1;
+        }
+
+        bind_group = std::nullopt;
+        free_slots.push_back(slot);
+        live_allocation_count -= 1;
+    }
+
+    /** @brief Write this slab's buffers to the GPU (Bevy `write_buffer`,
+     *  `material_bind_groups.rs:1324-1334`): its index tables and its data buffers, which
+     *  are the only buffers it owns. */
+    void write_buffer(const wgpu::Device& device, const wgpu::Queue& queue) {
+        for (auto& table : bindless_index_tables) table.buffer.write(device, queue);
+        for (auto& [bindless_index, data_buffer] : data_buffers) data_buffer.buffer.write(device, queue);
+    }
+
     /** @brief This slab's bind group, once it has been prepared (Bevy
      *  `MaterialBindlessSlab::bind_group`, `material_bind_groups.rs:1553-1555`). Nothing
      *  while the slab is dirty.

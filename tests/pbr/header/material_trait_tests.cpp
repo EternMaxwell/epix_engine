@@ -912,3 +912,75 @@ TEST(MaterialBindGroupAllocator, BindlessAllocatorWalksSlabsAndCreatesThemOnDema
     const auto next = cramped.allocate_unprepared(material_binding({first_buffer, second_buffer}));
     EXPECT_EQ(next.group.index, 1u) << "while a slab that already holds something enforces the capacity";
 }
+
+/** @brief Freeing a material releases only its own references (Bevy
+ *  `MaterialBindlessSlab::free`, `material_bind_groups.rs:1138-1201`), on a real device.
+ *
+ *  Two materials binding the same texture share one array slot, so freeing one of them
+ *  must not take that texture away from the other - and the slab's occupancy must fall
+ *  only when a slot really was freed, since that count is what decides when the next slab
+ *  is needed. A free that decremented it early would fill slabs with materials that no
+ *  longer exist; one that never decremented would keep the allocator creating them. */
+TEST(MaterialBindGroupAllocator, FreeingAMaterialReleasesOnlyItsOwnReferences) {
+    App app = App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::time::TimePlugin{})
+        .add_plugins(AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::shader::ShaderPlugin{});
+    try {
+        app.add_plugins(render::RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+
+    auto render_app = app.get_sub_app_mut(render::Render);
+    ASSERT_TRUE(render_app.has_value());
+    const auto device = render_app->get().world().get_resource<wgpu::Device>();
+    ASSERT_TRUE(device.has_value());
+
+    using render::render_resource::BindlessIndex;
+    using render::render_resource::BindlessResourceType;
+
+    render::render_resource::BindlessDescriptor descriptor;
+    descriptor.resources = {BindlessResourceType::Buffer};
+    descriptor.buffers.push_back(render::render_resource::BindlessBufferDescriptor{
+        .binding_number = render::render_resource::BindingNumber{2},
+        .bindless_index = BindlessIndex{0},
+        .size           = std::nullopt});
+    descriptor.index_tables.push_back(render::render_resource::BindlessIndexTableDescriptor{
+        .indices        = {.start = BindlessIndex{0}, .end = BindlessIndex{1}},
+        .binding_number = render::render_resource::BindingNumber{0}});
+
+    const auto buffer = device->get().createBuffer(
+        wgpu::BufferDescriptor().setSize(16).setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst));
+
+    const auto material = [&buffer]() {
+        render::render_resource::BindingResources bindings;
+        bindings.push_back(0, render::render_resource::BindingResources::buffer(buffer));
+        return render::render_resource::UnpreparedBindGroup{.bindings = std::move(bindings)};
+    };
+
+    pbr::MaterialBindlessSlab slab = pbr::MaterialBindlessSlab::make(descriptor);
+    const auto first               = slab.try_allocate(material(), /*slot_capacity=*/2u);
+    const auto second              = slab.try_allocate(material(), 2u);
+    ASSERT_TRUE(first.has_value());
+    ASSERT_TRUE(second.has_value());
+    EXPECT_EQ(first->slot, 0u);
+    EXPECT_EQ(second->slot, 1u) << "each material gets its own slot, even sharing a buffer";
+    ASSERT_EQ(slab.allocated_resource_count, 1u) << "which the buffer occupies once";
+    ASSERT_EQ(slab.live_allocation_count, 2u);
+
+    slab.free(*first, descriptor);
+    EXPECT_EQ(slab.live_allocation_count, 1u);
+    EXPECT_EQ(slab.allocated_resource_count, 1u) << "the buffer is still held by the other material";
+    EXPECT_EQ(slab.buffers.at(BindlessIndex{0}).bindings.at(0)->ref_count, 1u);
+    EXPECT_EQ(slab.buffers.at(BindlessIndex{0}).len, 1u) << "so its slot stays allocated";
+    EXPECT_EQ(slab.free_slots.size(), 1u) << "and only the material's own slot was released";
+
+    slab.free(*second, descriptor);
+    EXPECT_EQ(slab.live_allocation_count, 0u);
+    EXPECT_EQ(slab.allocated_resource_count, 0u) << "the last reference frees the resource";
+    EXPECT_EQ(slab.buffers.at(BindlessIndex{0}).len, 0u);
+    EXPECT_EQ(slab.free_slots.size(), 2u) << "and both slots are available again";
+}
