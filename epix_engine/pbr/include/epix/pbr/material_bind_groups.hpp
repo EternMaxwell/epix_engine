@@ -908,6 +908,39 @@ EPIX_EXPORT struct MaterialBindlessSlab {
         return allocated_resource_slots;
     }
 
+    /** @brief Try to allocate a material in this slab (Bevy `try_allocate`,
+     *  `material_bind_groups.rs:910-958`): the slot it took, or the bind group back when
+     *  the slab is full, so the caller can try the next one.
+     *
+     *  One rule here is a special case rather than an accident: an *empty* slab always
+     *  accepts a material, however many resources it needs. That is what lets a platform
+     *  whose bindless limit is too low to hold even one material still place each of them
+     *  in a slab of its own, instead of failing outright. */
+    std::expected<MaterialBindGroupSlot, render::render_resource::UnpreparedBindGroup> try_allocate(
+        render::render_resource::UnpreparedBindGroup unprepared_bind_group, std::uint32_t slot_capacity) {
+        const auto candidate = check_allocation(unprepared_bind_group);
+        if (!candidate.has_value()) return std::unexpected(std::move(unprepared_bind_group));
+
+        if (allocated_resource_count > 0 && allocated_resource_count + candidate->needed_free_slots > slot_capacity) {
+            return std::unexpected(std::move(unprepared_bind_group));
+        }
+
+        MaterialBindGroupSlot slot{live_allocation_count};
+        if (!free_slots.empty()) {
+            slot = free_slots.back();
+            free_slots.pop_back();
+        }
+        live_allocation_count += 1;
+
+        const auto allocated_resource_slots =
+            insert_resources(std::move(unprepared_bind_group.bindings), *candidate);
+        for (auto& table : bindless_index_tables) table.set(slot, allocated_resource_slots);
+
+        // The cached bind group no longer describes this slab's contents.
+        bind_group = std::nullopt;
+        return slot;
+    }
+
     /** @brief This slab's bind group, once it has been prepared (Bevy
      *  `MaterialBindlessSlab::bind_group`, `material_bind_groups.rs:1553-1555`). Nothing
      *  while the slab is dirty.
@@ -1023,6 +1056,31 @@ EPIX_EXPORT struct MaterialBindGroupBindlessAllocator {
     [[nodiscard]] const MaterialBindlessSlab* get(MaterialBindGroupIndex group) const {
         if (group.index >= slabs.size()) return nullptr;
         return &slabs[group.index];
+    }
+
+    /** @brief Allocate a material, creating a slab when none can take it (Bevy
+     *  `MaterialBindGroupBindlessAllocator::allocate_unprepared`,
+     *  `material_bind_groups.rs:816-848`). The first slab that accepts decides the group;
+     *  the slot within it is the slab's to choose. */
+    MaterialBindingId allocate_unprepared(render::render_resource::UnpreparedBindGroup unprepared_bind_group) {
+        for (std::size_t slab_index = 0; slab_index < slabs.size(); ++slab_index) {
+            auto attempt = slabs[slab_index].try_allocate(std::move(unprepared_bind_group), slab_capacity);
+            if (attempt) {
+                return MaterialBindingId{.group = MaterialBindGroupIndex{static_cast<std::uint32_t>(slab_index)},
+                                         .slot  = *attempt};
+            }
+            // The slab handed the material back, so the next one can be tried.
+            unprepared_bind_group = std::move(attempt.error());
+        }
+
+        const MaterialBindGroupIndex group{static_cast<std::uint32_t>(slabs.size())};
+        slabs.emplace_back(MaterialBindlessSlab::make(bindless_descriptor));
+
+        // An empty slab accepts any material, so this cannot fail; Bevy panics here for
+        // the same reason.
+        auto slot = slabs.back().try_allocate(std::move(unprepared_bind_group), slab_capacity);
+        assert(slot.has_value());
+        return MaterialBindingId{.group = group, .slot = *slot};
     }
 };
 

@@ -821,3 +821,94 @@ TEST(MaterialBindGroupAllocator, DispatchGetReachesTheAllocatorHoldingTheGroup) 
     EXPECT_FALSE(bindless_allocator.get(pbr::MaterialBindGroupIndex{0}).has_value())
         << "the bindless allocator has no slabs yet, so the same call answers nothing";
 }
+
+/** @brief The bindless allocator's slab walk (Bevy
+ *  `MaterialBindGroupBindlessAllocator::allocate_unprepared` and the slab's `try_allocate`,
+ *  `material_bind_groups.rs:816-848` and `:910-958`), on a real device.
+ *
+ *  Three behaviours decide how many bind groups a scene costs: the first material opens a
+ *  slab, a material whose resources do not fit the current one opens the next, and a
+ *  material that reuses resources already there stays where they are. The last is why a
+ *  scene full of one texture does not fill slabs. The special case alongside them is
+ *  Bevy's: an *empty* slab accepts a material however many resources it needs, so a
+ *  platform whose bindless limit cannot hold even one material still places each in a slab
+ *  of its own rather than failing. */
+TEST(MaterialBindGroupAllocator, BindlessAllocatorWalksSlabsAndCreatesThemOnDemand) {
+    App app = App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::time::TimePlugin{})
+        .add_plugins(AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::shader::ShaderPlugin{});
+    try {
+        app.add_plugins(render::RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+
+    auto render_app = app.get_sub_app_mut(render::Render);
+    ASSERT_TRUE(render_app.has_value());
+    const auto device = render_app->get().world().get_resource<wgpu::Device>();
+    ASSERT_TRUE(device.has_value());
+
+    using render::render_resource::BindlessIndex;
+    using render::render_resource::BindlessResourceType;
+
+    const auto bindless_allocator_for = [&device](std::vector<BindlessResourceType> resources,
+                                                  std::uint32_t capacity) {
+        render::render_resource::BindlessDescriptor descriptor;
+        descriptor.resources = std::move(resources);
+        for (std::size_t index = 0; index < descriptor.resources.size(); ++index) {
+            if (descriptor.resources[index] != BindlessResourceType::Buffer) continue;
+            descriptor.buffers.push_back(render::render_resource::BindlessBufferDescriptor{
+                .binding_number = render::render_resource::BindingNumber{static_cast<std::uint32_t>(2 + index)},
+                .bindless_index = BindlessIndex{static_cast<std::uint32_t>(index)},
+                .size           = std::nullopt});
+        }
+        auto allocator = pbr::MaterialBindGroupAllocator::make(
+            device->get(), "bindless material", std::move(descriptor),
+            render::BindGroupLayoutDescriptor{},
+            render::render_resource::BindlessSlabResourceLimit{.custom = capacity});
+        return std::get<pbr::MaterialBindGroupBindlessAllocator>(std::move(allocator.value));
+    };
+
+    const auto buffer_usage =
+        wgpu::BufferDescriptor().setSize(16).setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst);
+    const auto first_buffer  = device->get().createBuffer(buffer_usage);
+    const auto second_buffer = device->get().createBuffer(buffer_usage);
+
+    const auto material_binding = [](std::vector<wgpu::Buffer> buffers) {
+        render::render_resource::BindingResources bindings;
+        for (std::size_t index = 0; index < buffers.size(); ++index) {
+            bindings.push_back(static_cast<std::uint32_t>(index),
+                               render::render_resource::BindingResources::buffer(std::move(buffers[index])));
+        }
+        return render::render_resource::UnpreparedBindGroup{.bindings = std::move(bindings)};
+    };
+
+    // One buffer per material, and room for one resource per slab.
+    auto allocator = bindless_allocator_for({BindlessResourceType::Buffer}, 1u);
+
+    const auto first = allocator.allocate_unprepared(material_binding({first_buffer}));
+    EXPECT_EQ(first.group.index, 0u) << "the first material opens the first slab";
+    EXPECT_EQ(first.slot.slot, 0u);
+    EXPECT_EQ(allocator.slabs.size(), 1u);
+
+    const auto second = allocator.allocate_unprepared(material_binding({second_buffer}));
+    EXPECT_EQ(second.group.index, 1u) << "a buffer that does not fit opens the next slab";
+    EXPECT_EQ(allocator.slabs.size(), 2u);
+
+    const auto third = allocator.allocate_unprepared(material_binding({second_buffer}));
+    EXPECT_EQ(third.group.index, 1u) << "but a material reusing that buffer stays in the slab holding it";
+    EXPECT_EQ(third.slot.slot, 1u) << "in the next slot, not a new group";
+    EXPECT_EQ(allocator.slabs.size(), 2u);
+
+    // The special case: two buffers needed, room for one - and an empty slab still accepts.
+    auto cramped = bindless_allocator_for({BindlessResourceType::Buffer, BindlessResourceType::Buffer}, 1u);
+    const auto oversized = cramped.allocate_unprepared(material_binding({first_buffer, second_buffer}));
+    EXPECT_EQ(oversized.group.index, 0u) << "an empty slab takes a material too large for its capacity";
+    EXPECT_EQ(cramped.slabs.size(), 1u);
+
+    const auto next = cramped.allocate_unprepared(material_binding({first_buffer, second_buffer}));
+    EXPECT_EQ(next.group.index, 1u) << "while a slab that already holds something enforces the capacity";
+}
