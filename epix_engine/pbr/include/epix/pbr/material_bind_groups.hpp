@@ -445,4 +445,108 @@ EPIX_EXPORT struct MaterialBindlessIndexTable {
     }
 };
 
+/** @brief A single resource in a binding array (Bevy `MaterialBindlessBinding<R>`,
+ *  `material_bind_groups.rs:165-174`): the sampler, texture or buffer itself, plus how
+ *  many materials in the slab refer to it. The reference count is what lets several
+ *  materials share one array slot. */
+EPIX_EXPORT template <typename R>
+struct MaterialBindlessBinding {
+    /** @brief The resource. */
+    R resource;
+    /** @brief How many materials in the slab use it. */
+    std::uint32_t ref_count = 0;
+};
+
+/** @brief The identity of one resource, which is how a binding array finds the slot it
+ *  has already placed that resource in (Bevy `BindingResourceId`,
+ *  `material_bind_groups.rs:228-240`).
+ *
+ *  Bevy keys on wgpu's own resource ids; this port keys on the handles, which compare
+ *  and hash by their raw pointer, and the variant's index keeps two kinds that happen to
+ *  share a pointer apart. The texture dimension is part of the identity, as in Bevy: the
+ *  same view bound as a different dimension is a different binding. */
+EPIX_EXPORT struct BindingResourceId {
+    /** @brief A buffer. */
+    struct Buffer {
+        wgpu::Buffer buffer;
+        bool operator==(const Buffer&) const = default;
+    };
+    /** @brief A texture view, with the dimension it is bound as. */
+    struct TextureView {
+        wgpu::TextureViewDimension dimension = wgpu::TextureViewDimension::e2D;
+        wgpu::TextureView view;
+        bool operator==(const TextureView&) const = default;
+    };
+    /** @brief A sampler. */
+    struct Sampler {
+        wgpu::Sampler sampler;
+        bool operator==(const Sampler&) const = default;
+    };
+    /** @brief Plain old data, which has no resource of its own until the allocator
+     *  creates one for it. */
+    struct DataBuffer {
+        bool operator==(const DataBuffer&) const = default;
+    };
+
+    std::variant<Buffer, TextureView, Sampler, DataBuffer> value;
+
+    bool operator==(const BindingResourceId&) const = default;
+};
+
+}  // namespace epix::pbr
+
+template <>
+struct std::hash<epix::pbr::BindingResourceId> {
+    /** @brief Hashes the handle by its raw pointer, with the resource kind mixed in so
+     *  that two kinds sharing a pointer stay distinct. */
+    std::size_t operator()(const epix::pbr::BindingResourceId& id) const noexcept {
+        std::size_t seed = id.value.index();
+        const auto mix   = [&seed](std::uintptr_t raw) {
+            seed ^= std::hash<std::uintptr_t>{}(raw) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        };
+
+        std::visit(
+            [&mix](const auto& resource) {
+                using Resource = std::decay_t<decltype(resource)>;
+                if constexpr (std::is_same_v<Resource, epix::pbr::BindingResourceId::Buffer>) {
+                    mix(reinterpret_cast<std::uintptr_t>(resource.buffer.raw()));
+                } else if constexpr (std::is_same_v<Resource, epix::pbr::BindingResourceId::TextureView>) {
+                    mix(reinterpret_cast<std::uintptr_t>(resource.view.raw()));
+                    mix(static_cast<std::uintptr_t>(resource.dimension));
+                } else if constexpr (std::is_same_v<Resource, epix::pbr::BindingResourceId::Sampler>) {
+                    mix(reinterpret_cast<std::uintptr_t>(resource.sampler.raw()));
+                } else {
+                    mix(0);
+                }
+            },
+            id.value);
+        return seed;
+    }
+};
+
+namespace epix::pbr {
+
+/** @brief One binding array of a slab (Bevy `MaterialBindlessBindingArray<R>`,
+ *  `material_bind_groups.rs:139-158`): the resources in their slots, the inverse mapping
+ *  from resource identity to slot, the free slots, and how many are allocated.
+ *
+ *  The inverse mapping is what makes the array share slots: a resource already present
+ *  is found by identity and its reference count raised rather than a second slot being
+ *  taken. */
+EPIX_EXPORT template <typename R>
+struct MaterialBindlessBindingArray {
+    /** @brief The binding the array is attached to. */
+    render::render_resource::BindingNumber binding_number{};
+    /** @brief Slot index to the resource in it, if any. */
+    std::vector<std::optional<MaterialBindlessBinding<R>>> bindings;
+    /** @brief The kind of resource stored here. */
+    render::render_resource::BindlessResourceType resource_type = render::render_resource::BindlessResourceType::None;
+    /** @brief Resource identity to the slot holding it: the inverse of `bindings`. */
+    std::unordered_map<BindingResourceId, std::uint32_t> resource_to_slot;
+    /** @brief The slots that hold nothing. */
+    std::vector<std::uint32_t> free_slots;
+    /** @brief How many slots are allocated. */
+    std::uint32_t len = 0;
+};
+
 }  // namespace epix::pbr

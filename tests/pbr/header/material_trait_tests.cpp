@@ -13,6 +13,7 @@
 #include <memory>
 #include <string_view>
 #include <type_traits>
+#include <unordered_map>
 #include <vector>
 
 using namespace epix::app;
@@ -448,4 +449,54 @@ TEST(MaterialBindGroupAllocator, IndexTableMapsBindlessIndicesToSlotsPerMaterial
     EXPECT_EQ(table.get_binding(pbr::MaterialBindGroupSlot{0}, {6}), 0u)
         << "the second material's write must not land in the first material's slice";
     EXPECT_EQ(table.buffer.values().size(), 6u) << "two slices of three entries";
+}
+
+/** @brief A bindless resource's identity is its handle (Bevy `BindingResourceId`,
+ *  `material_bind_groups.rs:228-240`), on a real device.
+ *
+ *  A binding array finds a resource it already holds through this key, so the identity
+ *  decides whether two materials share one array slot or take two: a collision would
+ *  silently point the second material at the first material's resource, and an identity
+ *  that never matched would spend a slot on a duplicate of the same texture. That is why
+ *  this is checked through the map the array actually uses, not just with `==`. */
+TEST(MaterialBindGroupAllocator, ResourceIdsCompareAndHashByHandle) {
+    App app = App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::time::TimePlugin{})
+        .add_plugins(AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::shader::ShaderPlugin{});
+    try {
+        app.add_plugins(render::RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+
+    auto render_app = app.get_sub_app_mut(render::Render);
+    ASSERT_TRUE(render_app.has_value());
+    const auto device = render_app->get().world().get_resource<wgpu::Device>();
+    ASSERT_TRUE(device.has_value());
+
+    const wgpu::BufferDescriptor buffer_descriptor =
+        wgpu::BufferDescriptor().setSize(16).setUsage(wgpu::BufferUsage::eUniform | wgpu::BufferUsage::eCopyDst);
+    const auto first  = device->get().createBuffer(buffer_descriptor);
+    const auto second = device->get().createBuffer(buffer_descriptor);
+
+    const pbr::BindingResourceId first_id{pbr::BindingResourceId::Buffer{first}};
+    const pbr::BindingResourceId first_again{pbr::BindingResourceId::Buffer{first}};
+    const pbr::BindingResourceId second_id{pbr::BindingResourceId::Buffer{second}};
+
+    EXPECT_EQ(first_id, first_again) << "the same handle names the same resource";
+    EXPECT_EQ(std::hash<pbr::BindingResourceId>{}(first_id), std::hash<pbr::BindingResourceId>{}(first_again))
+        << "equal identities have to hash equally, or the lookup that finds them misses";
+    EXPECT_NE(first_id, second_id);
+    EXPECT_NE(first_id, pbr::BindingResourceId{pbr::BindingResourceId::DataBuffer{}})
+        << "the kind is part of the identity, not only the handle";
+
+    std::unordered_map<pbr::BindingResourceId, std::uint32_t> slots;
+    slots.emplace(first_id, 0);
+    slots.emplace(second_id, 1);
+    slots.emplace(first_again, 2);
+    EXPECT_EQ(slots.size(), 2u) << "one resource cannot hold two slots";
+    EXPECT_EQ(slots.at(first_again), 0u) << "and the first insert is the one that stands";
 }
