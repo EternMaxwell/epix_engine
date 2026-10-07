@@ -333,3 +333,35 @@ TEST(MaterialBindGroupAllocator, PrepareCreatesTheBindGroupFromData) {
     EXPECT_TRUE(std::holds_alternative<std::reference_wrapper<const render::render_resource::PreparedBindGroup>>(*slab))
         << "the slab is usable once prepared, which is what the draw path checks";
 }
+
+/** @brief The material data buffer's slot allocation (Bevy `MaterialDataBuffer`,
+ *  `bevy_pbr/src/material_bind_groups.rs:361-376` and `:2017-2049`).
+ *
+ *  `#[data]` bindings are not GPU resources of their own, so the allocator places each
+ *  one in a slot of a shared untyped buffer. The arithmetic is what matters: a slot
+ *  starts `slot * aligned_element_size` bytes in, a freed slot is reused before the
+ *  buffer grows, and a reused slot's bytes are overwritten where they are. Getting any
+ *  of those wrong hands the shader another material's data instead of failing. */
+TEST(MaterialBindGroupAllocator, DataBufferSlotsAreReusedAndWrittenInPlace) {
+    pbr::MaterialDataBuffer data{render::render_resource::BindingNumber{5}, /*aligned_size=*/4};
+    EXPECT_EQ(data.len, 0u);
+
+    const std::vector<std::uint8_t> first{1, 2, 3, 4};
+    const std::uint32_t slot0 = data.insert(first);
+    EXPECT_EQ(slot0, 0u);
+    EXPECT_EQ(data.len, 1u);
+    ASSERT_EQ(data.buffer.values().size(), 4u);
+    EXPECT_EQ(data.buffer.values()[0], 1u);
+    EXPECT_EQ(data.buffer.dirty, pbr::BufferDirtyState::NeedsReserve) << "a write makes the GPU copy stale";
+
+    const std::vector<std::uint8_t> second{5, 6, 7, 8};
+    EXPECT_EQ(data.insert(second), 1u);
+    EXPECT_EQ(data.buffer.values().size(), 8u);
+    EXPECT_EQ(data.buffer.values()[4], 5u) << "the second element starts one element along, not one byte";
+
+    data.remove(slot0);
+    const std::vector<std::uint8_t> third{9, 10, 11, 12};
+    EXPECT_EQ(data.insert(third), 0u) << "the freed slot is reused before the buffer grows";
+    EXPECT_EQ(data.buffer.values().size(), 8u) << "and reusing it did not grow the buffer";
+    EXPECT_EQ(data.buffer.values()[0], 9u) << "and its bytes are overwritten in place";
+}

@@ -5,6 +5,8 @@
 #include <epix/common.hpp>
 #include <epix/render/as_bind_group.hpp>
 #include <epix/render/bind_group_layout.hpp>
+#include <epix/render/bindless.hpp>
+#include <epix/render/render_resource.hpp>
 #include <optional>
 #include <string_view>
 #include <unordered_set>
@@ -245,6 +247,106 @@ EPIX_EXPORT class MaterialBindGroupNonBindlessAllocator {
     std::vector<std::optional<MaterialNonBindlessAllocatedBindGroup>> m_bind_groups;
     std::unordered_set<MaterialBindGroupIndex> m_to_prepare;
     std::vector<MaterialBindGroupIndex> m_free_indices;
+};
+
+}  // namespace epix::pbr
+
+namespace epix::pbr {
+
+/** @brief Whether a retained buffer still has to be uploaded (Bevy
+ *  `BufferDirtyState`, `material_bind_groups.rs:297-304`). */
+EPIX_EXPORT enum class BufferDirtyState {
+    /** @brief The buffer is synchronized between the CPU and GPU. */
+    Clean,
+    /** @brief The buffer has not been created yet. */
+    NeedsReserve,
+    /** @brief The buffer exists on both sides, but the GPU's copy is out of date. */
+    NeedsUpload,
+};
+
+/** @brief The size of the buffer assigned to unused bindless buffer slots, in bytes
+ *  (Bevy `DEFAULT_BINDLESS_FALLBACK_BUFFER_SIZE`, `material_bind_groups.rs:399`).
+ *
+ *  Bevy calls the value essentially arbitrary, and keeps it only because a binding
+ *  needs a buffer of some size. */
+EPIX_EXPORT inline constexpr std::uint64_t DEFAULT_BINDLESS_FALLBACK_BUFFER_SIZE = 16;
+
+/** @brief Plain old data packed for the GPU, with the lazy-update state (Bevy
+ *  `RetainedRawBufferVec<T>`, `material_bind_groups.rs:384-393`).
+ *
+ *  Bevy derives `Deref`, so the inner buffer's methods read as the wrapper's own; C++
+ *  has no deref, so the ones its callers use are forwarded here. */
+EPIX_EXPORT template <typename T>
+struct RetainedRawBufferVec {
+    /** @brief The contents of the buffer. */
+    render::render_resource::RawBufferVec<T> buffer;
+    /** @brief Whether the contents have been uploaded to the GPU. */
+    BufferDirtyState dirty = BufferDirtyState::NeedsReserve;
+
+    explicit RetainedRawBufferVec(wgpu::BufferUsage usage) : buffer(usage) {}
+
+    void push(T value) { buffer.push(std::move(value)); }
+    [[nodiscard]] std::size_t len() const noexcept { return buffer.len(); }
+    [[nodiscard]] std::span<const T> values() const noexcept { return buffer.values(); }
+    [[nodiscard]] std::span<T> values_mut() noexcept { return buffer.values_mut(); }
+};
+
+/** @brief Untyped plain old data on the GPU, allocated in slots (Bevy
+ *  `MaterialDataBuffer`, `material_bind_groups.rs:361-376`), which is what the `#[data]`
+ *  attribute of `AsBindGroup` needs: the data is not a GPU resource of its own, so the
+ *  allocator has to place it in a buffer and hand the shader a slot. */
+EPIX_EXPORT struct MaterialDataBuffer {
+    /** @brief The binding the buffer is attached to. */
+    render::render_resource::BindingNumber binding_number{};
+    /** @brief The data, untyped: `aligned_element_size` gives the element size. */
+    RetainedRawBufferVec<std::uint8_t> buffer;
+    /** @brief The size of one element, padding and alignment included. */
+    std::uint32_t aligned_element_size = 0;
+    /** @brief The slots within the buffer that are free. */
+    std::vector<std::uint32_t> free_slots;
+    /** @brief How many slots are allocated. */
+    std::uint32_t len = 0;
+
+    explicit MaterialDataBuffer(render::render_resource::BindingNumber binding, std::uint32_t aligned_size)
+        : binding_number(binding),
+          buffer(wgpu::BufferUsage::eStorage),
+          aligned_element_size(aligned_size) {}
+
+    /** @brief Allocate a slot, copy @p data into it and return the slot (Bevy `insert`,
+     *  `material_bind_groups.rs:2017-2043`). @p data must be exactly
+     *  `aligned_element_size` bytes, as Bevy's `debug_assert` requires.
+     *
+     *  The slot is the last freed one when there is one, so a removed element's space is
+     *  reused before the buffer grows - the same rule the material allocators above
+     *  follow for their group indices. */
+    std::uint32_t insert(std::span<const std::uint8_t> data) {
+        assert(data.size() == aligned_element_size);
+
+        std::uint32_t slot = len;
+        if (!free_slots.empty()) {
+            slot = free_slots.back();
+            free_slots.pop_back();
+        }
+
+        const std::size_t start = static_cast<std::size_t>(slot) * aligned_element_size;
+        const std::size_t end   = (static_cast<std::size_t>(slot) + 1) * aligned_element_size;
+
+        // Grow to cover the slot. Bevy calls `reserve_internal` first as an
+        // optimization; the push loop that follows is what actually guarantees the
+        // length, and this port's buffer has no separate reserve step.
+        while (buffer.values().size() < end) buffer.push(0);
+        std::copy(data.begin(), data.end(), buffer.values_mut().begin() + static_cast<std::ptrdiff_t>(start));
+
+        ++len;
+        buffer.dirty = BufferDirtyState::NeedsReserve;
+        return slot;
+    }
+
+    /** @brief Mark a slot free again (Bevy `remove`, `material_bind_groups.rs:2046-2049`). */
+    void remove(std::uint32_t slot) {
+        free_slots.push_back(slot);
+        --len;
+    }
 };
 
 }  // namespace epix::pbr
