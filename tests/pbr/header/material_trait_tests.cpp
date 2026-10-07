@@ -984,3 +984,148 @@ TEST(MaterialBindGroupAllocator, FreeingAMaterialReleasesOnlyItsOwnReferences) {
     EXPECT_EQ(slab.buffers.at(BindlessIndex{0}).len, 0u);
     EXPECT_EQ(slab.free_slots.size(), 2u) << "and both slots are available again";
 }
+
+/** @brief A slab prepares its bind group from its arrays, tables and fallbacks (Bevy
+ *  `MaterialBindlessSlab::prepare` and `prepare_bind_group`,
+ *  `material_bind_groups.rs:1204-1318`), on a real device.
+ *
+ *  The group wgpu is asked to create here is validated against a layout declaring the index
+ *  table, the nine common arrays and the material's own buffer array and data buffer, so a
+ *  missing array, a wrong binding number or an array without elements fails in this test
+ *  rather than at a draw. wgpu reports those as uncaptured validation errors while still
+ *  returning a group, so the log is part of the evidence. */
+TEST(MaterialBindGroupAllocator, SlabPreparesItsBindGroupFromArraysAndFallbacks) {
+    App app = App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::time::TimePlugin{})
+        .add_plugins(AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::shader::ShaderPlugin{});
+    try {
+        app.add_plugins(render::RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+
+    auto render_app = app.get_sub_app_mut(render::Render);
+    ASSERT_TRUE(render_app.has_value());
+    auto& world               = render_app->get().world_mut();
+    const auto device         = world.get_resource<wgpu::Device>();
+    const auto queue          = world.get_resource<wgpu::Queue>();
+    const auto server         = world.get_resource<render::PipelineServer>();
+    const auto fallback_image = world.get_resource<render::texture::FallbackImage>();
+    ASSERT_TRUE(device.has_value());
+    ASSERT_TRUE(queue.has_value());
+    ASSERT_TRUE(server.has_value());
+    ASSERT_TRUE(fallback_image.has_value());
+
+    using render::render_resource::BindlessIndex;
+    using render::render_resource::BindlessResourceType;
+
+    // The material's own buffer and data buffer sit clear of the nine common arrays.
+    constexpr std::uint32_t kBufferBinding = 10;
+    constexpr std::uint32_t kDataBinding   = 11;
+    constexpr std::uint32_t kCapacity      = 4;
+
+    render::render_resource::BindlessDescriptor descriptor;
+    descriptor.resources = {BindlessResourceType::Buffer, BindlessResourceType::DataBuffer};
+    descriptor.buffers.push_back(render::render_resource::BindlessBufferDescriptor{
+        .binding_number = render::render_resource::BindingNumber{kBufferBinding},
+        .bindless_index = BindlessIndex{0},
+        .size           = std::nullopt});
+    descriptor.buffers.push_back(render::render_resource::BindlessBufferDescriptor{
+        .binding_number = render::render_resource::BindingNumber{kDataBinding},
+        .bindless_index = BindlessIndex{1},
+        .size           = 16});
+    descriptor.index_tables.push_back(render::render_resource::BindlessIndexTableDescriptor{
+        .indices        = {.start = BindlessIndex{0}, .end = BindlessIndex{2}},
+        .binding_number = render::render_resource::BindingNumber{0}});
+
+    auto layout_entries = render::render_resource::create_bindless_bind_group_layout_entries(
+        /*bindless_index_table_length=*/1, kCapacity, render::render_resource::BindingNumber{0});
+    layout_entries.push_back(render::render_resource::binding_types::storage_buffer_read_only(false, 16)
+                                 .count(kCapacity)
+                                 .build(kBufferBinding, wgpu::ShaderStage::eVertex | wgpu::ShaderStage::eFragment));
+    layout_entries.push_back(render::render_resource::binding_types::storage_buffer_read_only(false, 16)
+                                 .build(kDataBinding, wgpu::ShaderStage::eVertex | wgpu::ShaderStage::eFragment));
+    const render::BindGroupLayoutDescriptor layout =
+        render::BindGroupLayoutDescriptor().set_label("slab prepare layout").set_entries(layout_entries);
+
+    wgpu::SamplerDescriptor filtering;
+    wgpu::SamplerDescriptor non_filtering;
+    wgpu::SamplerDescriptor comparison;
+    comparison.setCompare(wgpu::CompareFunction::eAlways);
+    const pbr::FallbackBindlessResources fallbacks{.filtering_sampler = device->get().createSampler(filtering),
+                                                   .non_filtering_sampler = device->get().createSampler(non_filtering),
+                                                   .comparison_sampler    = device->get().createSampler(comparison)};
+
+    pbr::MaterialBindlessSlab slab = pbr::MaterialBindlessSlab::make(descriptor);
+
+    const auto buffer = device->get().createBuffer(
+        wgpu::BufferDescriptor().setSize(16).setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst));
+    render::render_resource::BindingResources bindings;
+    bindings.push_back(0, render::render_resource::BindingResources::buffer(buffer));
+    bindings.push_back(1, render::render_resource::BindingResources::data(
+                              render::render_resource::OwnedData{std::vector<std::byte>(16)}));
+    ASSERT_TRUE(slab.try_allocate(render::render_resource::UnpreparedBindGroup{.bindings = std::move(bindings)},
+                                  kCapacity)
+                    .has_value());
+
+    std::unordered_map<BindlessIndex, wgpu::Buffer> fallback_buffers;
+    fallback_buffers.emplace(
+        BindlessIndex{0},
+        device->get().createBuffer(wgpu::BufferDescriptor().setSize(16).setUsage(wgpu::BufferUsage::eStorage)));
+
+    EXPECT_EQ(slab.get_bind_group(), nullptr) << "a slab has no group until it is prepared";
+    slab.write_buffer(device->get(), queue->get());
+    slab.prepare(device->get(), server->get(), "test material", layout, fallbacks, fallback_buffers,
+                 fallback_image->get(), descriptor, kCapacity);
+    EXPECT_NE(slab.get_bind_group(), nullptr)
+        << "wgpu validated the entries against the layout, so a missing or empty array fails here";
+}
+
+/** @brief Probe for BND-5: a buffer array whose base entry carries the first buffer as
+ *  well as the extras, in case wgpu-native reads the count from the entry rather than the
+ *  chain. */
+TEST(MaterialBindGroupAllocator, ProbeBufferArrayWithBaseBufferSet) {
+    App app = App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::time::TimePlugin{})
+        .add_plugins(AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::shader::ShaderPlugin{});
+    try {
+        app.add_plugins(render::RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+
+    auto render_app = app.get_sub_app_mut(render::Render);
+    ASSERT_TRUE(render_app.has_value());
+    auto& world       = render_app->get().world_mut();
+    const auto device = world.get_resource<wgpu::Device>();
+    ASSERT_TRUE(device.has_value());
+
+    const auto buffer = device->get().createBuffer(
+        wgpu::BufferDescriptor().setSize(16).setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst));
+
+    const auto layout = device->get().createBindGroupLayout(
+        wgpu::BindGroupLayoutDescriptor()
+            .setLabel("base buffer array layout")
+            .setEntries(std::array{render::render_resource::binding_types::storage_buffer_read_only(false, 16)
+                                       .count(4)
+                                       .build(0, wgpu::ShaderStage::eFragment)}));
+
+    wgpu::BindGroupEntryExtras extras;
+    extras.buffers.clear();
+    extras.buffers.push_back(buffer);
+    const wgpu::BindGroupEntry entry =
+        wgpu::BindGroupEntry().setBinding(0).setBuffer(buffer).setNextInChain(extras);
+
+    const auto group = device->get().createBindGroup(wgpu::BindGroupDescriptor()
+                                                         .setLabel("base buffer array group")
+                                                         .setLayout(layout)
+                                                         .setEntries(std::array{entry}));
+    spdlog::info("[probe4] group={}", static_cast<bool>(group));
+    EXPECT_TRUE(group);
+}

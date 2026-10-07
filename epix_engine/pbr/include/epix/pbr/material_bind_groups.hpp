@@ -1129,28 +1129,46 @@ EPIX_EXPORT struct MaterialBindlessSlab {
         bind_group_entries.reserve(bindless_index_tables.size() + binding_resource_arrays.size() + data_buffers.size());
         for (const auto& table : bindless_index_tables) bind_group_entries.push_back(table.bind_group_entry());
 
-        // The extras carry pointers into the arrays they were given, so they have to outlive
-        // the bind group's creation - the same note the port's mesh bindings carry.
+        // The extras hold their own copies of the arrays, so the values are passed as
+        // lvalues and stay in `binding_resource_arrays` for the base-resource assignment
+        // below.
         std::vector<wgpu::BindGroupEntryExtras> extras(binding_resource_arrays.size());
         for (std::size_t index = 0; index < binding_resource_arrays.size(); ++index) {
-            const auto& [binding, array] = binding_resource_arrays[index];
+            auto& [binding, array] = binding_resource_arrays[index];
             std::visit(
                 [&extras, index](auto& values) {
                     using Values = std::decay_t<decltype(values)>;
                     if constexpr (std::is_same_v<Values, std::vector<wgpu::Buffer>>) {
-                        extras[index].setBuffers(std::move(values));
+                        extras[index].setBuffers(values);
                     } else if constexpr (std::is_same_v<Values, std::vector<wgpu::TextureView>>) {
-                        extras[index].setTextureViews(std::move(values));
+                        extras[index].setTextureViews(values);
                     } else {
-                        extras[index].setSamplers(std::move(values));
+                        extras[index].setSamplers(values);
                     }
                 },
-                const_cast<BindingResourceArray&>(array));
+                array);
 
             wgpu::BindGroupEntry entry = wgpu::BindGroupEntry().setBinding(binding).setNextInChain(extras[index]);
-            if (std::holds_alternative<std::vector<wgpu::Buffer>>(array)) {
-                entry.setOffset(0).setSize(std::numeric_limits<std::uint64_t>::max());
-            }
+
+            // wgpu-native validates the entry's *own* resource alongside the extras, so the
+            // array's first element has to be set on the base entry too. Without it every
+            // array binding is rejected with "Array binding provided zero elements" - and a
+            // bind group is still handed back, so the failure is only visible in the log.
+            std::visit(
+                [&entry](const auto& values) {
+                    using Values = std::decay_t<decltype(values)>;
+                    if (values.empty()) return;
+                    if constexpr (std::is_same_v<Values, std::vector<wgpu::Buffer>>) {
+                        entry.setBuffer(values.front())
+                            .setOffset(0)
+                            .setSize(std::numeric_limits<std::uint64_t>::max());
+                    } else if constexpr (std::is_same_v<Values, std::vector<wgpu::TextureView>>) {
+                        entry.setTextureView(values.front());
+                    } else {
+                        entry.setSampler(values.front());
+                    }
+                },
+                array);
             bind_group_entries.push_back(entry);
         }
 
