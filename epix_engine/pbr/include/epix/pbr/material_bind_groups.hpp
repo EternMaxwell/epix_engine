@@ -7,6 +7,7 @@
 #include <epix/render/as_bind_group.hpp>
 #include <epix/render/bind_group_layout.hpp>
 #include <epix/render/bindless.hpp>
+#include <epix/render/fallback_image.hpp>
 #include <epix/render/render_resource.hpp>
 #include <optional>
 #include <spdlog/spdlog.h>
@@ -668,6 +669,16 @@ EPIX_EXPORT struct BindlessAllocationCandidate {
     std::uint32_t needed_free_slots = 0;
 };
 
+/** @brief The resources of one binding array, in the shape wgpu takes them (Bevy
+ *  `BindingResourceArray`, `material_bind_groups.rs:247-256`).
+ *
+ *  Bevy's arms borrow their resources; this port's bind-group entries take the handles by
+ *  value through the array extras, so the arms own them. The variant's index distinguishes
+ *  the three kinds, which is what picks the extras setter to use. */
+EPIX_EXPORT using BindingResourceArray = std::variant<std::vector<wgpu::Buffer>,
+                                                      std::vector<wgpu::TextureView>,
+                                                      std::vector<wgpu::Sampler>>;
+
 /** @brief Dummy resources that fill the slots of a binding array no material uses (Bevy
  *  `FallbackBindlessResources`, `material_bind_groups.rs:216-224`).
  *
@@ -1067,6 +1078,183 @@ EPIX_EXPORT struct MaterialBindlessSlab {
     void write_buffer(const wgpu::Device& device, const wgpu::Queue& queue) {
         for (auto& table : bindless_index_tables) table.buffer.write(device, queue);
         for (auto& [bindless_index, data_buffer] : data_buffers) data_buffer.buffer.write(device, queue);
+    }
+
+    /** @brief Recreate this slab's bind group if its contents changed (Bevy `prepare`,
+     *  `material_bind_groups.rs:1204-1238`): first the buffers it owns, then the group
+     *  itself. */
+    void prepare(const wgpu::Device& device,
+                 const render::PipelineServer& pipeline_server,
+                 std::string_view label,
+                 const render::BindGroupLayoutDescriptor& bind_group_layout,
+                 const FallbackBindlessResources& fallback_bindless_resources,
+                 const std::unordered_map<render::render_resource::BindlessIndex, wgpu::Buffer>& fallback_buffers,
+                 const render::texture::FallbackImage& fallback_image,
+                 const render::render_resource::BindlessDescriptor& bindless_descriptor,
+                 std::uint32_t slab_capacity) {
+        for (auto& table : bindless_index_tables) table.buffer.prepare(device);
+        for (auto& [bindless_index, data_buffer] : data_buffers) data_buffer.buffer.prepare(device);
+
+        prepare_bind_group(device, pipeline_server, label, bind_group_layout, fallback_bindless_resources,
+                           fallback_buffers, fallback_image, bindless_descriptor, slab_capacity);
+    }
+
+    /** @brief Rebuild the bind group from the arrays, the index tables and the fallbacks
+     *  (Bevy `prepare_bind_group`, `material_bind_groups.rs:1242-1318`).
+     *
+     *  The padding decision is the one worth naming: when the device lacks partially-bound
+     *  binding arrays, every array has to be *filled* to the slab capacity with fallbacks,
+     *  because wgpu then requires an array to be bound in full. Where the feature exists,
+     *  the short arrays are left as they are. */
+    void prepare_bind_group(const wgpu::Device& device,
+                            const render::PipelineServer& pipeline_server,
+                            std::string_view label,
+                            const render::BindGroupLayoutDescriptor& bind_group_layout,
+                            const FallbackBindlessResources& fallback_bindless_resources,
+                            const std::unordered_map<render::render_resource::BindlessIndex, wgpu::Buffer>& fallback_buffers,
+                            const render::texture::FallbackImage& fallback_image,
+                            const render::render_resource::BindlessDescriptor& bindless_descriptor,
+                            std::uint32_t slab_capacity) {
+        if (bind_group.has_value()) return;
+
+        const std::optional<std::uint32_t> required_binding_array_size =
+            device.hasFeature(wgpu::FeatureName::ePartiallyBoundBindingArray) ? std::nullopt
+                                                                             : std::optional{slab_capacity};
+
+        const auto binding_resource_arrays = create_binding_resource_arrays(
+            fallback_bindless_resources, fallback_buffers, fallback_image, bindless_descriptor,
+            required_binding_array_size);
+
+        std::vector<wgpu::BindGroupEntry> bind_group_entries;
+        bind_group_entries.reserve(bindless_index_tables.size() + binding_resource_arrays.size() + data_buffers.size());
+        for (const auto& table : bindless_index_tables) bind_group_entries.push_back(table.bind_group_entry());
+
+        // The extras carry pointers into the arrays they were given, so they have to outlive
+        // the bind group's creation - the same note the port's mesh bindings carry.
+        std::vector<wgpu::BindGroupEntryExtras> extras(binding_resource_arrays.size());
+        for (std::size_t index = 0; index < binding_resource_arrays.size(); ++index) {
+            const auto& [binding, array] = binding_resource_arrays[index];
+            std::visit(
+                [&extras, index](auto& values) {
+                    using Values = std::decay_t<decltype(values)>;
+                    if constexpr (std::is_same_v<Values, std::vector<wgpu::Buffer>>) {
+                        extras[index].setBuffers(std::move(values));
+                    } else if constexpr (std::is_same_v<Values, std::vector<wgpu::TextureView>>) {
+                        extras[index].setTextureViews(std::move(values));
+                    } else {
+                        extras[index].setSamplers(std::move(values));
+                    }
+                },
+                const_cast<BindingResourceArray&>(array));
+
+            wgpu::BindGroupEntry entry = wgpu::BindGroupEntry().setBinding(binding).setNextInChain(extras[index]);
+            if (std::holds_alternative<std::vector<wgpu::Buffer>>(array)) {
+                entry.setOffset(0).setSize(std::numeric_limits<std::uint64_t>::max());
+            }
+            bind_group_entries.push_back(entry);
+        }
+
+        for (const auto& [bindless_index, data_buffer] : data_buffers) {
+            const wgpu::Buffer* gpu_buffer = data_buffer.buffer.gpu_buffer();
+            assert(gpu_buffer != nullptr);
+            bind_group_entries.push_back(wgpu::BindGroupEntry()
+                                             .setBinding(data_buffer.binding_number.number)
+                                             .setBuffer(*gpu_buffer)
+                                             .setOffset(0)
+                                             .setSize(std::numeric_limits<std::uint64_t>::max()));
+        }
+
+        bind_group = device.createBindGroup(wgpu::BindGroupDescriptor()
+                                               .setLabel(std::string(label).c_str())
+                                               .setLayout(pipeline_server.get_bind_group_layout(bind_group_layout))
+                                               .setEntries(bind_group_entries));
+    }
+
+    /** @brief Every binding array of this slab, in the form wgpu wants (Bevy
+     *  `create_binding_resource_arrays`, `material_bind_groups.rs:1338-1371`). */
+    [[nodiscard]] std::vector<std::pair<std::uint32_t, BindingResourceArray>> create_binding_resource_arrays(
+        const FallbackBindlessResources& fallback_bindless_resources,
+        const std::unordered_map<render::render_resource::BindlessIndex, wgpu::Buffer>& fallback_buffers,
+        const render::texture::FallbackImage& fallback_image,
+        const render::render_resource::BindlessDescriptor& bindless_descriptor,
+        std::optional<std::uint32_t> required_binding_array_size) const {
+        std::vector<std::pair<std::uint32_t, BindingResourceArray>> arrays;
+
+        // One array per sampler kind, whether or not this slab holds any of them.
+        for (const auto& [resource_type, fallback_sampler] :
+             std::array<std::pair<render::render_resource::BindlessResourceType, const wgpu::Sampler*>, 3>{
+                 {{render::render_resource::BindlessResourceType::SamplerFiltering,
+                   &fallback_bindless_resources.filtering_sampler},
+                  {render::render_resource::BindlessResourceType::SamplerNonFiltering,
+                   &fallback_bindless_resources.non_filtering_sampler},
+                  {render::render_resource::BindlessResourceType::SamplerComparison,
+                   &fallback_bindless_resources.comparison_sampler}}}) {
+            std::vector<wgpu::Sampler> sampler_values;
+            if (const auto array = this->samplers.find(resource_type); array != this->samplers.end()) {
+                for (const auto& binding : array->second.bindings) {
+                    sampler_values.push_back(binding.has_value() ? binding->resource : *fallback_sampler);
+                }
+            } else {
+                // No array of this kind: one fallback, which a device without partially
+                // bound arrays then pads out below.
+                sampler_values.push_back(*fallback_sampler);
+            }
+            if (required_binding_array_size.has_value()) {
+                sampler_values.resize(*required_binding_array_size, *fallback_sampler);
+            }
+
+            const auto* binding_number = render::render_resource::bindless_binding_number(resource_type);
+            assert(binding_number != nullptr);
+            arrays.emplace_back(binding_number->number, BindingResourceArray{std::move(sampler_values)});
+        }
+
+        // And one per texture kind, from the matching fallback image.
+        for (const auto& [resource_type, fallback] :
+             std::array<std::pair<render::render_resource::BindlessResourceType, const wgpu::TextureView*>, 6>{
+                 {{render::render_resource::BindlessResourceType::Texture1d, &fallback_image.d1.texture_view},
+                  {render::render_resource::BindlessResourceType::Texture2d, &fallback_image.d2.texture_view},
+                  {render::render_resource::BindlessResourceType::Texture2dArray,
+                   &fallback_image.d2_array.texture_view},
+                  {render::render_resource::BindlessResourceType::Texture3d, &fallback_image.d3.texture_view},
+                  {render::render_resource::BindlessResourceType::TextureCube, &fallback_image.cube.texture_view},
+                  {render::render_resource::BindlessResourceType::TextureCubeArray,
+                   &fallback_image.cube_array.texture_view}}}) {
+            std::vector<wgpu::TextureView> views;
+            if (const auto array = textures.find(resource_type); array != textures.end()) {
+                for (const auto& binding : array->second.bindings) {
+                    views.push_back(binding.has_value() ? binding->resource.second : *fallback);
+                }
+            } else {
+                views.push_back(*fallback);
+            }
+            if (required_binding_array_size.has_value()) views.resize(*required_binding_array_size, *fallback);
+
+            const auto* binding_number = render::render_resource::bindless_binding_number(resource_type);
+            assert(binding_number != nullptr);
+            arrays.emplace_back(binding_number->number, BindingResourceArray{std::move(views)});
+        }
+
+        // And one per bindless buffer of the descriptor. A buffer with no array here is an
+        // index buffer: present in the descriptor's buffers, absent from its resources.
+        for (const auto& buffer_descriptor : bindless_descriptor.buffers) {
+            const auto array = buffers.find(buffer_descriptor.bindless_index);
+            if (array == buffers.end()) continue;
+
+            const auto fallback_buffer = fallback_buffers.find(buffer_descriptor.bindless_index);
+            assert(fallback_buffer != fallback_buffers.end());
+
+            std::vector<wgpu::Buffer> buffer_bindings;
+            for (const auto& binding : array->second.bindings) {
+                buffer_bindings.push_back(binding.has_value() ? binding->resource : fallback_buffer->second);
+            }
+            if (required_binding_array_size.has_value()) {
+                buffer_bindings.resize(*required_binding_array_size, fallback_buffer->second);
+            }
+
+            arrays.emplace_back(array->second.binding_number.number, BindingResourceArray{std::move(buffer_bindings)});
+        }
+
+        return arrays;
     }
 
     /** @brief This slab's bind group, once it has been prepared (Bevy
