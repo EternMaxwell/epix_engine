@@ -3,6 +3,7 @@
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
 #include <epix/common.hpp>
+#include <epix/ecs.hpp>
 #include <epix/render/as_bind_group.hpp>
 #include <epix/render/bind_group_layout.hpp>
 #include <epix/render/bindless.hpp>
@@ -666,6 +667,55 @@ EPIX_EXPORT struct BindlessAllocationCandidate {
     /** @brief How many slots the resources not already present would need. */
     std::uint32_t needed_free_slots = 0;
 };
+
+/** @brief Dummy resources that fill the slots of a binding array no material uses (Bevy
+ *  `FallbackBindlessResources`, `material_bind_groups.rs:216-224`).
+ *
+ *  A binding array is declared with as many slots as the platform's limit allows, and a
+ *  shader may index any of them, so the unused slots still have to hold something valid -
+ *  otherwise a material that indexes a slot it does not itself occupy reads garbage. Bevy
+ *  keeps one sampler of each kind for that, and one fallback buffer per bindless buffer
+ *  (the allocator's `fallback_buffers`). */
+EPIX_EXPORT struct FallbackBindlessResources {
+    /** @brief A dummy filtering sampler. */
+    wgpu::Sampler filtering_sampler;
+    /** @brief A dummy non-filtering sampler: nearest on all three filters. */
+    wgpu::Sampler non_filtering_sampler;
+    /** @brief A dummy comparison sampler, comparing with `Always` so it never rejects. */
+    wgpu::Sampler comparison_sampler;
+};
+
+/** @brief Create the fallback bindless resources on the render device (Bevy
+ *  `init_fallback_bindless_resources`, `material_bind_groups.rs:1795-1814`, registered in
+ *  the same list as `init_shadow_samplers`, `bevy_pbr/src/lib.rs:319`).
+ *
+ *  Defined in this header rather than a source file to keep the type and its initializer
+ *  together: the port's module sources are listed rather than globbed, so a new `.cpp`
+ *  would not be linked. */
+inline void init_fallback_bindless_resources(ecs::Commands commands, ecs::Res<wgpu::Device> device) {
+    const wgpu::Device& render_device = device.get();
+
+    // Written as separate setters on named descriptors: this wrapper's sampler setters are
+    // ref-qualified on their member, so chaining them off a temporary does not compile.
+    wgpu::SamplerDescriptor filtering;
+    filtering.setLabel("fallback filtering sampler");
+
+    wgpu::SamplerDescriptor non_filtering;
+    non_filtering.setLabel("fallback non-filtering sampler");
+    non_filtering.setMagFilter(wgpu::FilterMode::eNearest);
+    non_filtering.setMinFilter(wgpu::FilterMode::eNearest);
+    non_filtering.setMipmapFilter(wgpu::MipmapFilterMode::eNearest);
+
+    wgpu::SamplerDescriptor comparison;
+    comparison.setLabel("fallback comparison sampler");
+    comparison.setCompare(wgpu::CompareFunction::eAlways);
+
+    commands.insert_resource(FallbackBindlessResources{
+        .filtering_sampler     = render_device.createSampler(filtering),
+        .non_filtering_sampler = render_device.createSampler(non_filtering),
+        .comparison_sampler    = render_device.createSampler(comparison),
+    });
+}
 
 /** @brief One bind group of a bindless allocator, with the bookkeeping needed to
  *  allocate into it (Bevy `MaterialBindlessSlab`, `material_bind_groups.rs:80-114`). */

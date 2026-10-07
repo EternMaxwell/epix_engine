@@ -4,6 +4,7 @@
 #include <epix/pbr/light_plugin.hpp>
 #include <epix/pbr/lightmap.hpp>
 #include <epix/pbr/material.hpp>
+#include <epix/pbr/material_bind_groups.hpp>
 #include <epix/pbr/mesh_shaders.hpp>
 #include <epix/render.hpp>
 
@@ -29,12 +30,20 @@ void PbrPlugin::ready(epix::app::App& app) {
     // resource that system returns at its first line and clustering gathers nothing,
     // which is what the cluster probe measured (PBR-890). Doing this in `attach` would
     // find no render app yet and silently do nothing.
-    auto render_app = app.get_sub_app(epix::render::Render);
+    auto render_app = app.get_sub_app_mut(epix::render::Render);
     if (!render_app) {
         return;
     }
     app.world_mut().insert_resource(
         make_global_cluster_settings(supports_storage_buffers, clustered_decals_are_usable));
+
+    // Bevy builds the fallback bindless resources alongside the shadow samplers
+    // (`bevy_pbr/src/lib.rs:319`), in the render world's startup, because they are
+    // samplers the device creates. A bindless array's unused slots are filled from them,
+    // so a shader indexing a slot no material occupies still reads something valid.
+    render_app->get().add_systems(render::RenderStartup,
+                                  ecs::into(init_fallback_bindless_resources)
+                                      .set_name("init fallback bindless resources"));
 }
 
 }  // namespace epix::pbr
