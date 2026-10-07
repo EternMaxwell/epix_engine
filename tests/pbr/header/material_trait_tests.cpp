@@ -722,3 +722,102 @@ TEST(MaterialBindGroupAllocator, SlabBuildsArraysAndSharesResourcesAcrossMateria
     ASSERT_EQ(slab.buffers.at(BindlessIndex{0}).len, 1u) << "one slot for two materials";
     EXPECT_EQ(slab.buffers.at(BindlessIndex{0}).bindings.at(0)->ref_count, 2u) << "held by both of them";
 }
+
+/** @brief A slab finds the index table covering a bindless index (Bevy
+ *  `get_bindless_index_table`, `material_bind_groups.rs:1558-1575`).
+ *
+ *  The tables are searched by range, so the three cases that matter are a hit in each
+ *  table, a gap between them, and the half-open end. A search that compared only starts
+ *  would answer with a neighbouring table instead of nothing, and the shader would read a
+ *  table that does not describe its resource. */
+TEST(MaterialBindGroupAllocator, SlabFindsTheIndexTableCoveringAnIndex) {
+    using render::render_resource::BindlessIndex;
+    using render::render_resource::BindlessIndexTableDescriptor;
+    using render::render_resource::BindingNumber;
+
+    render::render_resource::BindlessDescriptor descriptor;
+    descriptor.index_tables.push_back(
+        BindlessIndexTableDescriptor{.indices = {.start = BindlessIndex{0}, .end = BindlessIndex{2}},
+                                     .binding_number = BindingNumber{0}});
+    descriptor.index_tables.push_back(
+        BindlessIndexTableDescriptor{.indices = {.start = BindlessIndex{4}, .end = BindlessIndex{7}},
+                                     .binding_number = BindingNumber{1}});
+
+    const pbr::MaterialBindlessSlab slab = pbr::MaterialBindlessSlab::make(descriptor);
+
+    ASSERT_NE(slab.get_bindless_index_table(BindlessIndex{0}), nullptr);
+    EXPECT_EQ(slab.get_bindless_index_table(BindlessIndex{1})->binding_number.number, 0u)
+        << "the first table covers 0..2";
+    ASSERT_NE(slab.get_bindless_index_table(BindlessIndex{5}), nullptr);
+    EXPECT_EQ(slab.get_bindless_index_table(BindlessIndex{6})->binding_number.number, 1u)
+        << "the second covers 4..7";
+    EXPECT_EQ(slab.get_bindless_index_table(BindlessIndex{2}), nullptr) << "index 2 is between the tables";
+    EXPECT_EQ(slab.get_bindless_index_table(BindlessIndex{3}), nullptr);
+    EXPECT_EQ(slab.get_bindless_index_table(BindlessIndex{7}), nullptr) << "and the ranges are half-open";
+}
+
+/** @brief The dispatch's `get` reaches whichever allocator holds the group (Bevy
+ *  `MaterialBindGroupAllocator::get`, `material_bind_groups.rs:481-492`), on a real device.
+ *
+ *  This is the single place the two allocators are used through one interface, and the
+ *  bind group it hands back is what the draw path binds: nothing means the slab is not
+ *  prepared yet, so a lookup that answered with a slab from the wrong allocator - or with
+ *  an empty one - would surface as a draw with no material data rather than as an error. */
+TEST(MaterialBindGroupAllocator, DispatchGetReachesTheAllocatorHoldingTheGroup) {
+    App app = App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::time::TimePlugin{})
+        .add_plugins(AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::shader::ShaderPlugin{});
+    try {
+        app.add_plugins(render::RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+
+    auto render_app = app.get_sub_app_mut(render::Render);
+    ASSERT_TRUE(render_app.has_value());
+    auto& world       = render_app->get().world_mut();
+    const auto device = world.get_resource<wgpu::Device>();
+    const auto queue  = world.get_resource<wgpu::Queue>();
+    const auto server = world.get_resource<render::PipelineServer>();
+    ASSERT_TRUE(device.has_value());
+    ASSERT_TRUE(queue.has_value());
+    ASSERT_TRUE(server.has_value());
+
+    const std::array<wgpu::BindGroupLayoutEntry, 1> layout_entries{
+        wgpu::BindGroupLayoutEntry()
+            .setBinding(0)
+            .setVisibility(wgpu::ShaderStage::eVertex | wgpu::ShaderStage::eFragment)
+            .setBuffer(wgpu::BufferBindingLayout()
+                           .setType(wgpu::BufferBindingType::eUniform)
+                           .setHasDynamicOffset(false)
+                           .setMinBindingSize(16))};
+    render::BindGroupLayoutDescriptor layout =
+        render::BindGroupLayoutDescriptor().set_label("dispatch get layout").set_entries(layout_entries);
+
+    render::render_resource::BindingResources bindings;
+    bindings.push_back(0, render::render_resource::BindingResources::data(
+                              render::render_resource::OwnedData{std::vector<std::byte>(16)}));
+
+    pbr::MaterialBindGroupNonBindlessAllocator non_bindless{"test material"};
+    const auto id = non_bindless.allocate_unprepared(
+        render::render_resource::UnpreparedBindGroup{.bindings = std::move(bindings)}, std::move(layout));
+    non_bindless.prepare_bind_groups(device->get(), queue->get(), server->get());
+
+    const pbr::MaterialBindGroupAllocator allocator{pbr::MaterialBindGroupNonBindlessAllocator{
+        std::move(non_bindless)}};
+    const auto slab = allocator.get(id.group);
+    ASSERT_TRUE(slab.has_value()) << "the dispatch reaches the allocator that holds the group";
+    EXPECT_NE(slab->bind_group(), nullptr) << "and hands back the group the draw path binds";
+
+    // The two arms differ here, and Bevy's shapes are why: the non-bindless allocator
+    // indexes its list, so an uncovered group is the panic its index would be, while the
+    // bindless one goes through `Vec::get` and answers nothing.
+    EXPECT_THROW((void)allocator.get(pbr::MaterialBindGroupIndex{7}), std::out_of_range)
+        << "a non-bindless allocator indexes its list, so an absent group is a panic";
+    const pbr::MaterialBindGroupAllocator bindless_allocator{pbr::MaterialBindGroupBindlessAllocator{}};
+    EXPECT_FALSE(bindless_allocator.get(pbr::MaterialBindGroupIndex{0}).has_value())
+        << "the bindless allocator has no slabs yet, so the same call answers nothing";
+}

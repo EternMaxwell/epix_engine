@@ -907,6 +907,58 @@ EPIX_EXPORT struct MaterialBindlessSlab {
 
         return allocated_resource_slots;
     }
+
+    /** @brief This slab's bind group, once it has been prepared (Bevy
+     *  `MaterialBindlessSlab::bind_group`, `material_bind_groups.rs:1553-1555`). Nothing
+     *  while the slab is dirty.
+     *
+     *  Bevy names this method after the field it returns; C++ cannot have both under one
+     *  name, so the field keeps Bevy's name and the accessor takes a `get_` prefix. */
+    [[nodiscard]] const wgpu::BindGroup* get_bind_group() const {
+        return bind_group.has_value() ? &*bind_group : nullptr;
+    }
+
+    /** @brief The index table covering @p bindless_index, if one does (Bevy
+     *  `get_bindless_index_table`, `:1558-1575`).
+     *
+     *  The tables are kept sorted by their ranges, which is what makes this a binary
+     *  search; an unsorted list would silently answer with the wrong table rather than
+     *  fail, since the search only compares ranges. */
+    [[nodiscard]] const MaterialBindlessIndexTable* get_bindless_index_table(
+        render::render_resource::BindlessIndex bindless_index) const {
+        const auto table = std::lower_bound(bindless_index_tables.begin(), bindless_index_tables.end(), bindless_index,
+                                           [](const MaterialBindlessIndexTable& candidate,
+                                              render::render_resource::BindlessIndex wanted) {
+                                               // Bevy's ordering: a table that ends at or before the wanted index
+                                               // orders before it, so the search lands on the table *containing*
+                                               // the index rather than on the first one that starts after it - which
+                                               // is what `contains` below then confirms or rejects for the gaps.
+                                               return candidate.index_range.end.index <= wanted.index;
+                                           });
+        if (table == bindless_index_tables.end() || !table->index_range.contains(bindless_index)) return nullptr;
+        return &*table;
+    }
+};
+
+/** @brief A slab of either kind, as the dispatch hands it out (Bevy `MaterialSlab` and
+ *  `MaterialSlabImpl`, `material_bind_groups.rs:334-346`). */
+EPIX_EXPORT struct MaterialSlab {
+    std::variant<const MaterialBindlessSlab*, MaterialNonBindlessSlab> value;
+
+    /** @brief The bind group, when the slab has one (Bevy `MaterialSlab::bind_group`,
+     *  `:1985-1996`). Nothing means the slab is not prepared yet, which is what the draw
+     *  path checks before binding anything. */
+    [[nodiscard]] const wgpu::BindGroup* bind_group() const {
+        if (const auto* bindless = std::get_if<const MaterialBindlessSlab*>(&value)) {
+            return *bindless != nullptr ? (*bindless)->get_bind_group() : nullptr;
+        }
+        const auto& non_bindless = std::get<MaterialNonBindlessSlab>(value);
+        if (const auto* prepared =
+                std::get_if<std::reference_wrapper<const render::render_resource::PreparedBindGroup>>(&non_bindless)) {
+            return &prepared->get().bind_group;
+        }
+        return nullptr;
+    }
 };
 
 /** @brief The allocator that places bindless materials into bind groups (Bevy
@@ -965,6 +1017,13 @@ EPIX_EXPORT struct MaterialBindGroupBindlessAllocator {
         }
         return allocator;
     }
+
+    /** @brief The slab at @p group, if this allocator has one there (Bevy
+     *  `MaterialBindGroupBindlessAllocator::get`, `material_bind_groups.rs:864-866`). */
+    [[nodiscard]] const MaterialBindlessSlab* get(MaterialBindGroupIndex group) const {
+        if (group.index >= slabs.size()) return nullptr;
+        return &slabs[group.index];
+    }
 };
 
 /** @brief The allocator for one material type: the bindless one or the non-bindless one
@@ -994,6 +1053,24 @@ EPIX_EXPORT struct MaterialBindGroupAllocator {
                 device, label, std::move(*bindless_descriptor), std::move(bind_group_layout), slab_capacity)};
         }
         return MaterialBindGroupAllocator{MaterialBindGroupNonBindlessAllocator{label}};
+    }
+
+    /** @brief The slab at @p group, if this allocator has one there (Bevy
+     *  `MaterialBindGroupAllocator::get`, `material_bind_groups.rs:481-492`): the one
+     *  place the two allocators are reached through the same interface. */
+    [[nodiscard]] std::optional<MaterialSlab> get(MaterialBindGroupIndex group) const {
+        if (const auto* bindless = std::get_if<MaterialBindGroupBindlessAllocator>(&value)) {
+            const MaterialBindlessSlab* slab = bindless->get(group);
+            if (slab == nullptr) return std::nullopt;
+            return MaterialSlab{.value = slab};
+        }
+        // Bound by reference: the slab handed back points into this allocator, so taking a
+        // copy here would return a reference into a temporary that dies with the expression.
+        const auto& non_bindless = std::get<MaterialBindGroupNonBindlessAllocator>(value);
+        if (const auto slab = non_bindless.get(group)) {
+            return MaterialSlab{.value = *slab};
+        }
+        return std::nullopt;
     }
 };
 
