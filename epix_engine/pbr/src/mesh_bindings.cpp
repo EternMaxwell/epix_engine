@@ -92,27 +92,38 @@ wgpu::BindGroupEntry lightmaps_sampler(std::uint32_t binding, const wgpu::Sample
  *
  *  wgpu-native spells a binding array as the entry's chained extras carrying the
  *  views and their count, not as the slice Bevy passes; the extras are the
- *  caller's (`extras`) so they outlive the bind group's creation. */
+ *  caller's (`extras`) so they outlive the bind group's creation. The array's first
+ *  view goes on the entry itself as well: wgpu-native validates the entry's own
+ *  resource alongside the chain, and an entry carrying only the chain declares an
+ *  empty array - reported as "Array binding provided zero elements" while a bind
+ *  group is still handed back. */
 wgpu::BindGroupEntry lightmaps_texture_view_array(std::uint32_t binding,
                                                   const std::vector<const wgpu::TextureView*>& texture_views,
                                                   wgpu::BindGroupEntryExtras& extras) {
     std::vector<wgpu::TextureView> views;
     views.reserve(texture_views.size());
     for (const wgpu::TextureView* view : texture_views) views.push_back(*view);
+
+    wgpu::BindGroupEntry entry = wgpu::BindGroupEntry().setBinding(binding);
+    if (!views.empty()) entry.setTextureView(views.front());
     extras.setTextureViews(std::move(views));
-    return wgpu::BindGroupEntry().setBinding(binding).setNextInChain(extras);
+    return entry.setNextInChain(extras);
 }
 
 /** @brief A lightmap binding array's samplers, laid out as the views above
- *  (Bevy `bind_group_entry::lightmaps_sampler_array`). */
+ *  (Bevy `bind_group_entry::lightmaps_sampler_array`), with the first sampler on the
+ *  entry itself for the reason given there. */
 wgpu::BindGroupEntry lightmaps_sampler_array(std::uint32_t binding,
                                              const std::vector<const wgpu::Sampler*>& samplers,
                                              wgpu::BindGroupEntryExtras& extras) {
     std::vector<wgpu::Sampler> values;
     values.reserve(samplers.size());
     for (const wgpu::Sampler* sampler : samplers) values.push_back(*sampler);
+
+    wgpu::BindGroupEntry entry = wgpu::BindGroupEntry().setBinding(binding);
+    if (!values.empty()) entry.setSampler(values.front());
     extras.setSamplers(std::move(values));
-    return wgpu::BindGroupEntry().setBinding(binding).setNextInChain(extras);
+    return entry.setNextInChain(extras);
 }
 
 // Bevy's `mod bind_group_entry` is `pub(super)`: these construct the entries the
