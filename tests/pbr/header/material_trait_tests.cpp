@@ -1084,6 +1084,118 @@ TEST(MaterialBindGroupAllocator, SlabPreparesItsBindGroupFromArraysAndFallbacks)
         << "wgpu validated the entries against the layout, so a missing or empty array fails here";
 }
 
+/** @brief The dispatch drives the bindless arm end to end (Bevy
+ *  `MaterialBindGroupAllocator`'s `make`, `allocate_unprepared`, `slab_count`, `allocations`,
+ *  `write_buffers`, `prepare_bind_groups`, `get` and `free`,
+ *  `material_bind_groups.rs:458-634`), on a real device.
+ *
+ *  This is the interface `prepare_materials` will use, so it is worth pinning as a whole:
+ *  the first allocation opens a slab, the occupancy the accessors report follows it, the
+ *  group the dispatch hands back is the one wgpu accepted, freeing releases the slab's
+ *  reference without discarding the slab, and a prepared bind group is refused because a
+ *  bindless material has no say in its own group. */
+TEST(MaterialBindGroupAllocator, DispatchDrivesTheBindlessArmEndToEnd) {
+    App app = App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::time::TimePlugin{})
+        .add_plugins(AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::shader::ShaderPlugin{});
+    try {
+        app.add_plugins(render::RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+
+    auto render_app = app.get_sub_app_mut(render::Render);
+    ASSERT_TRUE(render_app.has_value());
+    auto& world               = render_app->get().world_mut();
+    const auto device         = world.get_resource<wgpu::Device>();
+    const auto queue          = world.get_resource<wgpu::Queue>();
+    const auto server         = world.get_resource<render::PipelineServer>();
+    const auto fallback_image = world.get_resource<render::texture::FallbackImage>();
+    ASSERT_TRUE(device.has_value());
+    ASSERT_TRUE(queue.has_value());
+    ASSERT_TRUE(server.has_value());
+    ASSERT_TRUE(fallback_image.has_value());
+
+    using render::render_resource::BindlessIndex;
+    using render::render_resource::BindlessResourceType;
+
+    constexpr std::uint32_t kBufferBinding = 10;
+    constexpr std::uint32_t kDataBinding   = 11;
+    constexpr std::uint32_t kCapacity      = 4;
+
+    render::render_resource::BindlessDescriptor descriptor;
+    descriptor.resources = {BindlessResourceType::Buffer, BindlessResourceType::DataBuffer};
+    descriptor.buffers.push_back(render::render_resource::BindlessBufferDescriptor{
+        .binding_number = render::render_resource::BindingNumber{kBufferBinding},
+        .bindless_index = BindlessIndex{0},
+        .size           = std::nullopt});
+    descriptor.buffers.push_back(render::render_resource::BindlessBufferDescriptor{
+        .binding_number = render::render_resource::BindingNumber{kDataBinding},
+        .bindless_index = BindlessIndex{1},
+        .size           = 16});
+    descriptor.index_tables.push_back(render::render_resource::BindlessIndexTableDescriptor{
+        .indices        = {.start = BindlessIndex{0}, .end = BindlessIndex{2}},
+        .binding_number = render::render_resource::BindingNumber{0}});
+
+    auto layout_entries = render::render_resource::create_bindless_bind_group_layout_entries(
+        1, kCapacity, render::render_resource::BindingNumber{0});
+    layout_entries.push_back(render::render_resource::binding_types::storage_buffer_read_only(false, 16)
+                                 .count(kCapacity)
+                                 .build(kBufferBinding, wgpu::ShaderStage::eVertex | wgpu::ShaderStage::eFragment));
+    layout_entries.push_back(render::render_resource::binding_types::storage_buffer_read_only(false, 16)
+                                 .build(kDataBinding, wgpu::ShaderStage::eVertex | wgpu::ShaderStage::eFragment));
+    const render::BindGroupLayoutDescriptor layout =
+        render::BindGroupLayoutDescriptor().set_label("dispatch bindless layout").set_entries(layout_entries);
+
+    wgpu::SamplerDescriptor filtering;
+    wgpu::SamplerDescriptor non_filtering;
+    wgpu::SamplerDescriptor comparison;
+    comparison.setCompare(wgpu::CompareFunction::eAlways);
+    const pbr::FallbackBindlessResources fallbacks{.filtering_sampler = device->get().createSampler(filtering),
+                                                   .non_filtering_sampler = device->get().createSampler(non_filtering),
+                                                   .comparison_sampler    = device->get().createSampler(comparison)};
+
+    pbr::MaterialBindGroupAllocator allocator = pbr::MaterialBindGroupAllocator::make(
+        device->get(), "dispatch bindless material", descriptor, layout,
+        render::render_resource::BindlessSlabResourceLimit{.custom = kCapacity});
+    EXPECT_EQ(allocator.slab_count(), 0u) << "an allocator starts with no slabs";
+    EXPECT_EQ(allocator.allocations(), 0u);
+
+    const auto buffer = device->get().createBuffer(
+        wgpu::BufferDescriptor().setSize(16).setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst));
+    render::render_resource::BindingResources bindings;
+    bindings.push_back(0, render::render_resource::BindingResources::buffer(buffer));
+    bindings.push_back(1, render::render_resource::BindingResources::data(
+                              render::render_resource::OwnedData{std::vector<std::byte>(16)}));
+
+    const auto id = allocator.allocate_unprepared(
+        render::render_resource::UnpreparedBindGroup{.bindings = std::move(bindings)}, layout);
+    EXPECT_EQ(id.group.index, 0u) << "the first material opens the first slab";
+    EXPECT_EQ(allocator.slab_count(), 1u);
+    EXPECT_EQ(allocator.allocations(), 1u);
+
+    allocator.write_buffers(device->get(), queue->get());
+    allocator.prepare_bind_groups(device->get(), queue->get(), server->get(), fallbacks, fallback_image->get());
+
+    const auto slab = allocator.get(id.group);
+    ASSERT_TRUE(slab.has_value()) << "the dispatch reaches the bindless arm's slab";
+    ASSERT_NE(slab->bind_group(), nullptr) << "and wgpu accepted the group it built";
+
+    // Copied out before freeing: a free invalidates the slab's cached group.
+    const render::render_resource::PreparedBindGroup prepared{.bind_group = *slab->bind_group(), .bindings = {}};
+
+    allocator.free(id);
+    EXPECT_EQ(allocator.allocations(), 0u) << "freeing releases the resources the slab held";
+    EXPECT_EQ(allocator.slab_count(), 1u) << "the slab itself stays for the next material";
+    EXPECT_EQ(slab->bind_group(), nullptr) << "and its cached group is invalidated";
+
+    EXPECT_THROW(allocator.allocate_prepared(render::render_resource::PreparedBindGroup{prepared}), std::logic_error)
+        << "a bindless material has no say in its own bind group, so a prepared one is refused";
+}
+
 /** @brief Probe for BND-5: a buffer array whose base entry carries the first buffer as
  *  well as the extras, in case wgpu-native reads the count from the entry rather than the
  *  chain. */

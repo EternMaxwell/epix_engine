@@ -1385,6 +1385,13 @@ EPIX_EXPORT struct MaterialBindGroupBindlessAllocator {
         return allocator;
     }
 
+    /** @brief Deallocate the material with the given binding ID (Bevy `free`,
+     *  `material_bind_groups.rs:850-861`): the slab it lives in releases its references. */
+    void free(MaterialBindingId material_binding_id) {
+        assert(material_binding_id.group.index < slabs.size());
+        slabs[material_binding_id.group.index].free(material_binding_id.slot, bindless_descriptor);
+    }
+
     /** @brief The slab at @p group, if this allocator has one there (Bevy
      *  `MaterialBindGroupBindlessAllocator::get`, `material_bind_groups.rs:864-866`). */
     [[nodiscard]] const MaterialBindlessSlab* get(MaterialBindGroupIndex group) const {
@@ -1415,6 +1422,25 @@ EPIX_EXPORT struct MaterialBindGroupBindlessAllocator {
         auto slot = slabs.back().try_allocate(std::move(unprepared_bind_group), slab_capacity);
         assert(slot.has_value());
         return MaterialBindingId{.group = group, .slot = *slot};
+    }
+
+    /** @brief Rebuild the bind groups of every slab (Bevy `prepare_bind_groups`,
+     *  `material_bind_groups.rs:871-891`); a slab whose group is already current does
+     *  nothing. */
+    void prepare_bind_groups(const wgpu::Device& device,
+                             const render::PipelineServer& pipeline_server,
+                             const FallbackBindlessResources& fallback_bindless_resources,
+                             const render::texture::FallbackImage& fallback_image) {
+        for (auto& slab : slabs) {
+            slab.prepare(device, pipeline_server, label, bind_group_layout, fallback_bindless_resources,
+                         fallback_buffers, fallback_image, bindless_descriptor, slab_capacity);
+        }
+    }
+
+    /** @brief Write every slab's own buffers (Bevy `write_buffers`,
+     *  `material_bind_groups.rs:896-900`): its index tables and its data buffers. */
+    void write_buffers(const wgpu::Device& device, const wgpu::Queue& queue) {
+        for (auto& slab : slabs) slab.write_buffer(device, queue);
     }
 };
 
@@ -1463,6 +1489,100 @@ EPIX_EXPORT struct MaterialBindGroupAllocator {
             return MaterialSlab{.value = *slab};
         }
         return std::nullopt;
+    }
+
+    /** @brief Allocate a material's bind group (Bevy `allocate_unprepared`,
+     *  `material_bind_groups.rs:500-514`).
+     *
+     *  Only the non-bindless arm needs the layout: a bindless slab owns one and takes its
+     *  resources through the descriptor instead. */
+    MaterialBindingId allocate_unprepared(render::render_resource::UnpreparedBindGroup unprepared_bind_group,
+                                          const render::BindGroupLayoutDescriptor& bind_group_layout) {
+        if (auto* bindless = std::get_if<MaterialBindGroupBindlessAllocator>(&value)) {
+            return bindless->allocate_unprepared(std::move(unprepared_bind_group));
+        }
+        return std::get<MaterialBindGroupNonBindlessAllocator>(value).allocate_unprepared(
+            std::move(unprepared_bind_group), bind_group_layout);
+    }
+
+    /** @brief Place an already-prepared bind group (Bevy `allocate_prepared`,
+     *  `material_bind_groups.rs:525-540`).
+     *
+     *  A bindless allocator cannot accept one: its bind groups are built from the
+     *  descriptor's resources, so a material implementing `as_bind_group` directly cannot
+     *  be bindless. Bevy panics here, and so does this. */
+    MaterialBindingId allocate_prepared(render::render_resource::PreparedBindGroup prepared_bind_group) {
+        if (std::holds_alternative<MaterialBindGroupBindlessAllocator>(value)) {
+            throw std::logic_error(
+                "bindless resources are incompatible with implementing `as_bind_group` directly; implement "
+                "`unprepared_bind_group` instead or disable bindless");
+        }
+        return std::get<MaterialBindGroupNonBindlessAllocator>(value).allocate_prepared(std::move(prepared_bind_group));
+    }
+
+    /** @brief Deallocate a material (Bevy `free`, `material_bind_groups.rs:545-554`). */
+    void free(MaterialBindingId material_binding_id) {
+        if (auto* bindless = std::get_if<MaterialBindGroupBindlessAllocator>(&value)) {
+            bindless->free(material_binding_id);
+            return;
+        }
+        std::get<MaterialBindGroupNonBindlessAllocator>(value).free(material_binding_id);
+    }
+
+    /** @brief Rebuild the bind groups of whatever changed since the last call (Bevy
+     *  `prepare_bind_groups`, `material_bind_groups.rs:558-579`).
+     *
+     *  The two arms need different things in Bevy as well - the bindless one the fallback
+     *  resources and the fallback image, the non-bindless one the queue, because it creates
+     *  a uniform buffer per `Data` binding - so this takes the union and hands each arm what
+     *  it uses. */
+    void prepare_bind_groups(const wgpu::Device& device,
+                             const wgpu::Queue& queue,
+                             const render::PipelineServer& pipeline_server,
+                             const FallbackBindlessResources& fallback_bindless_resources,
+                             const render::texture::FallbackImage& fallback_image) {
+        if (auto* bindless = std::get_if<MaterialBindGroupBindlessAllocator>(&value)) {
+            bindless->prepare_bind_groups(device, pipeline_server, fallback_bindless_resources, fallback_image);
+            return;
+        }
+        std::get<MaterialBindGroupNonBindlessAllocator>(value).prepare_bind_groups(device, queue, pipeline_server);
+    }
+
+    /** @brief Upload the buffers this allocator manages (Bevy `write_buffers`,
+     *  `material_bind_groups.rs:586-595`). Only the bindless arm owns any. */
+    void write_buffers(const wgpu::Device& device, const wgpu::Queue& queue) {
+        if (auto* bindless = std::get_if<MaterialBindGroupBindlessAllocator>(&value)) {
+            bindless->write_buffers(device, queue);
+        }
+    }
+
+    /** @brief How many slabs the bindless arm holds (Bevy `slab_count`,
+     *  `material_bind_groups.rs:599-604`); zero for a non-bindless one, which has none. */
+    [[nodiscard]] std::size_t slab_count() const {
+        const auto* bindless = std::get_if<MaterialBindGroupBindlessAllocator>(&value);
+        return bindless != nullptr ? bindless->slabs.size() : 0;
+    }
+
+    /** @brief The combined length of the bindless arm's data buffers (Bevy `slabs_size`,
+     *  `material_bind_groups.rs:608-621`); zero for a non-bindless one. */
+    [[nodiscard]] std::size_t slabs_size() const {
+        const auto* bindless = std::get_if<MaterialBindGroupBindlessAllocator>(&value);
+        if (bindless == nullptr) return 0;
+        std::size_t size = 0;
+        for (const auto& slab : bindless->slabs) {
+            for (const auto& [bindless_index, data_buffer] : slab.data_buffers) size += data_buffer.buffer.len();
+        }
+        return size;
+    }
+
+    /** @brief How many materials the bindless arm has allocated across its slabs (Bevy
+     *  `allocations`, `material_bind_groups.rs:625-634`); zero for a non-bindless one. */
+    [[nodiscard]] std::uint64_t allocations() const {
+        const auto* bindless = std::get_if<MaterialBindGroupBindlessAllocator>(&value);
+        if (bindless == nullptr) return 0;
+        std::uint64_t allocations = 0;
+        for (const auto& slab : bindless->slabs) allocations += slab.allocated_resource_count;
+        return allocations;
     }
 };
 
