@@ -8,6 +8,7 @@
 #include <expected>
 #include <format>
 #include <limits>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -16,6 +17,8 @@
 #include <vector>
 #include <webgpu/webgpu.hpp>
 #endif
+
+#include <epix/render/bindless.hpp>
 
 namespace epix::render::render_resource {
 
@@ -34,6 +37,52 @@ namespace epix::render::render_resource {
  */
 EPIX_EXPORT template <typename C>
 struct AsBindGroup;
+
+/**
+ * @brief The bindless surface Bevy's `AsBindGroup` derive generates, as defaults a material
+ * type opts into (Bevy `bevy_render/macros/src/as_bind_group.rs:955-1040`).
+ *
+ * Bevy's derive emits these members per material and only when the struct is marked
+ * bindless: `bindless_slot_count` and `bindless_descriptor` default to nothing for a
+ * material without the attribute, and `bindless_supported` is generated only for one with
+ * it - which is consistent because its only call site is guarded by `is_some_and` on the
+ * slot count (`material_bind_groups.rs:1681`), so a non-bindless material never asks.
+ * C++ has no derive, so the defaults live here and a bindless material overrides the ones
+ * it needs; a material that wants bindless inherits this alongside its `AsBindGroup<C>`
+ * specialization.
+ *
+ * `bindless_supported` is the derive's condition verbatim: the device offers the buffer and
+ * texture binding-array features, storage buffers are available, and there are enough
+ * samplers for every sampler binding in the array. Bevy's macro knows the two counts at
+ * compile time; with no derive they are parameters.
+ */
+EPIX_EXPORT struct AsBindGroupBindless {
+    /** @brief How many slots this material's slabs hold, or nothing when it is not
+     *  bindless. */
+    [[nodiscard]] static std::optional<BindlessSlabResourceLimit> bindless_slot_count() {
+        return std::nullopt;
+    }
+
+    /** @brief This material's bindless resources, or nothing when it has none. */
+    [[nodiscard]] static std::optional<BindlessDescriptor> bindless_descriptor() {
+        return std::nullopt;
+    }
+
+    /** @brief Whether the device can support a bindless array with @p bindless_count slots
+     *  holding @p sampler_binding_count sampler bindings. */
+    [[nodiscard]] static bool bindless_supported(const wgpu::Device& device,
+                                                 std::uint32_t sampler_binding_count,
+                                                 std::uint32_t bindless_count) {
+        if (!device.hasFeature(wgpu::FeatureName::eBufferBindingArray) ||
+            !device.hasFeature(wgpu::FeatureName::eTextureBindingArray)) {
+            return false;
+        }
+        wgpu::Limits limits;
+        if (device.getLimits(&limits) != wgpu::Status::eSuccess) return false;
+        return limits.maxStorageBuffersPerShaderStage > 0 &&
+               limits.maxSamplersPerShaderStage >= sampler_binding_count * bindless_count;
+    }
+};
 
 /** @brief The bind group cannot be generated yet. Retry on the next update
  * (Bevy `AsBindGroupError::RetryNextUpdate`). */

@@ -1196,10 +1196,14 @@ TEST(MaterialBindGroupAllocator, DispatchDrivesTheBindlessArmEndToEnd) {
         << "a bindless material has no say in its own bind group, so a prepared one is refused";
 }
 
-/** @brief Probe for BND-5: a buffer array whose base entry carries the first buffer as
- *  well as the extras, in case wgpu-native reads the count from the entry rather than the
- *  chain. */
-TEST(MaterialBindGroupAllocator, ProbeBufferArrayWithBaseBufferSet) {
+/** @brief A buffer array's base entry carries its first buffer as well as the chain (the
+ *  minimal case behind BND-5).
+ *
+ *  wgpu-native validates an entry's own resource alongside `BindGroupEntryExtras`, so an
+ *  entry carrying only the chain declares an empty array and is rejected with "Array binding
+ *  provided zero elements" - while a bind group is still handed back, which is what let the
+ *  fault go unnoticed until the bindless slab exposed it. */
+TEST(MaterialBindGroupAllocator, BufferArrayEntriesCarryTheirFirstElement) {
     App app = App::create();
     app.add_events<epix::window::WindowClosed>();
     app.add_plugins(epix::time::TimePlugin{})
@@ -1238,6 +1242,47 @@ TEST(MaterialBindGroupAllocator, ProbeBufferArrayWithBaseBufferSet) {
                                                          .setLabel("base buffer array group")
                                                          .setLayout(layout)
                                                          .setEntries(std::array{entry}));
-    spdlog::info("[probe4] group={}", static_cast<bool>(group));
     EXPECT_TRUE(group);
+}
+
+/** @brief The bindless defaults Bevy's `AsBindGroup` derive generates (Bevy
+ *  `bevy_render/macros/src/as_bind_group.rs:955-1040`).
+ *
+ *  A material without the bindless attribute is not bindless: its slot count and descriptor
+ *  are nothing, and nothing ever asks whether the device could support an array for it - the
+ *  one call site is guarded by the slot count, which is exactly why the derive emits no
+ *  support check in that case. For a material that did opt in, support is the derive's
+ *  condition on the device: the binding-array features, storage buffers, and enough samplers
+ *  for every sampler binding in the array. */
+TEST(MaterialBindGroupAllocator, BindlessDefaultsAndTheDerivesSupportCondition) {
+    // The defaults need no device.
+    EXPECT_FALSE(render::render_resource::AsBindGroupBindless::bindless_slot_count().has_value())
+        << "a material that never opted in has no bindless slots";
+    EXPECT_FALSE(render::render_resource::AsBindGroupBindless::bindless_descriptor().has_value());
+
+    App app = App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::time::TimePlugin{})
+        .add_plugins(AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::shader::ShaderPlugin{});
+    try {
+        app.add_plugins(render::RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+
+    auto render_app = app.get_sub_app_mut(render::Render);
+    ASSERT_TRUE(render_app.has_value());
+    const auto device = render_app->get().world().get_resource<wgpu::Device>();
+    ASSERT_TRUE(device.has_value());
+
+    // The engine builds its device under the Functionality priority, so the binding-array
+    // features are requested: one sampler binding with four slots is supported...
+    EXPECT_TRUE(render::render_resource::AsBindGroupBindless::bindless_supported(device->get(), 1, 4))
+        << "the binding-array features are present and four samplers fit";
+    // ...while a slot count no adapter has samplers for is refused, which is the half of the
+    // condition that depends on the limit rather than on the features.
+    EXPECT_FALSE(render::render_resource::AsBindGroupBindless::bindless_supported(device->get(), 1, 100000000))
+        << "no adapter has that many samplers, so the array cannot be supported";
 }
