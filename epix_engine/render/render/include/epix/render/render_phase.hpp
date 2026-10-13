@@ -523,7 +523,9 @@ struct RenderCommand;
 
 /** @brief Concept for a render command implementation for phase `P`: the
  *  `RenderCommand<C, P>` specialisation must carry Bevy's three associated types
- *  and a callable `render` plus `prepare`.
+ *  and a callable `render` plus `prepare`. Its two query parameters are matched
+ *  against `QueryData<..>::Item` - Bevy's `ROQueryItem`, which is what its
+ *  `render` takes (draw.rs:218) - not against the query data types themselves.
  *  @tparam C The command type.
  *  @tparam P The phase item type. */
 EPIX_EXPORT template <typename C, typename P>
@@ -544,8 +546,10 @@ concept RenderCommandImpl = requires {
     requires requires(RenderCommand<C, P>& command, const epix::ecs::World& world,
                       const wgpu::RenderPassEncoder& render_pass, epix::ecs::Entity view, const P& item) {
         {
-            command.render(item, std::declval<typename RenderCommand<C, P>::ViewQuery>(),
-                           std::declval<std::optional<typename RenderCommand<C, P>::ItemQuery>>(),
+            command.render(item,
+                           std::declval<typename epix::ecs::QueryData<typename RenderCommand<C, P>::ViewQuery>::Item>(),
+                           std::declval<std::optional<
+                               typename epix::ecs::QueryData<typename RenderCommand<C, P>::ItemQuery>::Item>>(),
                            std::declval<typename RenderCommand<C, P>::Param>(), render_pass)
         } -> std::same_as<std::expected<void, RenderCommandError>>;
     };
