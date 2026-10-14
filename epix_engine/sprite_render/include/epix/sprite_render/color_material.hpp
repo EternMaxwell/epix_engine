@@ -160,7 +160,7 @@ struct AsBindGroupShaderType<epix::sprite_render::ColorMaterial, epix::sprite_re
 /** @brief `ColorMaterial`'s bind group: a uniform at 0, texture at 1 and
  *  sampler at 2, as Bevy's derive declares (`color_material.rs:38-45`). */
 template <>
-struct AsBindGroup<epix::sprite_render::ColorMaterial> {
+struct AsBindGroup<epix::sprite_render::ColorMaterial> : AsBindGroupBase {
     using Data = epix::sprite_render::ColorMaterialUniform;
     /** @brief The images plus the fallback Bevy's derive passes to a textured
      *  material. */

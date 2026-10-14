@@ -1593,6 +1593,27 @@ EPIX_EXPORT struct MaterialBindGroupAllocator {
  *  bindless, and so which allocator it needs. */
 EPIX_EXPORT struct MaterialBindGroupAllocators {
     std::unordered_map<meta::type_index, MaterialBindGroupAllocator> allocators;
+
+    /** @brief Record the allocator for a material type (Bevy
+     *  `MaterialBindGroupAllocators::insert`, reached through its `Deref` to the type map).
+     *
+     *  Keyed by material type: one registry serves every material, so a second material
+     *  plugin adds to it rather than replacing it. */
+    void insert(meta::type_index type, MaterialBindGroupAllocator allocator) {
+        allocators.insert_or_assign(type, std::move(allocator));
+    }
+
+    /** @brief The allocator registered for @p type, if any. */
+    [[nodiscard]] MaterialBindGroupAllocator* get(meta::type_index type) {
+        const auto found = allocators.find(type);
+        return found != allocators.end() ? &found->second : nullptr;
+    }
+
+    /** @brief The allocator registered for @p type, if any. */
+    [[nodiscard]] const MaterialBindGroupAllocator* get(meta::type_index type) const {
+        const auto found = allocators.find(type);
+        return found != allocators.end() ? &found->second : nullptr;
+    }
 };
 
 }  // namespace epix::pbr

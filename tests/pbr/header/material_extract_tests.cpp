@@ -1,6 +1,7 @@
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
 #include <epix/camera.hpp>
+#include <epix/core_graph.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/mesh.hpp>
@@ -70,6 +71,13 @@ void add_render_dependent_prerequisites(App& app) {
         .add_plugins(epix::camera::CameraPlugin{})
         .add_plugins(FrameCountPlugin{})
         .add_plugins(GlobalsPlugin{});
+    // `MeshRenderPlugin` registers the material draw sequence against the 3D phases'
+    // `DrawFunctions`, which the core graph creates in the render world
+    // (core_3d/mod.rs:157-160), and it installs the `FullscreenShader` the core
+    // pipeline's systems validate against. A real app has all of it through
+    // `DefaultPlugins`; Bevy's `MaterialPlugin` has the same requirement, since it is
+    // what registers the commands there.
+    app.add_plugins(epix::core_graph::CoreGraphPlugin{});
 
     // `extract_meshes_for_cpu_building` takes `Res<RenderMaterialBindings>`, which
     // `MaterialPlugin` creates (material.hpp:475). Bevy's signature requires it too

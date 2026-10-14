@@ -2,6 +2,7 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <epix/render/alpha.hpp>
+#include <epix/render/erased_render_asset.hpp>
 #include <epix/camera.hpp>
 #include <epix/mesh.hpp>
 #include <cstdint>
@@ -22,6 +23,8 @@
 #include <epix/pbr/mesh_pipeline_key.hpp>
 #include <epix/pbr/mesh_material.hpp>
 #include <epix/pbr/material_bindings.hpp>
+#include <epix/pbr/material_bind_groups.hpp>
+#include <epix/pbr/prepass.hpp>
 
 namespace epix::pbr {
 
@@ -202,6 +205,10 @@ EPIX_EXPORT struct DefaultOpaqueRendererMethod {
 
     /** @brief Switch to the deferred renderer (Bevy `set_to_deferred`). */
     void set_to_deferred() noexcept { m_method = OpaqueRendererMethod::Deferred; }
+
+    /** @brief The method `Auto` resolves to. Bevy's field is public (its tuple member);
+     *  this class keeps it private, so it needs the reader as well as the writers. */
+    [[nodiscard]] OpaqueRendererMethod method() const noexcept { return m_method; }
 };
 
 /** @brief The specialization key of one 3D material (Bevy `MaterialPipelineKey`,
@@ -310,7 +317,7 @@ EPIX_EXPORT struct ErasedMaterialPipelineKey {
  *  The meshlet shaders (`meshlet_mesh_fragment_shader` and its two siblings) are
  *  absent: meshlets are a Bevy subsystem this port does not have. */
 EPIX_EXPORT template <typename M>
-struct Material {
+struct Material : render::render_resource::AsBindGroupBase {
     /** @brief This material's vertex shader path, or nothing for the default mesh
      *  vertex shader. */
     static std::optional<std::string_view> vertex_shader() { return std::nullopt; }
@@ -350,6 +357,55 @@ struct Material {
                            const mesh::MeshVertexBufferLayoutRef&,
                            const MaterialPipelineKey<M>&) {}
 };
+
+/** @brief Whether this material ends up using bindless resources (Bevy
+ *  `material_uses_bindless_resources`, `bevy_pbr/src/material_bind_groups.rs:1681-1687`):
+ *  it declares a slab size, the device supports the arrays, and a slab is worth having.
+ *
+ *  The `> 1` guard is Bevy's and it matters: a material whose slabs would hold a single
+ *  slot is drawn non-bindless instead, because a bindless allocation costs a whole bind
+ *  group for one material. The first test short-circuits, which is why a material that never
+ *  opted in is never asked whether the device could support it. */
+template <typename M>
+    requires std::derived_from<M, Material<M>>
+[[nodiscard]] bool material_uses_bindless_resources(const wgpu::Device& render_device) {
+    const std::optional<render::render_resource::BindlessSlabResourceLimit> slot_count = M::bindless_slot_count();
+    return slot_count.has_value() && M::bindless_supported(render_device) && slot_count->resolve() > 1;
+}
+
+/** @brief Register the bind-group allocator for one material type (Bevy
+ *  `add_material_bind_group_allocator`, `material.rs:406-422`), run once at
+ *  `RenderStartup` before anything allocates against it.
+ *
+ *  Bevy's constraint is just `M: Material`, because its derive guarantees the rest; C++
+ *  asks for the pieces explicitly - the material base, the `AsBindGroup<C>` specialization
+ *  that supplies the label and the layout entries, and the bindless members the allocator
+ *  reads. Bevy passes a derived `bind_group_layout_descriptor(device)`; the port builds the
+ *  descriptor from the specialization's `label()` and `layout_entries()`, which is what the
+ *  derive produces them from too.
+ *
+ *  The bindless descriptor is handed over only when the material actually ends up bindless;
+ *  otherwise the allocator is the non-bindless one and never looks at it. */
+template <typename M>
+    requires std::derived_from<M, Material<M>> && render::render_resource::AsBindGroupImpl<M>
+void add_material_bind_group_allocator(ecs::Commands,
+                                       ecs::Res<wgpu::Device> render_device,
+                                       ecs::ResMut<MaterialBindGroupAllocators> bind_group_allocators) {
+    const wgpu::Device& device = render_device.get();
+    const std::string_view label  = render::render_resource::AsBindGroup<M>::label();
+
+    render::BindGroupLayoutDescriptor bind_group_layout =
+        render::BindGroupLayoutDescriptor()
+            .set_label(std::string(label))
+            .set_entries(render::render_resource::AsBindGroup<M>::layout_entries());
+
+    const bool bindless = material_uses_bindless_resources<M>(device);
+    bind_group_allocators->insert(
+        meta::type_id<M>(),
+        MaterialBindGroupAllocator::make(device, label,
+                                         bindless ? M::bindless_descriptor() : std::nullopt,
+                                         std::move(bind_group_layout), M::bindless_slot_count()));
+}
 
 
 /** @brief The extraction systems that record specialization ticks, which the sweep
@@ -542,10 +598,12 @@ EPIX_EXPORT EPIX_API void init_material_pipeline(ecs::Commands commands, ecs::Re
  *
  *  What is **not** here is every system that would turn an extracted material into
  *  something drawable: there is no `prepare_materials`, no
- *  `specialize_material_meshes`, no `queue_material_meshes` and nothing that
- *  prepares a material's bind group, so the types below (`PreparedMaterial`,
- *  `MaterialProperties`, `MaterialPipeline` and the two specialization caches) are
- *  defined but never constructed and no material of any type reaches a phase. Also
+ *  `specialize_material_meshes` and no `queue_material_meshes`, so nothing specializes a
+ *  material's pipeline against the mesh pipeline or queues it into a render phase. A
+ *  material's bind group *is* prepared - by the `ErasedRenderAsset` specialization this
+ *  plugin registers - so `PreparedMaterial` and `MaterialProperties` are constructed after
+ *  all; what they still lack is the draw-function ids and the shader handles (PBR-66), and
+ *  there is no draw command yet for a phase to use them with. Also
  *  What is absent is the render-world half and the bind-group allocator:
  *  `add_material_bind_group_allocator` with `MaterialBindGroupAllocator`, then
  *  `prepare_materials`, `specialize_material_meshes` and `queue_material_meshes`
@@ -563,6 +621,19 @@ EPIX_EXPORT template <typename M>
 struct MaterialPlugin {
     void attach(app::App& app) {
         assets::app_register_asset<M>(app);
+        // Bevy's `build` installs the prepass pipeline plugin beside the material plugin
+        // (`material.rs:283`), which is what registers the prepass draw sequence. Like Bevy's,
+        // that plugin returns early when no render sub-app exists yet, so a material plugin
+        // must follow `RenderPlugin`.
+        app.add_plugins(PrepassPipelinePlugin{});
+        // Bevy registers the material through the erased render-asset pipeline in the same
+        // plugin build: that is what prepares a material's bind group and records it in the
+        // untyped bindings map. Guarded for the same reason the allocator registration is -
+        // this plugin is instantiated for materials that specialize nothing, and those have
+        // no bind group to prepare.
+        if constexpr (render::render_resource::AsBindGroupImpl<M>) {
+            app.add_plugins(render::erased_render_asset::ErasedRenderAssetPlugin<MeshMaterial3d<M>>{});
+        }
         // Bevy initialises the specialization queue in `build` too; without it the
         // PostUpdate system that fills it fails validation and the queue stays empty,
         // which is what the extraction then has nothing to read.
@@ -575,11 +646,27 @@ struct MaterialPlugin {
         // material type, so a second material plugin must not wipe the first's
         // contents.
         render_app->get().world_mut().init_resource<RenderMaterialInstances>();
+        // Bevy initialises the allocator registry in `MaterialsPlugin`, which this port
+        // does not have; like the instances above, one registry serves every material type.
+        render_app->get().world_mut().init_resource<MaterialBindGroupAllocators>();
 
         // Bevy registers the material-pipeline resource in `RenderStartup`, before
-        // anything specializes against it (`material.rs:300`).
+        // anything specializes against it (`material.rs:300`), and the allocator
+        // registration in the same schedule (`material.rs:382`).
         render_app->get().add_systems(render::RenderStartup,
                                       ecs::into(init_material_pipeline).set_name("init material pipeline"));
+
+        // Bevy registers the allocator unconditionally, because every Bevy material derives
+        // `AsBindGroup` and so has the label, the layout entries and the bindless members.
+        // This port's `MaterialPlugin` is instantiated for materials that specialize nothing
+        // - its own tests do - so the system is registered only where those pieces exist.
+        // Constraining the plugin itself, as Bevy's supertrait does, is the faithful
+        // alternative and is recorded as remaining work rather than assumed here.
+        if constexpr (render::render_resource::AsBindGroupImpl<M>) {
+            render_app->get().add_systems(
+                render::RenderStartup,
+                ecs::into(add_material_bind_group_allocator<M>).set_name("add material bind group allocator"));
+        }
 
         // The set must be in the schedule before anything can be ordered against it:
         // the port warns and *ignores* a hierarchy or dependency whose set is absent,
@@ -722,6 +809,12 @@ EPIX_EXPORT struct MaterialProperties {
     /** @brief Whether this material actually uses bindless resources, once platform
      *  support is taken into account. */
     bool bindless = false;
+    /** @brief Whether the material's shadows are enabled (Bevy `enable_shadows`, read once
+     *  while preparing). */
+    bool shadows_enabled = true;
+    /** @brief Whether the material's prepass is enabled (Bevy `enable_prepass`, read once
+     *  while preparing). */
+    bool prepass_enabled = true;
 
     /** @brief The shader this material supplies under the given label, or null
      *  (Bevy `MaterialProperties::get_shader`, `material.rs:1478-1490`). Bevy returns
@@ -779,6 +872,243 @@ EPIX_EXPORT struct PreparedMaterial {
 
 
 }  // namespace epix::pbr
+
+namespace epix::render::erased_render_asset {
+
+using ::epix::render::render_resource::AsBindGroup;
+using ::epix::render::render_resource::AsBindGroupImpl;
+using ::epix::render::render_resource::RetryBindGroupNextUpdate;
+
+/** @brief Preparing one 3D material's GPU data (Bevy's `ErasedRenderAsset for
+ *  MeshMaterial3d<M>`, `material.rs:1611-1861`).
+ *
+ *  The bind group is allocated through the per-material-type allocator and the result
+ *  recorded in the untyped `RenderMaterialBindings`, which is what the mesh builder and the
+ *  material draw command read - a prepared material holds only a binding *id*, never the
+ *  group. Re-preparing a material frees and reallocates rather than updating in place, as
+ *  Bevy does (its own TODO).
+ *
+ *  Two members are filled only in part: Bevy resolves the nine draw-function ids and the six
+ *  shader handles here, and the port has neither the draw commands nor all the shader labels
+ *  yet, so `draw_functions` and `shaders` stay empty until they land (PBR-66). */
+template <typename M>
+    requires std::derived_from<M, ::epix::pbr::Material<M>> && AsBindGroupImpl<M>
+struct ErasedRenderAsset<::epix::pbr::MeshMaterial3d<M>> {
+    using SourceAsset    = M;
+    using ExtractedAsset = M;
+    using ErasedAsset    = ::epix::pbr::PreparedMaterial;
+    using Param          = std::tuple<ecs::Res<wgpu::Device>,
+                                      ecs::Res<PipelineServer>,
+                                      ecs::Res<::epix::pbr::DefaultOpaqueRendererMethod>,
+                                      ecs::ResMut<::epix::pbr::MaterialBindGroupAllocators>,
+                                      ecs::ResMut<::epix::pbr::RenderMaterialBindings>,
+                                      typename AsBindGroup<M>::Param>;
+
+    static std::expected<::epix::pbr::PreparedMaterial, PrepareAssetError<M>> prepare_asset(
+        M&& material, const assets::AssetId<M>& material_id, Param& params, const ::epix::pbr::PreparedMaterial*) {
+        auto&& [device, pipeline_server, default_opaque_render_method, bind_group_allocators,
+                render_material_bindings, material_param] = params;
+
+        using ::epix::pbr::Material;
+        using ::epix::pbr::MeshPipelineKey;
+        using ::epix::pbr::OpaqueRendererMethod;
+        using ::epix::pbr::RenderPhaseType;
+
+        const bool shadows_enabled = M::enable_shadows();
+        const bool prepass_enabled = M::enable_prepass();
+
+        const OpaqueRendererMethod render_method = material.opaque_render_method() == OpaqueRendererMethod::Auto
+                                                       ? default_opaque_render_method->method()
+                                                       : material.opaque_render_method();
+
+        // The one mesh-pipeline bit a material contributes itself.
+        const bool reads_view_transmission_texture = material.reads_view_transmission_texture();
+        MeshPipelineKey mesh_pipeline_key_bits     = MeshPipelineKey::NONE;
+        if (reads_view_transmission_texture) {
+            mesh_pipeline_key_bits |= MeshPipelineKey::READS_VIEW_TRANSMISSION_TEXTURE;
+        }
+
+        RenderPhaseType render_phase_type = RenderPhaseType::Opaque;
+        switch (material.alpha_mode().type) {
+            case render::AlphaMode::Type::Blend:
+            case render::AlphaMode::Type::Premultiplied:
+            case render::AlphaMode::Type::Add:
+            case render::AlphaMode::Type::Multiply: render_phase_type = RenderPhaseType::Transparent; break;
+            case render::AlphaMode::Type::Opaque:
+            case render::AlphaMode::Type::AlphaToCoverage:
+                render_phase_type =
+                    reads_view_transmission_texture ? RenderPhaseType::Transmissive : RenderPhaseType::Opaque;
+                break;
+            case render::AlphaMode::Type::Mask: render_phase_type = RenderPhaseType::AlphaMask; break;
+        }
+
+        const BindGroupLayoutDescriptor material_layout =
+            BindGroupLayoutDescriptor()
+                .set_label(std::string(AsBindGroup<M>::label()))
+                .set_entries(AsBindGroup<M>::layout_entries());
+        const wgpu::BindGroupLayout bind_group_layout = pipeline_server->get_bind_group_layout(material_layout);
+
+        auto unprepared = AsBindGroup<M>::unprepared_bind_group(device.get(), bind_group_layout, material,
+                                                                material_param);
+        if (!unprepared) {
+            auto error = std::move(unprepared.error());
+            if (std::holds_alternative<RetryBindGroupNextUpdate>(error)) {
+                return std::unexpected(PrepareAssetError<M>{RetryNextUpdate<M>{std::move(material)}});
+            }
+            return std::unexpected(PrepareAssetError<M>{std::move(error)});
+        }
+
+        // Bevy unwraps here: a material whose type was never registered cannot be prepared.
+        ::epix::pbr::MaterialBindGroupAllocator* allocator =
+            bind_group_allocators->get(::epix::meta::type_id<M>());
+        assert(allocator != nullptr);
+
+        const assets::UntypedAssetId untyped_id{material_id};
+        ::epix::pbr::MaterialBindingId binding{};
+        const auto existing = render_material_bindings->bindings.find(untyped_id);
+        if (existing != render_material_bindings->bindings.end()) {
+            allocator->free(existing->second);
+            binding      = allocator->allocate_unprepared(std::move(*unprepared), material_layout);
+            existing->second = binding;
+        } else {
+            binding = allocator->allocate_unprepared(std::move(*unprepared), material_layout);
+            render_material_bindings->bindings.insert_or_assign(untyped_id, binding);
+        }
+
+        auto properties                             = std::make_shared<::epix::pbr::MaterialProperties>();
+        properties->render_method                   = render_method;
+        properties->alpha_mode                      = material.alpha_mode();
+        properties->mesh_pipeline_key_bits          = mesh_pipeline_key_bits;
+        properties->depth_bias                      = material.depth_bias();
+        properties->reads_view_transmission_texture = reads_view_transmission_texture;
+        properties->render_phase_type               = render_phase_type;
+        properties->material_layout                 = material_layout;
+        properties->bindless                        = ::epix::pbr::material_uses_bindless_resources<M>(device.get());
+        properties->shadows_enabled                 = shadows_enabled;
+        properties->prepass_enabled                 = prepass_enabled;
+
+        return ::epix::pbr::PreparedMaterial{.binding = binding, .properties = std::move(properties)};
+    }
+};
+
+}  // namespace epix::render::erased_render_asset
+
+namespace epix::pbr {
+
+/** @brief Binds one material's bind group at slot `I` (Bevy `SetMaterialBindGroup<I>`,
+ *  `material.rs:522-569`).
+ *
+ *  Note what this command does *not* take: there is no material type parameter in Bevy, and
+ *  the group is not read from the prepared material either. A prepared material holds only a
+ *  binding id, so the group is reached through the per-type allocator's slab, looked up by the
+ *  instance's asset type. Every one of the five lookups may fail and each one abandons the
+ *  command list: drawing with no group set, or with the previous item's, is worse than not
+ *  drawing. */
+EPIX_EXPORT template <std::size_t I>
+struct SetMaterialBindGroup {
+    template <render::phase::PhaseItem P>
+    struct Command {
+        void prepare(const epix::ecs::World&) {}
+
+        std::expected<void, render::phase::RenderCommandError> render(
+            const P& item,
+            std::tuple<>,
+            std::optional<epix::ecs::Item<>> entity_item,
+            std::tuple<epix::ecs::Res<render::erased_render_asset::ErasedRenderAssets<PreparedMaterial>>,
+                       epix::ecs::Res<RenderMaterialInstances>,
+                       epix::ecs::Res<MaterialBindGroupAllocators>> params,
+            const wgpu::RenderPassEncoder& encoder) {
+            (void)entity_item;
+            auto&& [materials, instances, allocators] = params;
+
+            const auto instance = instances->instances.find(item.main_entity());
+            if (instance == instances->instances.end()) {
+                return std::unexpected(render::phase::RenderCommandError{
+                    .type = render::phase::RenderCommandError::Type::Skip, .message = {}});
+            }
+            const MaterialBindGroupAllocator* allocator = allocators->get(instance->second.asset_id.type);
+            if (allocator == nullptr) {
+                return std::unexpected(render::phase::RenderCommandError{
+                    .type = render::phase::RenderCommandError::Type::Skip, .message = {}});
+            }
+            const PreparedMaterial* material = materials->get(instance->second.asset_id);
+            if (material == nullptr) {
+                return std::unexpected(render::phase::RenderCommandError{
+                    .type = render::phase::RenderCommandError::Type::Skip, .message = {}});
+            }
+            const auto slab = allocator->get(material->binding.group);
+            if (!slab.has_value()) {
+                return std::unexpected(render::phase::RenderCommandError{
+                    .type = render::phase::RenderCommandError::Type::Skip, .message = {}});
+            }
+            const wgpu::BindGroup* bind_group = slab->bind_group();
+            if (bind_group == nullptr) {
+                return std::unexpected(render::phase::RenderCommandError{
+                    .type = render::phase::RenderCommandError::Type::Skip, .message = {}});
+            }
+
+            encoder.setBindGroup(I, *bind_group, std::span<const std::uint32_t>{});
+            return {};
+        }
+    };
+};
+
+}  // namespace epix::pbr
+
+namespace epix::render::phase {
+
+/** @brief The material bind-group command's trait specialisation: one command type, every
+ *  phase (Bevy `impl<P: PhaseItem, const I: usize> RenderCommand<P> for
+ *  SetMaterialBindGroup<I>`). The same five `Skip` arms as the inner command. */
+EPIX_EXPORT template <std::size_t I, PhaseItem P>
+struct RenderCommand<::epix::pbr::SetMaterialBindGroup<I>, P> {
+    using Param = std::tuple<epix::ecs::Res<::epix::render::erased_render_asset::ErasedRenderAssets<
+                                   ::epix::pbr::PreparedMaterial>>,
+                             epix::ecs::Res<::epix::pbr::RenderMaterialInstances>,
+                             epix::ecs::Res<::epix::pbr::MaterialBindGroupAllocators>>;
+    using ViewQuery = std::tuple<>;
+    using ItemQuery = epix::ecs::Item<>;
+
+    void prepare(const epix::ecs::World&) {}
+
+    std::expected<void, RenderCommandError> render(const P& item,
+                                                   std::tuple<>,
+                                                   std::optional<epix::ecs::Item<>> entity_item,
+                                                   Param params,
+                                                   const wgpu::RenderPassEncoder& encoder) {
+        (void)entity_item;
+        auto&& [materials, instances, allocators] = params;
+
+        const auto instance = instances->instances.find(item.main_entity());
+        if (instance == instances->instances.end()) {
+            return std::unexpected(RenderCommandError{.type = RenderCommandError::Type::Skip, .message = {}});
+        }
+        const ::epix::pbr::MaterialBindGroupAllocator* allocator =
+            allocators->get(instance->second.asset_id.type);
+        if (allocator == nullptr) {
+            return std::unexpected(RenderCommandError{.type = RenderCommandError::Type::Skip, .message = {}});
+        }
+        const ::epix::pbr::PreparedMaterial* material = materials->get(instance->second.asset_id);
+        if (material == nullptr) {
+            return std::unexpected(RenderCommandError{.type = RenderCommandError::Type::Skip, .message = {}});
+        }
+        const auto slab = allocator->get(material->binding.group);
+        if (!slab.has_value()) {
+            return std::unexpected(RenderCommandError{.type = RenderCommandError::Type::Skip, .message = {}});
+        }
+        const wgpu::BindGroup* bind_group = slab->bind_group();
+        if (bind_group == nullptr) {
+            return std::unexpected(RenderCommandError{.type = RenderCommandError::Type::Skip, .message = {}});
+        }
+
+        encoder.setBindGroup(I, *bind_group, std::span<const std::uint32_t>{});
+        return {};
+    }
+};
+
+}  // namespace epix::render::phase
+
+
 
 template <>
 struct std::hash<epix::pbr::ErasedMaterialKey> {

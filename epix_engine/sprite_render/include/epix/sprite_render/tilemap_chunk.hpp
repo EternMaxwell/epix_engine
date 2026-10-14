@@ -206,7 +206,7 @@ namespace epix::render::render_resource {
  *  declares (`tilemap_chunk_material.rs:31-36`). The material has no uniform, so
  *  its `Data` is the unit type Bevy's derive defaults to. */
 template <>
-struct EPIX_API AsBindGroup<epix::sprite_render::TilemapChunkMaterial> {
+struct EPIX_API AsBindGroup<epix::sprite_render::TilemapChunkMaterial> : AsBindGroupBase {
     using Data = std::monostate;
     /** @brief The prepared images both textures are resolved from. */
     using Param = std::tuple<epix::ecs::Res<RenderAssets<texture::GpuImage>>>;

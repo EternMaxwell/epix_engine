@@ -97,7 +97,8 @@ struct TriangleDraw : render::phase::DrawFunction<Item> {
 }  // namespace sorted_phase_geometry
 
 template <>
-struct epix::render::render_resource::AsBindGroup<sorted_phase_geometry::PreprocessBindings> {
+struct epix::render::render_resource::AsBindGroup<sorted_phase_geometry::PreprocessBindings>
+    : render_resource::AsBindGroupBase {
     struct Data {};
     using Param = std::tuple<>;
 
@@ -122,7 +123,8 @@ struct epix::render::render_resource::AsBindGroup<sorted_phase_geometry::Preproc
 };
 
 template <>
-struct epix::render::render_resource::AsBindGroup<sorted_phase_geometry::RenderBindings> {
+struct epix::render::render_resource::AsBindGroup<sorted_phase_geometry::RenderBindings>
+    : render_resource::AsBindGroupBase {
     struct Data {};
     using Param = std::tuple<>;
 

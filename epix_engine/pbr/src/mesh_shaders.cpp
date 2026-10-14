@@ -1388,12 +1388,93 @@ static_assert(epix::render::batching::GetFullBatchDataImpl<MeshPipeline>,
               "the mesh adapter must satisfy GetFullBatchDataImpl where it is used");
 static_assert(epix::render::batching::GetBatchDataImpl<MeshPipeline>,
               "and its base concept");
+/** @brief Build the per-phase mesh bind groups on the GPU instance-building path (Bevy
+ *  `prepare_mesh_bind_groups`'s GPU branch, `render/mesh.rs:2854-2885`).
+ *
+ *  Each phase has its own instance buffers, so each gets its own set of groups - which is
+ *  what `MeshBindGroups`' per-phase variant exists for. A phase whose binding is not
+ *  storage-backed is skipped rather than given groups built over a buffer that does not
+ *  exist, which is Bevy's `let Some(..) else { continue }`. Unlike the CPU branch this
+ *  always inserts the resource, because the resource it reads is a required parameter and
+ *  the map may legitimately be empty. */
+void prepare_mesh_bind_groups_gpu(
+    ecs::Commands commands,
+    ecs::Res<render::RenderAssets<render::mesh::RenderMesh>> meshes,
+    ecs::Res<MeshPipeline> mesh_pipeline,
+    ecs::Res<wgpu::Device> render_device,
+    ecs::Res<render::PipelineServer> pipeline_server,
+    ecs::Res<render::batching::BatchedInstanceBuffers<MeshUniform, MeshInputUniform>> instance_buffers,
+    ecs::Res<SkinUniforms> skins_uniform,
+    ecs::Res<MorphUniforms> weights_uniform,
+    ecs::ResMut<RenderLightmaps> render_lightmaps) {
+    std::unordered_map<std::type_index, MeshPhaseBindGroups> per_phase;
+    for (const auto& [phase_type, buffers] : instance_buffers->phase_instance_buffers) {
+        const auto model = buffers.instance_data_binding();
+        if (!model.has_value()) continue;
+        per_phase.insert_or_assign(phase_type,
+                                   prepare_mesh_bind_groups_for_phase(
+                                       model->get(), meshes.get(), mesh_pipeline->mesh_layouts,
+                                       mesh_pipeline->skins_use_uniform_buffers, render_device.get(),
+                                       pipeline_server.get(), skins_uniform.get(), weights_uniform.get(),
+                                       *render_lightmaps));
+    }
+    commands.insert_resource(MeshBindGroups{std::move(per_phase)});
+}
+
+/** @brief Build the scene's mesh bind groups on the CPU instance-building path (Bevy
+ *  `prepare_mesh_bind_groups`'s CPU branch, `render/mesh.rs:2830-2852`).
+ *
+ *  Bevy has one system taking both instance buffers as `Option`s and branches inside it.
+ *  This port aborts on a missing system parameter, so the two paths are two systems and the
+ *  plugin registers the one `use_gpu_instance_buffer_builder` selects - the same split the
+ *  mesh extraction already uses. Defined here rather than in a header: the parameters
+ *  include `Res<MeshPipeline>`, and in `mesh_pipeline.hpp` that type's completeness depends
+ *  on which translation unit reached `mesh_pipeline_resource.hpp` first.
+ *
+ *  A frame whose instance buffer has no backing buffer yet returns without inserting, as
+ *  Bevy does: the resource is left as it was rather than replaced by empty groups. That is
+ *  the uniform-fallback case, where the model binding is a per-item dynamic offset rather
+ *  than one array. */
+void prepare_mesh_bind_groups_cpu(
+    ecs::Commands commands,
+    ecs::Res<render::RenderAssets<render::mesh::RenderMesh>> meshes,
+    ecs::Res<MeshPipeline> mesh_pipeline,
+    ecs::Res<wgpu::Device> render_device,
+    ecs::Res<render::PipelineServer> pipeline_server,
+    ecs::Res<render::batching::BatchedInstanceBuffer<MeshUniform>> instance_buffer,
+    ecs::Res<SkinUniforms> skins_uniform,
+    ecs::Res<MorphUniforms> weights_uniform,
+    ecs::ResMut<RenderLightmaps> render_lightmaps) {
+    const auto model = instance_buffer->instance_data_binding();
+    if (!model.has_value()) return;
+
+    commands.insert_resource(MeshBindGroups{prepare_mesh_bind_groups_for_phase(
+        model->get(), meshes.get(), mesh_pipeline->mesh_layouts, mesh_pipeline->skins_use_uniform_buffers,
+        render_device.get(), pipeline_server.get(), skins_uniform.get(), weights_uniform.get(), *render_lightmaps)});
+}
+
 void MeshRenderPlugin::attach(epix::app::App& app) {
     // Bevy's `load_shader_library!` calls and `embedded_asset!` for the forward mesh
     // shader: the port publishes the same set from one function.
     register_mesh_shaders(app.world_mut());
+    // The draw functions are the render world's, so the registrations below go to the
+    // sub-app, as the 2D material plugin's do.
+    auto render_app = app.get_sub_app_mut(epix::render::Render);
+    if (!render_app) return;
+    auto& render = render_app->get();
 
-    if (!app.get_sub_app_mut(epix::render::Render)) return;
+    // Bevy's `add_render_command::<P, DrawMaterial>()` calls, which live in each
+    // `MaterialPlugin` there. The sequence is not parameterised by material type - the
+    // material's group is reached through the untyped allocator registry - so registering it
+    // once per phase here is the same set of registrations Bevy ends up with, without every
+    // material plugin repeating them.
+    epix::render::phase::app_add_render_command<epix::pbr::DrawMaterial<epix::core_graph::core_3d::Opaque3d>>(render);
+    epix::render::phase::app_add_render_command<
+        epix::pbr::DrawMaterial<epix::core_graph::core_3d::AlphaMask3d>>(render);
+    epix::render::phase::app_add_render_command<
+        epix::pbr::DrawMaterial<epix::core_graph::core_3d::Transparent3d>>(render);
+    epix::render::phase::app_add_render_command<
+        epix::pbr::DrawMaterial<epix::core_graph::core_3d::Transmissive3d>>(render);
 
     // Bevy adds both to `PostUpdate`; they stop the automatic batching of skins and
     // morphs that would otherwise be inferred.
@@ -1450,7 +1531,6 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
     // `GetFullBatchData<MeshPipeline>` does not satisfy it - so wiring them is blocked
     // on finding which clause is missing, which the aggregate assert does not name.
     // Recorded against PBR-106 rather than guessed at by iteration.
-    auto render_app = app.get_sub_app_mut(epix::render::Render);
     render_app->get().world_mut().init_resource<MorphUniforms>();
     render_app->get().world_mut().init_resource<MorphIndices>();
     // `init_resource` rather than `insert_resource`: `MaterialPlugin` creates this
@@ -1492,23 +1572,18 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
             epix::ecs::into(extract_meshes_for_gpu_building)
                 .in_set(MeshExtractionSystems::Extract)
                 .set_name("extract meshes for gpu building"));
-        // `write_batched_instance_buffers<MeshPipeline>` is **not registered**: the
-        // compiler cannot deduce it through `ecs::into` ("could not deduce template
-        // arguments"), even though the same adapter works for
-        // `delete_old_work_item_buffers<MeshPipeline>` right below and
-        // `GetFullBatchDataImpl<MeshPipeline>` is asserted by
-        // `MeshBatchAdapter.ReportsWhichClauseIsMissing`. The likely cause is its
+        // `write_batched_instance_buffers<MeshPipeline>` **registers now, and is registered
+        // below.** It had been recorded against PBR-111 as unregistrable - `ecs::into`
+        // reporting "could not deduce template arguments" - with its dependent
         // `ResMut<BatchedInstanceBuffers<GetBatchData<..>::BufferData,
-        // GetFullBatchData<..>::BufferInputData>>` parameter being dependent, but that
-        // is a hypothesis to test, not a finding. Recorded against PBR-111.
-        // `delete_old_work_item_buffers<MeshPipeline>` is not registered either, and for
-        // the same reason as `write_batched_instance_buffers` above: `ecs::into` cannot
-        // deduce it. Both take a `ResMut<BatchedInstanceBuffers<GetBatchData<..>::BufferData,
-        // GetFullBatchData<..>::BufferInputData>>` parameter, while
-        // `clear_batched_cpu_instance_buffers<MeshPipeline>` - registered in batch 141 and
-        // compiling - does not. That is the shared feature and therefore the hypothesis;
-        // the next round on this should read the `BatchedInstanceBuffers` system-param
-        // path rather than try another spelling.
+        // GetFullBatchData<..>::BufferInputData>>` parameter as the suspected cause. That was
+        // written as a hypothesis to test, and registering it is the test: it passes, so the
+        // dependent parameter is no obstacle today. What did fail at the time is not
+        // re-derived here; only the claim that it cannot be registered is retired.
+        // `delete_old_work_item_buffers<MeshPipeline>` is still not registered. The reason
+        // recorded for it was the same deduction failure, which this round falsified, so it
+        // is now unexplained rather than explained - to be settled when the GPU batching
+        // cleanup is taken up, not assumed from the retired hypothesis.
         // Bevy's ordering note, kept: this must run before
         // `set_mesh_motion_vector_flags` or it would overwrite those flags.
         render_app->get().add_systems(
@@ -1517,6 +1592,22 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
                 .in_set(epix::render::RenderSystems::PrepareMeshes)
                 .before(set_mesh_motion_vector_flags)
                 .set_name("collect meshes for gpu building"));
+
+        // Bevy's `prepare_mesh_bind_groups`, which on this path builds one set of groups per
+        // phase, from that phase's instance buffers.
+        render_app->get().add_systems(
+            epix::app::ScheduleInfo(epix::render::Render),
+            epix::ecs::into(prepare_mesh_bind_groups_gpu)
+                .in_set(epix::render::RenderSystems::PrepareResources)
+                .set_name("prepare mesh bind groups"));
+
+        // Bevy writes the phase input buffers in the flush that follows, and the phase
+        // preparation above reads the buffers the previous flush left behind.
+        render_app->get().add_systems(
+            epix::app::ScheduleInfo(epix::render::Render),
+            epix::ecs::into(epix::render::batching::write_batched_instance_buffers<MeshPipeline>)
+                .in_set(epix::render::RenderSystems::PrepareResourcesFlush)
+                .set_name("write batched instance buffers"));
     } else {
         // Bevy's CPU branch. Its extraction is registered here, in the same set as the
         // GPU one; what remains is the `BatchedInstanceBuffer` it writes into, which is
@@ -1534,6 +1625,14 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
             epix::ecs::into(epix::render::batching::write_batched_cpu_instance_buffer<MeshPipeline>)
                 .in_set(epix::render::RenderSystems::PrepareResourcesFlush)
                 .set_name("write batched cpu instance buffer"));
+
+        // Bevy's `prepare_mesh_bind_groups`, which on this path builds one set of groups for
+        // the whole scene. It runs in `PrepareResources`, as Bevy registers it.
+        render_app->get().add_systems(
+            epix::app::ScheduleInfo(epix::render::Render),
+            epix::ecs::into(prepare_mesh_bind_groups_cpu)
+                .in_set(epix::render::RenderSystems::PrepareResources)
+                .set_name("prepare mesh bind groups"));
 
         // Bevy registers the CPU instance-buffer clear in this branch alone
         // (`render/mesh.rs:204`, inside the `else` of `use_gpu_instance_buffer_builder`).

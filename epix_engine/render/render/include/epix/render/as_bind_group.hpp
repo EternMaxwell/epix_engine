@@ -38,38 +38,44 @@ namespace epix::render::render_resource {
 EPIX_EXPORT template <typename C>
 struct AsBindGroup;
 
-/**
- * @brief The bindless surface Bevy's `AsBindGroup` derive generates, as defaults a material
- * type opts into (Bevy `bevy_render/macros/src/as_bind_group.rs:955-1040`).
+/** @brief The bindless members Bevy's `AsBindGroup` derive generates for a type that opts in
+ * (Bevy `bevy_render/macros/src/as_bind_group.rs:955-1040`), as defaults a type inherits.
  *
- * Bevy's derive emits these members per material and only when the struct is marked
- * bindless: `bindless_slot_count` and `bindless_descriptor` default to nothing for a
- * material without the attribute, and `bindless_supported` is generated only for one with
- * it - which is consistent because its only call site is guarded by `is_some_and` on the
- * slot count (`material_bind_groups.rs:1681`), so a non-bindless material never asks.
- * C++ has no derive, so the defaults live here and a bindless material overrides the ones
- * it needs; a material that wants bindless inherits this alongside its `AsBindGroup<C>`
- * specialization.
+ * Bevy's derive emits these per type, only for one marked bindless, and bakes the type's two
+ * counts into the generated `bindless_supported` - so its callers pass only the device. A C++
+ * full specialization of `AsBindGroup` cannot inherit members from the primary template, so
+ * the defaults live here and a type inherits this alongside its specialization. A type that
+ * opts in hides `bindless_supported` with a one-argument overload calling the counted one
+ * with its own values.
  *
- * `bindless_supported` is the derive's condition verbatim: the device offers the buffer and
- * texture binding-array features, storage buffers are available, and there are enough
- * samplers for every sampler binding in the array. Bevy's macro knows the two counts at
- * compile time; with no derive they are parameters.
- */
-EPIX_EXPORT struct AsBindGroupBindless {
-    /** @brief How many slots this material's slabs hold, or nothing when it is not
-     *  bindless. */
-    [[nodiscard]] static std::optional<BindlessSlabResourceLimit> bindless_slot_count() {
-        return std::nullopt;
-    }
+ * The name is this port's: Bevy has no such type, the members belonging to `AsBindGroup`
+ * there. The base is the carrier C++ needs for the defaults. */
+EPIX_EXPORT struct AsBindGroupBase {
+    /** @brief How many slots this type's bindless slabs hold, or nothing when it is not
+     *  bindless. Bevy's derive supplies `Some(Auto)` or `Some(Custom(n))` for a type marked
+     *  `#[bindless]` and nothing for one that is not. */
+    [[nodiscard]] static std::optional<BindlessSlabResourceLimit> bindless_slot_count() { return std::nullopt; }
 
-    /** @brief This material's bindless resources, or nothing when it has none. */
-    [[nodiscard]] static std::optional<BindlessDescriptor> bindless_descriptor() {
-        return std::nullopt;
+    /** @brief This type's bindless resources, or nothing when it has none. */
+    [[nodiscard]] static std::optional<BindlessDescriptor> bindless_descriptor() { return std::nullopt; }
+
+    /** @brief Whether the device can support this type's bindless arrays.
+     *
+     *  Bevy's derive bakes the type's two counts into the generated method, so its callers
+     *  pass only the device; a type that opts in hides this with an overload that calls the
+     *  counted one below with its own values. The default answers for a type that never
+     *  opted in - which is also the only answer it will ever be asked for, since the one call
+     *  site is guarded by `bindless_slot_count`. */
+    [[nodiscard]] static bool bindless_supported(const wgpu::Device& device) {
+        (void)device;
+        return false;
     }
 
     /** @brief Whether the device can support a bindless array with @p bindless_count slots
-     *  holding @p sampler_binding_count sampler bindings. */
+     *  holding @p sampler_binding_count sampler bindings - the derive's condition verbatim:
+     *  the buffer and texture binding-array features, storage buffers, and enough samplers
+     *  for every sampler binding in the array. Bevy's macro knows the two counts at compile
+     *  time; with no derive they are parameters. */
     [[nodiscard]] static bool bindless_supported(const wgpu::Device& device,
                                                  std::uint32_t sampler_binding_count,
                                                  std::uint32_t bindless_count) {
@@ -210,6 +216,12 @@ concept AsBindGroupImpl = requires {
                                               std::declval<const wgpu::BindGroupLayout&>(), std::declval<const C&>(),
                                               std::declval<typename AsBindGroup<C>::Param&>())
     } -> std::same_as<std::expected<UnpreparedBindGroup, AsBindGroupError>>;
+    // The bindless surface, which Bevy's derive emits for every type deriving `AsBindGroup`.
+    // Defaulted there, and a specialization cannot inherit the primary template's members,
+    // so a specialization carries them by inheriting `AsBindGroupBase`.
+    { AsBindGroup<C>::bindless_slot_count() } -> std::same_as<std::optional<BindlessSlabResourceLimit>>;
+    { AsBindGroup<C>::bindless_descriptor() } -> std::same_as<std::optional<BindlessDescriptor>>;
+    { AsBindGroup<C>::bindless_supported(std::declval<const wgpu::Device&>()) } -> std::same_as<bool>;
 };
 
 /** @brief Create a bind group layout from the declared entries. */

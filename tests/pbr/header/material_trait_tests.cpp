@@ -1,5 +1,6 @@
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/core_graph.hpp>
 #include <epix/image.hpp>
 #include <epix/pbr/material.hpp>
 #include <epix/pbr/material_bind_groups.hpp>
@@ -1256,9 +1257,9 @@ TEST(MaterialBindGroupAllocator, BufferArrayEntriesCarryTheirFirstElement) {
  *  for every sampler binding in the array. */
 TEST(MaterialBindGroupAllocator, BindlessDefaultsAndTheDerivesSupportCondition) {
     // The defaults need no device.
-    EXPECT_FALSE(render::render_resource::AsBindGroupBindless::bindless_slot_count().has_value())
+    EXPECT_FALSE(render::render_resource::AsBindGroupBase::bindless_slot_count().has_value())
         << "a material that never opted in has no bindless slots";
-    EXPECT_FALSE(render::render_resource::AsBindGroupBindless::bindless_descriptor().has_value());
+    EXPECT_FALSE(render::render_resource::AsBindGroupBase::bindless_descriptor().has_value());
 
     App app = App::create();
     app.add_events<epix::window::WindowClosed>();
@@ -1279,10 +1280,238 @@ TEST(MaterialBindGroupAllocator, BindlessDefaultsAndTheDerivesSupportCondition) 
 
     // The engine builds its device under the Functionality priority, so the binding-array
     // features are requested: one sampler binding with four slots is supported...
-    EXPECT_TRUE(render::render_resource::AsBindGroupBindless::bindless_supported(device->get(), 1, 4))
+    EXPECT_TRUE(render::render_resource::AsBindGroupBase::bindless_supported(device->get(), 1, 4))
         << "the binding-array features are present and four samplers fit";
     // ...while a slot count no adapter has samplers for is refused, which is the half of the
     // condition that depends on the limit rather than on the features.
-    EXPECT_FALSE(render::render_resource::AsBindGroupBindless::bindless_supported(device->get(), 1, 100000000))
+    EXPECT_FALSE(render::render_resource::AsBindGroupBase::bindless_supported(device->get(), 1, 100000000))
         << "no adapter has that many samplers, so the array cannot be supported";
+}
+
+namespace {
+/** @brief A material that never opted into bindless. */
+struct NonBindlessMaterial : pbr::Material<NonBindlessMaterial> {};
+
+/** @brief A material that opted in, hiding the default support answer with its own
+ *  one-argument one - which is what a real bindless material does, since Bevy's derive bakes
+ *  the counts into the generated method. */
+struct BindlessMaterial : pbr::Material<BindlessMaterial> {
+    [[nodiscard]] static std::optional<render::render_resource::BindlessSlabResourceLimit> bindless_slot_count() {
+        return render::render_resource::BindlessSlabResourceLimit{.custom = 4};
+    }
+    [[nodiscard]] static bool bindless_supported(const wgpu::Device& device) {
+        return pbr::Material<BindlessMaterial>::bindless_supported(device, /*sampler_binding_count=*/1,
+                                                                  /*bindless_count=*/4);
+    }
+};
+
+/** @brief A material whose slabs would hold a single slot. */
+struct SingleSlotMaterial : pbr::Material<SingleSlotMaterial> {
+    [[nodiscard]] static std::optional<render::render_resource::BindlessSlabResourceLimit> bindless_slot_count() {
+        return render::render_resource::BindlessSlabResourceLimit{.custom = 1};
+    }
+    [[nodiscard]] static bool bindless_supported(const wgpu::Device& device) {
+        return pbr::Material<SingleSlotMaterial>::bindless_supported(device, 1, 1);
+    }
+};
+}  // namespace
+
+/** @brief Whether a material ends up bindless (Bevy `material_uses_bindless_resources`,
+ *  `bevy_pbr/src/material_bind_groups.rs:1681-1687`), on a real device.
+ *
+ *  Three answers matter and each decides what the material costs to draw. A material that
+ *  never opted in is not bindless - and is never asked whether the device could support it,
+ *  which is why the derive emits no support check for one. A material with a slab size the
+ *  device can serve uses bindless. And a material whose slabs would hold a single slot does
+ *  **not**, because Bevy's `> 1` guard refuses to spend a whole bind group on one material.
+ */
+TEST(MaterialBindGroupAllocator, MaterialsDecideWhetherTheyUseBindlessResources) {
+    App app = App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::time::TimePlugin{})
+        .add_plugins(AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::shader::ShaderPlugin{});
+    try {
+        app.add_plugins(render::RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+
+    auto render_app = app.get_sub_app_mut(render::Render);
+    ASSERT_TRUE(render_app.has_value());
+    const auto device = render_app->get().world().get_resource<wgpu::Device>();
+    ASSERT_TRUE(device.has_value());
+
+    EXPECT_FALSE(pbr::material_uses_bindless_resources<NonBindlessMaterial>(device->get()))
+        << "a material that never opted in is drawn non-bindless";
+    EXPECT_TRUE(pbr::material_uses_bindless_resources<BindlessMaterial>(device->get()))
+        << "a material with a slab size the device can serve uses bindless";
+    EXPECT_FALSE(pbr::material_uses_bindless_resources<SingleSlotMaterial>(device->get()))
+        << "one slot is not worth a whole bind group, so Bevy draws it non-bindless";
+}
+
+namespace meta = epix::meta;  // this test sits outside `epix`, so the namespace needs naming
+
+namespace {
+/** @brief Two material types that register nothing of their own. */
+struct FirstRegisteredMaterial {};
+struct SecondRegisteredMaterial {};
+}  // namespace
+
+/** @brief The allocator registry is keyed by material type (Bevy `MaterialBindGroupAllocators`,
+ *  `material_bind_groups.rs:36`, with the `insert` its `Deref` provides, used at
+ *  `material.rs:410`).
+ *
+ *  One registry serves every material type, which is what makes the registration additive: a
+ *  second material plugin adds beside the first rather than wiping it, and a type that never
+ *  registered answers nothing. */
+TEST(MaterialBindGroupAllocator, TheRegistryIsKeyedByMaterialType) {
+    pbr::MaterialBindGroupAllocators allocators;
+    EXPECT_EQ(allocators.get(meta::type_id<FirstRegisteredMaterial>()), nullptr)
+        << "nothing is registered at the start";
+
+    allocators.insert(meta::type_id<FirstRegisteredMaterial>(),
+                      pbr::MaterialBindGroupAllocator{pbr::MaterialBindGroupNonBindlessAllocator{"first"}});
+    allocators.insert(meta::type_id<SecondRegisteredMaterial>(),
+                      pbr::MaterialBindGroupAllocator{pbr::MaterialBindGroupNonBindlessAllocator{"second"}});
+
+    const auto* first = allocators.get(meta::type_id<FirstRegisteredMaterial>());
+    ASSERT_NE(first, nullptr);
+    EXPECT_TRUE(std::holds_alternative<pbr::MaterialBindGroupNonBindlessAllocator>(first->value));
+    EXPECT_NE(allocators.get(meta::type_id<SecondRegisteredMaterial>()), nullptr);
+    EXPECT_EQ(allocators.allocators.size(), 2u) << "each type has its own entry";
+    EXPECT_EQ(allocators.get(meta::type_id<int>()), nullptr) << "a type that never registered has none";
+
+    // Registering again replaces that type's entry, leaving the other alone - a second
+    // plugin for the same material type must not leave two allocators behind.
+    allocators.insert(meta::type_id<FirstRegisteredMaterial>(),
+                      pbr::MaterialBindGroupAllocator{pbr::MaterialBindGroupNonBindlessAllocator{"first again"}});
+    EXPECT_EQ(allocators.allocators.size(), 2u);
+    EXPECT_NE(allocators.get(meta::type_id<SecondRegisteredMaterial>()), nullptr) << "the other survives";
+}
+
+namespace {
+/** @brief A material that specializes `AsBindGroup`, so `MaterialPlugin` has a label and a
+ *  layout to register an allocator and a render asset with. */
+struct MaterialPrepMaterial : pbr::Material<MaterialPrepMaterial> {};
+}  // namespace
+
+/** @brief A specialization supplying exactly what `AsBindGroupImpl` requires, with the
+ *  bindless members inherited from `AsBindGroupBase`. The bind-group factory is a stub: this
+ *  test exists to *compile* the preparing path, not to run a frame. */
+template <>
+struct epix::render::render_resource::AsBindGroup<MaterialPrepMaterial>
+    : epix::render::render_resource::AsBindGroupBase {
+    using Data  = std::monostate;
+    using Param = std::tuple<>;
+
+    static constexpr std::string_view label() { return "material_prep_test"; }
+    static std::vector<wgpu::BindGroupLayoutEntry> layout_entries() { return {}; }
+    static Data bind_group_data(const MaterialPrepMaterial&) { return {}; }
+    static std::expected<epix::render::render_resource::UnpreparedBindGroup,
+                         epix::render::render_resource::AsBindGroupError>
+    unprepared_bind_group(const wgpu::Device&, const wgpu::BindGroupLayout&, const MaterialPrepMaterial&, Param&) {
+        return epix::render::render_resource::UnpreparedBindGroup{};
+    }
+};
+
+/** @brief Registering a material type instantiates the whole preparing path
+ *  (`MaterialPlugin<M>` -> `ErasedRenderAssetPlugin<MeshMaterial3d<M>>` ->
+ *  `prepare_erased_assets<A>` -> the `ErasedRenderAsset` specialization's `prepare_asset`).
+ *
+ *  That is the point of the test. A template specialization that compiles inside a header
+ *  proves nothing, because nothing instantiates it - the fault PBR-66 was sitting on. Adding
+ *  the plugin forces every one of those bodies to be compiled, so a mistake in the preparing
+ *  path fails here rather than at the first application that uses a material. */
+TEST(MaterialBindGroupAllocator, RegisteringAMaterialInstantiatesThePreparingPath) {
+    App app = App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::time::TimePlugin{})
+        .add_plugins(AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::shader::ShaderPlugin{});
+    try {
+        app.add_plugins(render::RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+
+    // What `MaterialPlugin` registers for the prepass phases needs the core graph's
+    // `DrawFunctions` and the pipeline the material pipeline is chained after, exactly as a
+    // real app gets both from `DefaultPlugins`.
+    app.add_plugins(epix::core_graph::CoreGraphPlugin{});
+
+    // The assertion is that this compiles and runs: the bodies above are instantiated by it.
+    app.add_plugins(pbr::MaterialPlugin<MaterialPrepMaterial>{});
+    auto render_app = app.get_sub_app_mut(render::Render);
+    ASSERT_TRUE(render_app.has_value());
+    EXPECT_TRUE(render_app->get().world().get_resource<pbr::MaterialBindGroupAllocators>().has_value())
+        << "the plugin initialises the allocator registry beside the instances";
+}
+
+/** @brief Which mesh bind group a view gets (Bevy `MeshPhaseBindGroups::get`,
+ *  `bevy_pbr/src/render/mesh.rs:2780-2800`).
+ *
+ *  The three tests are ordered and the order *is* the behaviour, so this pins it: a morphed
+ *  mesh takes its own group even when it is also skinned, a skinned mesh takes the shared
+ *  skinned group even when it has a lightmap, and only an unskinned, unmorphed mesh
+ *  distinguishes its lightmap's group from the shared model-only one. The groups here are
+ *  default-constructed, so the assertion is on *which* field came back rather than on a
+ *  group's contents - which is exactly the decision being tested. */
+TEST(MaterialBindGroupAllocator, MeshPhaseBindGroupsPickByAPriorityOrder) {
+    pbr::MeshPhaseBindGroups groups;
+    const auto mesh_id       = epix::assets::AssetId<epix::mesh::Mesh>::invalid();
+    const auto lightmap_slab = pbr::LightmapSlabIndex{7};
+
+    // Nothing built yet: every answer is nothing, and in particular the shared fields must
+    // not be invented.
+    EXPECT_EQ(groups.get(mesh_id, std::nullopt, false, false, false), nullptr);
+    EXPECT_EQ(groups.get(mesh_id, lightmap_slab, false, false, false), nullptr);
+    EXPECT_EQ(groups.get(mesh_id, std::nullopt, true, false, false), nullptr);
+    EXPECT_EQ(groups.get(mesh_id, std::nullopt, false, true, false), nullptr);
+
+    groups.model_only.emplace();
+    groups.skinned.emplace();
+    groups.morph_targets.emplace(mesh_id, pbr::MeshBindGroupPair{});
+    groups.lightmaps.emplace(lightmap_slab, wgpu::BindGroup{});
+
+    const wgpu::BindGroup* model_only = &*groups.model_only;
+    const wgpu::BindGroup* skinned    = &groups.skinned->no_motion_vectors;
+    const wgpu::BindGroup* morphed    = &groups.morph_targets.at(mesh_id).no_motion_vectors;
+    const wgpu::BindGroup* lightmapped = &groups.lightmaps.at(lightmap_slab);
+
+    EXPECT_EQ(groups.get(mesh_id, std::nullopt, false, true, false), morphed)
+        << "a morphed mesh takes its own group even when it is also skinned";
+    EXPECT_EQ(groups.get(mesh_id, lightmap_slab, true, true, false), morphed)
+        << "and morphing outranks both skinning and a lightmap";
+    EXPECT_EQ(groups.get(mesh_id, lightmap_slab, true, false, false), skinned)
+        << "a skinned mesh takes the shared skinned group even when it has a lightmap";
+    EXPECT_EQ(groups.get(mesh_id, lightmap_slab, false, false, false), lightmapped)
+        << "only an unskinned, unmorphed mesh uses its lightmap's group";
+    EXPECT_EQ(groups.get(mesh_id, std::nullopt, false, false, false), model_only)
+        << "and with no lightmap it shares the model-only group";
+
+    // The motion-vector flavour is chosen from the view, not the mesh - but only where the
+    // groups come in pairs. The model-only group does not vary with it, which is why it is a
+    // single group rather than a pair.
+    EXPECT_EQ(groups.get(mesh_id, std::nullopt, false, false, true), model_only)
+        << "a model-only mesh gets the same group whichever flavour the view wants";
+    EXPECT_EQ(groups.get(mesh_id, std::nullopt, false, true, true),
+              &groups.morph_targets.at(mesh_id).motion_vectors);
+
+    // A mesh with morph targets that was never built for this id answers nothing rather than
+    // falling back to a group that would describe the wrong mesh. (The id used throughout is
+    // the invalid one, which is a perfectly good map key.)
+    EXPECT_EQ(groups.get(epix::assets::AssetId<epix::mesh::Mesh>::invalid(), std::nullopt, false, true, false),
+              morphed)
+        << "the invalid id is the one that was built";
+
+    groups.reset();
+    EXPECT_FALSE(groups.model_only.has_value());
+    EXPECT_FALSE(groups.skinned.has_value());
+    EXPECT_TRUE(groups.morph_targets.empty());
+    EXPECT_TRUE(groups.lightmaps.empty());
+    EXPECT_EQ(groups.get(mesh_id, std::nullopt, false, false, false), nullptr)
+        << "and after a reset nothing is answered";
 }

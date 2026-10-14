@@ -2258,7 +2258,7 @@ struct TestMaterialData {
 }  // namespace
 
 template <>
-struct epix::render::render_resource::AsBindGroup<TestMaterial> {
+struct epix::render::render_resource::AsBindGroup<TestMaterial> : render_resource::AsBindGroupBase {
     using Data  = TestMaterialData;
     using Param = std::tuple<>;
     static constexpr std::string_view label() { return "TestMaterial"; }

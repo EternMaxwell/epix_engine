@@ -189,11 +189,18 @@ EPIX_EXPORT EPIX_API wgpu::MultisampleState mesh_pipeline_multisample_state(std:
  *  This is the only thing that decides whether a mesh is skinned, which is why
  *  `setup_morph_and_skinning_defs` takes the layout rather than a pre-computed
  *  flag. Bevy reads `layout.0.contains(..)`; the reference's `value` is where
- *  Epix's interned layout lives. */
-EPIX_EXPORT inline bool is_skinned(const mesh::MeshVertexBufferLayoutRef& layout) {
-    return layout.value->contains(mesh::Mesh::ATTRIBUTE_JOINT_INDEX) &&
-           layout.value->contains(mesh::Mesh::ATTRIBUTE_JOINT_WEIGHT);
-}
+ *  Epix's interned layout lives.
+ *
+ *  `is_skinned` itself lives in `mesh_bindings.hpp`, which this header includes: the mesh
+ *  bind groups need it, and including this header back would be a cycle.
+ *
+ *  The mesh bind-group systems (`prepare_mesh_bind_groups_cpu` and its GPU sibling) are not
+ *  here either: they take `Res<MeshPipeline>`, and this header cannot guarantee that type is
+ *  complete at any given point in it. Whichever translation unit reaches
+ *  `mesh_pipeline_resource.hpp` first pulls in `mesh_bindings.hpp` and from there this
+ *  header, so by the time this file runs its own include of the resource is a `#pragma once`
+ *  no-op and `MeshPipeline` is still undefined. Include order decides, so they belong in a
+ *  translation unit, where it cannot. */
 
 /** @brief Add a mesh's morph and skinning shader defs and vertex attributes, and
  *  hand back the mesh bind-group layout its key needs (Bevy
@@ -220,5 +227,13 @@ EPIX_EXPORT EPIX_API render::BindGroupLayoutDescriptor setup_morph_and_skinning_
     const MeshLayouts& mesh_layouts, const mesh::MeshVertexBufferLayoutRef& layout, std::uint32_t offset,
     const MeshPipelineKey& key, std::vector<::epix::shader::ShaderDefVal>& shader_defs,
     std::vector<mesh::VertexAttributeDescriptor>& vertex_attributes, bool skins_use_uniform_buffers);
+
+/** @brief Draw one mesh. The tag Bevy spells `DrawMesh` (`render/mesh.rs:3204`).
+ *
+ *  The command is not in this header: it reads `RenderMeshInstances`, and `mesh_instance.hpp`
+ *  cannot be included from here (that closes an include cycle through `material.hpp`'s
+ *  `MeshPipeline`). It belongs in `mesh_instance.hpp`, which has the instances and can see the
+ *  render-side types. */
+EPIX_EXPORT struct DrawMesh {};
 
 }  // namespace epix::pbr

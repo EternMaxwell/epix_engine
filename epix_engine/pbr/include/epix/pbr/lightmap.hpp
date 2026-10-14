@@ -228,3 +228,13 @@ EPIX_EXPORT struct EPIX_API LightmapPlugin {
 };
 
 }  // namespace epix::pbr
+
+/** @brief So a lightmap slab index can key a map, which is what the mesh bind groups do
+ *  (Bevy derives `Hash` alongside `Eq` on it). A `std` specialisation has to be declared
+ *  outside the namespace that owns the type. */
+template <>
+struct std::hash<epix::pbr::LightmapSlabIndex> {
+    std::size_t operator()(const epix::pbr::LightmapSlabIndex& value) const noexcept {
+        return std::hash<std::uint32_t>{}(value.index);
+    }
+};

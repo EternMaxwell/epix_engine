@@ -29,6 +29,11 @@
 #endif
 #include <epix/pbr/lightmap.hpp>
 #include <epix/pbr/material_bindings.hpp>
+#include <epix/pbr/fog.hpp>
+#include <epix/pbr/light_meta.hpp>
+#include <epix/pbr/light_probe.hpp>
+#include <epix/pbr/mesh_pipeline.hpp>
+#include <epix/pbr/mesh_view_bindings.hpp>
 #include <epix/pbr/mesh_uniform.hpp>
 #include <epix/pbr/morph.hpp>
 #include <epix/pbr/skin.hpp>
@@ -576,4 +581,401 @@ EPIX_EXPORT EPIX_API std::optional<std::uint32_t> remove_mesh_input_uniform(
 EPIX_EXPORT EPIX_API void set_mesh_motion_vector_flags(ecs::ResMut<RenderMeshInstances> render_mesh_instances,
                                                        ecs::Res<SkinUniforms> skin_uniforms,
                                                        ecs::Res<MorphIndices> morph_indices);
+/** @brief Bind one mesh's bind group at slot `I`. The tag Bevy spells
+ *  `SetMeshBindGroup<const I: usize>` (`render/mesh.rs:3080`); the command is the
+ *  `RenderCommand` specialisation below, in `epix::render::phase` where the trait lives. */
+EPIX_EXPORT template <std::size_t I>
+struct SetMeshBindGroup {};
+
+/** @brief Bind the view's mesh bind group at slot `I` (Bevy `SetMeshViewBindGroup`,
+ *  `render/mesh.rs:2991`), with the offsets its dynamic bindings need. */
+EPIX_EXPORT template <std::size_t I>
+struct SetMeshViewBindGroup {};
+
+/** @brief Bind the view's *binding-array* mesh group at slot `I` (Bevy
+ *  `SetMeshViewBindingArrayBindGroup`, `render/mesh.rs:3040`), which takes no offsets: the
+ *  phase chooses this command instead of working out dynamic offsets. */
+EPIX_EXPORT template <std::size_t I>
+struct SetMeshViewBindingArrayBindGroup {};
+
+/** @brief Bind the view's *empty* mesh group at slot `I` (Bevy `SetMeshViewEmptyBindGroup`,
+ *  `render/mesh.rs:3060`), for phases that need a group bound but have no mesh view state. */
+EPIX_EXPORT template <std::size_t I>
+struct SetMeshViewEmptyBindGroup {};
+
+/** @brief Bind the prepass pass's view group at slot `I` (Bevy `SetPrepassViewBindGroup`,
+ *  `prepass/mod.rs:1215`), which is the motion-vector variant when the view writes them. */
+EPIX_EXPORT template <std::size_t I>
+struct SetPrepassViewBindGroup {};
+
+/** @brief Bind the prepass pass's empty group at slot `I` (Bevy
+ *  `SetPrepassViewEmptyBindGroup`, `prepass/mod.rs:1262`), which stands in for the mesh view
+ *  group the forward pass binds in that slot. */
+EPIX_EXPORT template <std::size_t I>
+struct SetPrepassViewEmptyBindGroup {};
+
+/** @brief Bevy's `DrawMaterial` command list (`material.rs:512-519`): the draw sequence every
+ *  3D phase of every material registers - `SetItemPipeline`, the view's mesh and binding-array
+ *  groups, the mesh's group, the material's own group and `DrawMesh`.
+ *
+ *  Bevy's version is a plain tuple and so needs no phase parameter; Epix's
+ *  `RenderCommandSequence` carries its phase, so the phase is the argument here. The sequence
+ *  is *not* parameterised by material type, because none of its commands is: the material's
+ *  group is reached through the untyped allocator registry. */
+template <typename P>
+using DrawMaterial = render::phase::RenderCommandSequence<P,
+                                                         render::phase::SetItemPipeline,
+                                                         SetMeshViewBindGroup<0>,
+                                                         SetMeshViewBindingArrayBindGroup<1>,
+                                                         SetMeshBindGroup<2>,
+                                                         SetMaterialBindGroup<MATERIAL_BIND_GROUP_INDEX>,
+                                                         DrawMesh>;
+
+/** @brief Bevy's `DrawPrepass` command list (`prepass/mod.rs:1282-1289`): the prepass pass's
+ *  own view group, the empty group where the forward pass binds the mesh view group, the
+ *  mesh's group, the material's own group and the mesh.
+ *
+ *  Bevy's version is a plain tuple; Epix's `RenderCommandSequence` carries its phase, so the
+ *  phase is the argument, as for `DrawMaterial`. */
+template <typename P>
+using DrawPrepass = render::phase::RenderCommandSequence<P,
+                                                         render::phase::SetItemPipeline,
+                                                         SetPrepassViewBindGroup<0>,
+                                                         SetPrepassViewEmptyBindGroup<1>,
+                                                         SetMeshBindGroup<2>,
+                                                         SetMaterialBindGroup<MATERIAL_BIND_GROUP_INDEX>,
+                                                         DrawMesh>;
+
 }  // namespace epix::pbr
+
+namespace epix::render::phase {
+
+/** @brief Draw one mesh (Bevy `DrawMesh`, `render/mesh.rs:3204-3410`).
+ *
+ *  It lives here rather than beside the `DrawMesh` tag because it reads
+ *  `RenderMeshInstances`, which this header owns; `mesh_pipeline.hpp` cannot include this one
+ *  without closing an include cycle through `material.hpp`'s `MeshPipeline`.
+ *
+ *  What is ported is the direct half, which is the same shape as the 2D command: the vertex
+ *  buffer, then an indexed or non-indexed draw over the item's batch range. **The indirect
+ *  half is not portable and is deliberately absent.** Bevy draws GPU-preprocessed meshes with
+ *  `multi_draw_indexed_indirect[_count]`, and the wgpu revision this engine builds against -
+ *  the fetched package's `include/webgpu/webgpu.h` under the build directory - declares no
+ *  multi-draw entry point at all: a search for `multiDraw` in it finds nothing. So an item
+ *  whose extra index asks for an indirect draw is skipped with an explanation rather than
+ *  drawn wrongly. Bevy's preprocess guard is absent for a related reason: it asks whether
+ *  `PreprocessPipelines` have loaded, and this port has no such pipelines, so the condition it
+ *  tests cannot arise yet. */
+EPIX_EXPORT template <PhaseItem P>
+struct RenderCommand<::epix::pbr::DrawMesh, P> {
+    using Param = std::tuple<epix::ecs::Res<::epix::render::RenderAssets<::epix::render::mesh::RenderMesh>>,
+                             epix::ecs::Res<::epix::pbr::RenderMeshInstances>,
+                             epix::ecs::Res<::epix::render::mesh::MeshAllocator>>;
+    using ViewQuery = std::tuple<>;
+    using ItemQuery = epix::ecs::Item<>;
+
+    void prepare(const epix::ecs::World&) {}
+
+    std::expected<void, RenderCommandError> render(const P& item,
+                                                   std::tuple<>,
+                                                   std::optional<epix::ecs::Item<>> entity_item,
+                                                   Param params,
+                                                   const wgpu::RenderPassEncoder& encoder) {
+        (void)entity_item;
+        auto&& [render_meshes, instances, mesh_allocator] = params;
+
+        const auto mesh_asset_id = instances->mesh_asset_id(item.main_entity());
+        if (!mesh_asset_id.has_value()) {
+            return std::unexpected(RenderCommandError{
+                .type    = RenderCommandError::Type::Skip,
+                .message = std::format("[mesh] Main entity {:#x} has no RenderMeshInstance during draw.",
+                                       item.main_entity().id().index),
+            });
+        }
+        auto* render_mesh = render_meshes->try_get(*mesh_asset_id);
+        if (render_mesh == nullptr) {
+            return std::unexpected(RenderCommandError{
+                .type    = RenderCommandError::Type::Skip,
+                .message = std::format("[mesh] GPU mesh {} is missing from RenderAssets<Mesh> at draw time.",
+                                       mesh_asset_id->to_string_short()),
+            });
+        }
+        const auto vertex_slice = mesh_allocator->mesh_vertex_slice(*mesh_asset_id);
+        if (!vertex_slice.has_value()) {
+            return std::unexpected(RenderCommandError{
+                .type    = RenderCommandError::Type::Skip,
+                .message = std::format("[mesh] Mesh {} has no MeshAllocator vertex slice at draw time.",
+                                       mesh_asset_id->to_string_short()),
+            });
+        }
+
+        const auto& layout      = render_mesh->layout.value->layout();
+        const auto stride       = static_cast<std::uint64_t>(layout.array_stride);
+        const auto vertex_first = static_cast<std::uint64_t>(vertex_slice->range.first);
+        const auto vertex_count = static_cast<std::uint64_t>(vertex_slice->range.second - vertex_first);
+        encoder.setVertexBuffer(0, *vertex_slice->buffer, vertex_first * stride, vertex_count * stride);
+
+        const auto& batch_range = item.batch_range();
+        const auto batch_size   = batch_range_len(batch_range);
+
+        // The indirect half: see this command's comment. Skipping is the honest answer; a
+        // direct draw here would draw the wrong instances.
+        if (item.extra_index().type == PhaseItemExtraIndex::Type::IndirectParametersIndex) {
+            return std::unexpected(RenderCommandError{
+                .type    = RenderCommandError::Type::Skip,
+                .message = std::format("[mesh] Mesh {} needs an indirect draw, and this engine's wgpu has no "
+                                       "multi-draw entry point.",
+                                       mesh_asset_id->to_string_short()),
+            });
+        }
+
+        if (render_mesh->indexed()) {
+            const auto index_slice = mesh_allocator->mesh_index_slice(*mesh_asset_id);
+            if (!index_slice.has_value()) {
+                return std::unexpected(RenderCommandError{
+                    .type    = RenderCommandError::Type::Skip,
+                    .message = std::format("[mesh] Indexed mesh {} has no MeshAllocator index slice.",
+                                           mesh_asset_id->to_string_short()),
+                });
+            }
+            const auto* info                 = render_mesh->buffer_info.indexed_info();
+            const wgpu::IndexFormat format   = info != nullptr ? info->index_format : wgpu::IndexFormat::eUint16;
+            const std::uint64_t element_size = format == wgpu::IndexFormat::eUint16 ? 2 : 4;
+            const auto index_first           = static_cast<std::uint64_t>(index_slice->range.first);
+            const auto index_count           = static_cast<std::uint64_t>(index_slice->range.second - index_first);
+            encoder.setIndexBuffer(*index_slice->buffer, format, index_first * element_size,
+                                   index_count * element_size);
+            encoder.drawIndexed(static_cast<std::uint32_t>(index_count), batch_size, 0, 0, batch_range.first);
+        } else {
+            encoder.draw(static_cast<std::uint32_t>(vertex_count), batch_size, 0, batch_range.first);
+        }
+        return {};
+    }
+};
+
+/** @brief Bind one mesh's bind group at slot `I` (Bevy `SetMeshBindGroup<I>`,
+ *  `render/mesh.rs:3080-3165`).
+ *
+ *  Three of Bevy's four outcomes are not failures. A mesh that is not in
+ *  `RenderMeshInstances`, and a `MeshBindGroups` set with nothing for this phase, both report
+ *  *success*: they are ordinary - a shadow phase with no shadows has nothing to bind. Only a
+ *  phase that is present in `MeshBindGroups` but has no group for this mesh fails, because
+ *  that means the preparation did not run for a phase that needs it.
+ *
+ *  Which set to read follows the same split as the resource itself: one set for the whole
+ *  scene on the CPU path, one per phase on the GPU path, keyed by the phase's type. The
+ *  `Has<MotionVectorPrepass>` view query yields the `bool` that picks the motion-vector
+ *  variant, which is Bevy's own `render` parameter of that name. */
+EPIX_EXPORT template <std::size_t I, PhaseItem P>
+struct RenderCommand<::epix::pbr::SetMeshBindGroup<I>, P> {
+    using Param = std::tuple<epix::ecs::Res<::epix::pbr::MeshBindGroups>,
+                             epix::ecs::Res<::epix::pbr::RenderMeshInstances>,
+                             epix::ecs::Res<::epix::pbr::SkinUniforms>,
+                             epix::ecs::Res<::epix::pbr::MorphIndices>,
+                             epix::ecs::Res<::epix::pbr::RenderLightmaps>>;
+    using ViewQuery = epix::ecs::Has<::epix::core_graph::core_3d::MotionVectorPrepass>;
+    using ItemQuery = epix::ecs::Item<>;
+
+    void prepare(const epix::ecs::World&) {}
+
+    std::expected<void, RenderCommandError> render(const P& item,
+                                                   bool has_motion_vector_prepass,
+                                                   std::optional<epix::ecs::Item<>> entity_item,
+                                                   Param params,
+                                                   const wgpu::RenderPassEncoder& encoder) {
+        (void)entity_item;
+        auto&& [bind_groups, instances, skin_uniforms, morph_indices, lightmaps] = params;
+
+        const auto entity        = item.main_entity();
+        const auto mesh_asset_id = instances->mesh_asset_id(entity);
+        if (!mesh_asset_id.has_value()) return {};
+
+        const bool is_skinned = skin_uniforms->skin_byte_offset(entity).has_value();
+        const bool is_morphed = morph_indices->current.find(entity) != morph_indices->current.end();
+
+        std::optional<::epix::pbr::LightmapSlabIndex> lightmap_slab;
+        if (const auto found = lightmaps->render_lightmaps.find(entity);
+            found != lightmaps->render_lightmaps.end()) {
+            lightmap_slab = found->second.slab_index;
+        }
+
+        const ::epix::pbr::MeshPhaseBindGroups* phase_groups = nullptr;
+        if (const auto* cpu = std::get_if<::epix::pbr::MeshPhaseBindGroups>(&*bind_groups)) {
+            phase_groups = cpu;
+        } else if (const auto* per_phase =
+                       std::get_if<std::unordered_map<std::type_index, ::epix::pbr::MeshPhaseBindGroups>>(
+                           &*bind_groups)) {
+            if (const auto found = per_phase->find(std::type_index(typeid(P))); found != per_phase->end()) {
+                phase_groups = &found->second;
+            }
+        }
+        if (phase_groups == nullptr) return {};
+
+        const wgpu::BindGroup* bind_group = phase_groups->get(*mesh_asset_id, lightmap_slab, is_skinned, is_morphed,
+                                                             has_motion_vector_prepass);
+        if (bind_group == nullptr) {
+            return std::unexpected(RenderCommandError{
+                .type    = RenderCommandError::Type::Failure,
+                .message = "The MeshBindGroups resource is present for this phase but holds no group for this "
+                           "mesh, so mesh bind-group preparation did not run for it.",
+            });
+        }
+
+        encoder.setBindGroup(I, *bind_group, std::span<const std::uint32_t>{});
+        return {};
+    }
+};
+
+/** @brief Bind the view's mesh bind group at slot `I` (Bevy `SetMeshViewBindGroup<I>`,
+ *  `render/mesh.rs:2991-3038`).
+ *
+ *  The offsets are the view's uniform offsets, in the order the group's dynamic bindings
+ *  declare them. Bevy pushes six and optionally a seventh for order-independent transparency;
+ *  this port pushes the four it has, because screen-space reflections and order-independent
+ *  transparency are features it does not implement and its group's layout therefore does not
+ *  declare those bindings. Pushing Bevy's six would bind offsets the layout never asked for. */
+EPIX_EXPORT template <std::size_t I, PhaseItem P>
+struct RenderCommand<::epix::pbr::SetMeshViewBindGroup<I>, P> {
+    using Param     = std::tuple<>;
+    using ViewQuery = epix::ecs::Item<const ::epix::render::view::ViewUniformOffset&,
+                                      const ::epix::pbr::ViewLightsUniformOffset&,
+                                      const ::epix::pbr::ViewFogUniformOffset&,
+                                      const ::epix::pbr::ViewLightProbesUniformOffset&,
+                                      const ::epix::pbr::ViewEnvironmentMapUniformOffset&,
+                                      const ::epix::pbr::MeshViewBindGroup&>;
+    using ItemQuery = epix::ecs::Item<>;
+
+    void prepare(const epix::ecs::World&) {}
+
+    std::expected<void, RenderCommandError> render(const P&,
+                                                   ViewQuery view,
+                                                   std::optional<epix::ecs::Item<>> entity_item,
+                                                   Param,
+                                                   const wgpu::RenderPassEncoder& encoder) {
+        (void)entity_item;
+        const std::array<std::uint32_t, 4> offsets{
+            std::get<0>(view).offset,
+            std::get<1>(view).offset,
+            std::get<2>(view).offset,
+            std::get<3>(view).offset,
+        };
+        encoder.setBindGroup(I, std::get<5>(view).main, offsets);
+        return {};
+    }
+};
+
+/** @brief Bind the view's binding-array mesh group at slot `I` (Bevy
+ *  `SetMeshViewBindingArrayBindGroup<I>`, `render/mesh.rs:3040-3058`). */
+EPIX_EXPORT template <std::size_t I, PhaseItem P>
+struct RenderCommand<::epix::pbr::SetMeshViewBindingArrayBindGroup<I>, P> {
+    using Param     = std::tuple<>;
+    using ViewQuery = epix::ecs::Item<const ::epix::pbr::MeshViewBindGroup&>;
+    using ItemQuery = epix::ecs::Item<>;
+
+    void prepare(const epix::ecs::World&) {}
+
+    std::expected<void, RenderCommandError> render(const P&,
+                                                   ViewQuery view,
+                                                   std::optional<epix::ecs::Item<>> entity_item,
+                                                   Param,
+                                                   const wgpu::RenderPassEncoder& encoder) {
+        (void)entity_item;
+        encoder.setBindGroup(I, std::get<0>(view).binding_array, std::span<const std::uint32_t>{});
+        return {};
+    }
+};
+
+/** @brief Bind the view's empty mesh group at slot `I` (Bevy
+ *  `SetMeshViewEmptyBindGroup<I>`, `render/mesh.rs:3060-3078`). */
+EPIX_EXPORT template <std::size_t I, PhaseItem P>
+struct RenderCommand<::epix::pbr::SetMeshViewEmptyBindGroup<I>, P> {
+    using Param     = std::tuple<>;
+    using ViewQuery = epix::ecs::Item<const ::epix::pbr::MeshViewBindGroup&>;
+    using ItemQuery = epix::ecs::Item<>;
+
+    void prepare(const epix::ecs::World&) {}
+
+    std::expected<void, RenderCommandError> render(const P&,
+                                                   ViewQuery view,
+                                                   std::optional<epix::ecs::Item<>> entity_item,
+                                                   Param,
+                                                   const wgpu::RenderPassEncoder& encoder) {
+        (void)entity_item;
+        encoder.setBindGroup(I, std::get<0>(view).empty, std::span<const std::uint32_t>{});
+        return {};
+    }
+};
+
+/** @brief Bind the prepass pass's view group at slot `I` (Bevy `SetPrepassViewBindGroup<I>`,
+ *  `prepass/mod.rs:1216-1260`).
+ *
+ *  Bevy's view query is `(Read<ViewUniformOffset>, Has<MotionVectorPrepass>,
+ *  Option<Read<PreviousViewUniformOffset>>)`, and that pair decides which of the resource's
+ *  two groups is bound and with which offsets. The two `Failure` arms stand in for the
+ *  `unwrap`s Bevy does there: a missing group means preparation did not run for a view that
+ *  needs it, which is a defect rather than a phase with nothing to draw. */
+EPIX_EXPORT template <std::size_t I, PhaseItem P>
+struct RenderCommand<::epix::pbr::SetPrepassViewBindGroup<I>, P> {
+    using Param     = epix::ecs::Res<::epix::pbr::PrepassViewBindGroup>;
+    using ViewQuery = epix::ecs::Item<const ::epix::render::view::ViewUniformOffset&,
+                                      epix::ecs::Has<::epix::core_graph::core_3d::MotionVectorPrepass>,
+                                      epix::ecs::Opt<const ::epix::core_graph::PreviousViewUniformOffset&>>;
+    using ItemQuery = epix::ecs::Item<>;
+
+    void prepare(const epix::ecs::World&) {}
+
+    std::expected<void, RenderCommandError> render(const P&,
+                                                   ViewQuery view,
+                                                   std::optional<epix::ecs::Item<>> entity_item,
+                                                   Param prepass_view_bind_group,
+                                                   const wgpu::RenderPassEncoder& encoder) {
+        (void)entity_item;
+        const auto& previous_view_uniform_offset = std::get<2>(view);
+        if (std::get<1>(view) && previous_view_uniform_offset.has_value()) {
+            if (!prepass_view_bind_group->motion_vectors.has_value()) {
+                return std::unexpected(RenderCommandError{
+                    .type    = RenderCommandError::Type::Failure,
+                    .message = "The prepass view's motion-vector bind group is missing, so "
+                               "prepare_prepass_view_bind_group did not bind the previous view uniforms.",
+                });
+            }
+            const std::array<std::uint32_t, 2> offsets{std::get<0>(view).offset,
+                                                       previous_view_uniform_offset->get().offset};
+            encoder.setBindGroup(I, *prepass_view_bind_group->motion_vectors, offsets);
+            return {};
+        }
+        if (!prepass_view_bind_group->no_motion_vectors.has_value()) {
+            return std::unexpected(RenderCommandError{
+                .type    = RenderCommandError::Type::Failure,
+                .message = "The prepass view's bind group is missing, so "
+                           "prepare_prepass_view_bind_group did not run for this view.",
+            });
+        }
+        const std::array<std::uint32_t, 1> offsets{std::get<0>(view).offset};
+        encoder.setBindGroup(I, *prepass_view_bind_group->no_motion_vectors, offsets);
+        return {};
+    }
+};
+
+/** @brief Bind the prepass pass's empty group at slot `I` (Bevy
+ *  `SetPrepassViewEmptyBindGroup<I>`, `prepass/mod.rs:1263-1280`), which takes no offsets. */
+EPIX_EXPORT template <std::size_t I, PhaseItem P>
+struct RenderCommand<::epix::pbr::SetPrepassViewEmptyBindGroup<I>, P> {
+    using Param     = epix::ecs::Res<::epix::pbr::PrepassViewBindGroup>;
+    using ViewQuery = epix::ecs::Item<>;
+    using ItemQuery = epix::ecs::Item<>;
+
+    void prepare(const epix::ecs::World&) {}
+
+    std::expected<void, RenderCommandError> render(const P&,
+                                                   epix::ecs::Item<>,
+                                                   std::optional<epix::ecs::Item<>> entity_item,
+                                                   Param prepass_view_bind_group,
+                                                   const wgpu::RenderPassEncoder& encoder) {
+        (void)entity_item;
+        encoder.setBindGroup(I, prepass_view_bind_group->empty_bind_group, std::span<const std::uint32_t>{});
+        return {};
+    }
+};
+
+}  // namespace epix::render::phase
