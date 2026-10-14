@@ -1095,6 +1095,45 @@ TEST(MaterialBindGroupAllocator, SlabPreparesItsBindGroupFromArraysAndFallbacks)
  *  group the dispatch hands back is the one wgpu accepted, freeing releases the slab's
  *  reference without discarding the slab, and a prepared bind group is refused because a
  *  bindless material has no say in its own group. */
+/** @brief The erased key a material's pipeline is specialized under separates the material
+ *  *type* and the material's *data*, and a material with no data has one empty key (Bevy
+ *  `ErasedMaterialKey`, `material.rs:1430-1465`, and `ErasedMaterialPipelineKey`, `:438-443`).
+ *
+ *  This is the part of the specialization the port had no field for until `MaterialProperties`
+ *  gained `material_key`: without it, two materials of one type whose data differs would share
+ *  a compiled pipeline. Bevy's key has to be hashable and comparable, which is what makes it
+ *  usable as a pipeline-cache key - a property this pins. */
+TEST(MaterialTrait, TheErasedKeySeparatesMaterialDataAndType) {
+    const pbr::ErasedMaterialKey one{pbr::ErasedMaterialKey{1}};
+    const pbr::ErasedMaterialKey one_again{pbr::ErasedMaterialKey{1}};
+    const pbr::ErasedMaterialKey two{pbr::ErasedMaterialKey{2}};
+    // Same value, different C++ type: Bevy's `TypeId` half of the key.
+    const pbr::ErasedMaterialKey unsigned_one{pbr::ErasedMaterialKey{1u}};
+
+    EXPECT_EQ(one, one_again) << "the same data under the same type is the same key";
+    EXPECT_EQ(one.hash(), one_again.hash());
+    EXPECT_NE(one, two) << "different data must not share a pipeline";
+    EXPECT_NE(one, unsigned_one) << "and neither must the same value of another type";
+
+    const pbr::ErasedMaterialPipelineKey key_one{.mesh_key     = pbr::MeshPipelineKey{},
+                                                 .material_key = one,
+                                                 .type_id      = epix::meta::type_id<int>()};
+    const pbr::ErasedMaterialPipelineKey mesh_differs{.mesh_key     = pbr::MeshPipelineKey::LIGHTMAPPED,
+                                                      .material_key = one,
+                                                      .type_id      = epix::meta::type_id<int>()};
+    const pbr::ErasedMaterialPipelineKey data_differs{.mesh_key     = pbr::MeshPipelineKey{},
+                                                      .material_key = two,
+                                                      .type_id      = epix::meta::type_id<int>()};
+    EXPECT_EQ(key_one, key_one);
+    EXPECT_NE(key_one, mesh_differs) << "the mesh half is part of the key";
+    EXPECT_NE(key_one, data_differs) << "and so is the material's data";
+
+    const pbr::MaterialProperties properties;
+    EXPECT_EQ(properties.material_key, pbr::ErasedMaterialKey{})
+        << "a material with no bind-group data of its own hashes as the empty key, which is "
+           "the default the port needs and Bevy has no counterpart for";
+}
+
 TEST(MaterialBindGroupAllocator, DispatchDrivesTheBindlessArmEndToEnd) {
     App app = App::create();
     app.add_events<epix::window::WindowClosed>();

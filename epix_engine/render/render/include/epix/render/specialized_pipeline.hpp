@@ -146,14 +146,14 @@ struct SpecializedMeshPipelines {
      * On failure the returned error's `pipeline_type` names `S`, matching Bevy's
      * `type_name::<S>()` annotation (`pipeline_specializer.rs:209-217`).
      */
-    std::expected<CachedPipelineId, SpecializedMeshPipelineError> specialize(
+    std::expected<CachedRenderPipelineId, SpecializedMeshPipelineError> specialize(
         const PipelineServer& server,
         const S& specialized_pipeline,
         typename S::Key key,
         const ::epix::mesh::MeshVertexBufferLayoutRef& layout) {
         const MeshLayoutKey cache_key{.layout = layout, .key = key};
         if (auto it = mesh_layout_cache.find(cache_key); it != mesh_layout_cache.end()) {
-            return it->second;
+            return CachedRenderPipelineId{it->second.get()};
         }
 
         auto descriptor = specialized_pipeline.specialize(std::move(key), layout);
@@ -174,12 +174,12 @@ struct SpecializedMeshPipelines {
         auto [entry, inserted] = layout_map->second.try_emplace(cache_key.key, CachedPipelineId{});
         if (!inserted) {
             mesh_layout_cache.emplace(std::move(cache_key), entry->second);
-            return entry->second;
+            return CachedRenderPipelineId{entry->second.get()};
         }
         const CachedPipelineId id = server.queue_render_pipeline(std::move(*descriptor));
         entry->second             = id;
         mesh_layout_cache.emplace(std::move(cache_key), id);
-        return id;
+        return CachedRenderPipelineId{id.get()};
     }
 };
 

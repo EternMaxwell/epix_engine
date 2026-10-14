@@ -581,6 +581,41 @@ EPIX_EXPORT EPIX_API std::optional<std::uint32_t> remove_mesh_input_uniform(
 EPIX_EXPORT EPIX_API void set_mesh_motion_vector_flags(ecs::ResMut<RenderMeshInstances> render_mesh_instances,
                                                        ecs::Res<SkinUniforms> skin_uniforms,
                                                        ecs::Res<MorphIndices> morph_indices);
+
+/** @brief Compile each visible mesh's material pipeline for each view that draws it, and
+ *  cache it per view and entity (Bevy `specialize_material_meshes`, `material.rs:996-1148`).
+ *
+ *  It lives here rather than in `material.hpp` because it reads `RenderMeshInstances`, which
+ *  this header owns, and `material.hpp` cannot include this one without closing the cycle
+ *  through `MeshPipeline` - the same reason `DrawMesh` is declared here.
+ *
+ *  Bevy registers it in `RenderSystems::PrepareMeshes`, after the mesh assets are prepared,
+ *  the GPU-built meshes are collected and the motion-vector flags are set, because it reads
+ *  all three of those results. The key it builds is Bevy's: the view's mesh key, the mesh's
+ *  own bits, the material's precalculated bits with its alpha mode resolved against the view's
+ *  sample count, and the lightmap, visibility-range and previous-frame skin and morph bits -
+ *  plus the material's *erased bind-group data*, which is what keeps two materials of one type
+ *  with different data from sharing a compiled pipeline. */
+EPIX_EXPORT EPIX_API void specialize_material_meshes(
+    ecs::Res<render::RenderAssets<render::mesh::RenderMesh>> render_meshes,
+    ecs::Res<render::erased_render_asset::ErasedRenderAssets<PreparedMaterial>> render_materials,
+    ecs::Res<RenderMeshInstances> render_mesh_instances,
+    ecs::Res<RenderMaterialInstances> render_material_instances,
+    ecs::Res<RenderLightmaps> render_lightmaps,
+    ecs::Res<render::view::RenderVisibilityRanges> render_visibility_ranges,
+    ecs::Res<render::phase::ViewBinnedRenderPhases<core_graph::core_3d::Opaque3d>> opaque_render_phases,
+    ecs::Res<render::phase::ViewBinnedRenderPhases<core_graph::core_3d::AlphaMask3d>> alpha_mask_render_phases,
+    ecs::Res<render::phase::ViewSortedRenderPhases<core_graph::core_3d::Transmissive3d>> transmissive_render_phases,
+    ecs::Res<render::phase::ViewSortedRenderPhases<core_graph::core_3d::Transparent3d>> transparent_render_phases,
+    ecs::Query<ecs::Item<const render::sync_world::MainEntity&, const render::view::ExtractedView&,
+                         const render::view::RenderVisibleEntities&>>
+        views,
+    ecs::Res<ViewKeyCache> view_key_cache, ecs::Res<EntitySpecializationTicks> entity_specialization_ticks,
+    ecs::Res<ViewSpecializationTicks> view_specialization_ticks,
+    ecs::ResMut<SpecializedMaterialPipelineCache> specialized_material_pipeline_cache,
+    ecs::ResMut<render::SpecializedMeshPipelines<MaterialPipelineSpecializer>> pipelines,
+    ecs::Res<MaterialPipeline> pipeline, ecs::Res<render::PipelineServer> pipeline_server,
+    ecs::SystemChangeTick ticks);
 /** @brief Bind one mesh's bind group at slot `I`. The tag Bevy spells
  *  `SetMeshBindGroup<const I: usize>` (`render/mesh.rs:3080`); the command is the
  *  `RenderCommand` specialisation below, in `epix::render::phase` where the trait lives. */

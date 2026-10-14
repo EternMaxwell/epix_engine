@@ -41,7 +41,10 @@ namespace {
 
 /** @brief A stand-in 3D material, exactly as the mesh extraction tests use one: the
  *  registry is untyped and nothing here draws, so `MaterialPlugin` only has to exist
- *  for the material resources the extraction reads to be created. */
+ *  for the material resources the extraction reads to be created. Its `AsBindGroup`
+ *  specialization is below, because Bevy's `Material` has that as a supertrait, and
+ *  `MaterialPlugin` only creates the erased render assets every material shares when
+ *  the material really supplies one. */
 struct StandInMaterial : pbr::Material<StandInMaterial> {};
 
 /** @brief Render-world probe state: report the recorded key once, a few frames in. */
@@ -160,6 +163,25 @@ void spawn_camera(Commands cmd) {
 }
 
 }  // namespace
+
+/** @brief The specialization supplying what `AsBindGroupImpl` requires, with the bindless
+ *  members inherited from `AsBindGroupBase`. The bind-group factory is a stub: this example
+ *  exists to watch the per-view key path, not to draw a material. */
+template <>
+struct epix::render::render_resource::AsBindGroup<StandInMaterial>
+    : epix::render::render_resource::AsBindGroupBase {
+    using Data  = std::monostate;
+    using Param = std::tuple<>;
+
+    static constexpr std::string_view label() { return "core3d_mesh_specialization_material"; }
+    static std::vector<wgpu::BindGroupLayoutEntry> layout_entries() { return {}; }
+    static Data bind_group_data(const StandInMaterial&) { return {}; }
+    static std::expected<epix::render::render_resource::UnpreparedBindGroup,
+                         epix::render::render_resource::AsBindGroupError>
+    unprepared_bind_group(const wgpu::Device&, const wgpu::BindGroupLayout&, const StandInMaterial&, Param&) {
+        return epix::render::render_resource::UnpreparedBindGroup{};
+    }
+};
 
 int main() {
     App app = App::create();

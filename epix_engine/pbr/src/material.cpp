@@ -1,4 +1,6 @@
 #include <epix/pbr/material.hpp>
+#include <epix/pbr/mesh_extraction.hpp>
+#include <epix/pbr/mesh_instance.hpp>
 
 #include <utility>
 
@@ -57,6 +59,127 @@ void write_material_bind_group_buffers(ecs::ResMut<MaterialBindGroupAllocators> 
     }
 }
 
+void specialize_material_meshes(
+    ecs::Res<render::RenderAssets<render::mesh::RenderMesh>> render_meshes,
+    ecs::Res<render::erased_render_asset::ErasedRenderAssets<PreparedMaterial>> render_materials,
+    ecs::Res<RenderMeshInstances> render_mesh_instances,
+    ecs::Res<RenderMaterialInstances> render_material_instances,
+    ecs::Res<RenderLightmaps> render_lightmaps,
+    ecs::Res<render::view::RenderVisibilityRanges> render_visibility_ranges,
+    ecs::Res<render::phase::ViewBinnedRenderPhases<core_graph::core_3d::Opaque3d>> opaque_render_phases,
+    ecs::Res<render::phase::ViewBinnedRenderPhases<core_graph::core_3d::AlphaMask3d>> alpha_mask_render_phases,
+    ecs::Res<render::phase::ViewSortedRenderPhases<core_graph::core_3d::Transmissive3d>> transmissive_render_phases,
+    ecs::Res<render::phase::ViewSortedRenderPhases<core_graph::core_3d::Transparent3d>> transparent_render_phases,
+    ecs::Query<ecs::Item<const render::sync_world::MainEntity&, const render::view::ExtractedView&,
+                         const render::view::RenderVisibleEntities&>>
+        views,
+    ecs::Res<ViewKeyCache> view_key_cache, ecs::Res<EntitySpecializationTicks> entity_specialization_ticks,
+    ecs::Res<ViewSpecializationTicks> view_specialization_ticks,
+    ecs::ResMut<SpecializedMaterialPipelineCache> specialized_material_pipeline_cache,
+    ecs::ResMut<render::SpecializedMeshPipelines<MaterialPipelineSpecializer>> pipelines,
+    ecs::Res<MaterialPipeline> pipeline, ecs::Res<render::PipelineServer> pipeline_server,
+    ecs::SystemChangeTick ticks) {
+    // Bevy `specialize_material_meshes` (`material.rs:996-1148`).
+    using MeshInstanceFlags = RenderMeshInstanceFlags;
+
+    auto& cache = specialized_material_pipeline_cache->map;
+    // Bevy records the retained id of every view it saw, then drops the caches of views that
+    // expired by retaining only those. The port keeps the same set for the same purpose.
+    std::unordered_set<render::view::RetainedViewEntity> all_views;
+
+    for (auto&& [view_entity, view, visible_entities] : views.iter()) {
+        all_views.insert(view.retained_view_entity);
+
+        if (!transparent_render_phases->contains(view.retained_view_entity) &&
+            !opaque_render_phases->phases.contains(view.retained_view_entity) &&
+            !alpha_mask_render_phases->phases.contains(view.retained_view_entity) &&
+            !transmissive_render_phases->contains(view.retained_view_entity)) {
+            continue;
+        }
+
+        const auto view_key_it = view_key_cache->keys.find(view.retained_view_entity);
+        if (view_key_it == view_key_cache->keys.end()) continue;
+
+        const auto view_tick_it = view_specialization_ticks->ticks.find(view.retained_view_entity);
+        if (view_tick_it == view_specialization_ticks->ticks.end()) continue;
+        const auto view_tick = view_tick_it->second;
+
+        auto& view_cache = cache[view.retained_view_entity];
+
+        for (auto&& [visible_render_entity, visible_main_entity] :
+             visible_entities.template get<epix::mesh::Mesh3d>()) {
+            (void)visible_render_entity;
+            const auto material_it = render_material_instances->instances.find(visible_main_entity);
+            if (material_it == render_material_instances->instances.end()) continue;
+            const auto mesh_instance = render_mesh_instances->render_mesh_queue_data(visible_main_entity);
+            if (!mesh_instance.has_value()) continue;
+            const auto entity_tick_it = entity_specialization_ticks->entities.find(visible_main_entity);
+            if (entity_tick_it == entity_specialization_ticks->entities.end()) continue;
+
+            const auto cached_it = view_cache.map.find(visible_main_entity);
+            const bool needs_specialization =
+                cached_it == view_cache.map.end() ||
+                view_tick.newer_than(cached_it->second.first, ticks.this_run()) ||
+                entity_tick_it->second.system_tick.newer_than(cached_it->second.first, ticks.this_run());
+            if (!needs_specialization) continue;
+
+            const auto* mesh = render_meshes->try_get(mesh_instance->record().mesh_asset_id);
+            if (mesh == nullptr) continue;
+            const auto* material = render_materials->get(material_it->second.asset_id);
+            if (material == nullptr) continue;
+
+            const auto view_key = view_key_it->second;
+            auto mesh_pipeline_key_bits = material->properties->mesh_pipeline_key_bits;
+            mesh_pipeline_key_bits |=
+                alpha_mode_pipeline_key(material->properties->alpha_mode,
+                                        render::view::msaa_from_samples(
+                                            static_cast<std::uint32_t>(view_key.msaa_samples())));
+            auto mesh_key = view_key | MeshPipelineKey::from_bits_retain(mesh->key_bits.bits()) |
+                            mesh_pipeline_key_bits;
+
+            if (const auto lightmap = render_lightmaps->render_lightmaps.find(visible_main_entity);
+                lightmap != render_lightmaps->render_lightmaps.end()) {
+                mesh_key |= MeshPipelineKey::LIGHTMAPPED;
+                if (lightmap->second.bicubic_sampling) mesh_key |= MeshPipelineKey::LIGHTMAP_BICUBIC_SAMPLING;
+            }
+
+            if (render_visibility_ranges->entity_has_crossfading_visibility_ranges(visible_main_entity)) {
+                mesh_key |= MeshPipelineKey::VISIBILITY_RANGE_DITHER;
+            }
+
+            if (view_key.contains(MeshPipelineKey::MOTION_VECTOR_PREPASS)) {
+                // If the previous frame had skins or morph targets, note that.
+                const auto flags = mesh_instance->record().flags;
+                if (flags.contains(MeshInstanceFlags::HAS_PREVIOUS_SKIN)) mesh_key |= MeshPipelineKey::HAS_PREVIOUS_SKIN;
+                if (flags.contains(MeshInstanceFlags::HAS_PREVIOUS_MORPH))
+                    mesh_key |= MeshPipelineKey::HAS_PREVIOUS_MORPH;
+            }
+
+            const ErasedMaterialPipelineKey erased_key{
+                .mesh_key     = mesh_key,
+                .material_key = material->properties->material_key,
+                .type_id      = material_it->second.asset_id.type,
+            };
+            const MaterialPipelineSpecializer specializer{
+                .pipeline   = *pipeline,
+                .properties = material->properties,
+            };
+            const auto pipeline_id = pipelines->specialize(*pipeline_server, specializer, erased_key, mesh->layout);
+            if (!pipeline_id) {
+                // Bevy logs the error; the port's error type has no formatter, so it reports
+                // the failure without it rather than formatting an unformattable type.
+                spdlog::error("[pbr] Failed to specialize a material's pipeline.");
+                continue;
+            }
+
+            view_cache.map.insert_or_assign(visible_main_entity, std::pair{ticks.this_run(), *pipeline_id});
+        }
+    }
+
+    // Bevy `retain`s the caches of the views that are still alive (material.rs:1145-1147).
+    std::erase_if(cache, [&all_views](const auto& entry) { return !all_views.contains(entry.first); });
+}
+
 void MaterialsPlugin::attach(epix::app::App& app) {
     // Bevy `MaterialsPlugin::build` (`material.rs:281-335`), as far as the port has it.
     auto render_app = app.get_sub_app_mut(render::Render);
@@ -84,6 +207,16 @@ void MaterialsPlugin::attach(epix::app::App& app) {
                                            .after(prepare_material_bind_groups)
                                            .in_set(render::RenderSystems::PrepareBindGroups)
                                            .set_name("write material bind group buffers"));
+
+    // Bevy's orderings are what make this system's three inputs ready: the mesh assets it
+    // reads are prepared, the GPU-built meshes are collected and the motion-vector flags are
+    // set before it runs (`material.rs:304-308`).
+    render.add_systems(render::Render, ecs::into(specialize_material_meshes)
+                                           .in_set(render::RenderSystems::PrepareMeshes)
+                                           .after(render::prepare_assets<render::mesh::RenderMesh>)
+                                           .after(collect_meshes_for_gpu_building)
+                                           .after(set_mesh_motion_vector_flags)
+                                           .set_name("specialize material meshes"));
 }
 
 std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineError>

@@ -270,6 +270,12 @@ EPIX_EXPORT class ErasedMaterialKey {
           m_hash(std::hash<T>{}(material_key)),
           m_value(std::make_shared<detail::ErasedMaterialKeyModel<T>>(std::move(material_key))) {}
 
+    /** @brief The key of a material with no bind-group data of its own, which is also what a
+     *  default-constructed key holds. Bevy has no counterpart because its materials always
+     *  produce a key; the port needs one so `MaterialProperties` and
+     *  `ErasedMaterialPipelineKey` stay default-constructible. */
+    ErasedMaterialKey() : ErasedMaterialKey(std::monostate{}) {}
+
     /** @brief Bevy derives `PartialEq`, comparing the type and then the value. */
     bool operator==(const ErasedMaterialKey& other) const noexcept {
         return m_type_id == other.m_type_id && m_value->equals(*other.m_value);
@@ -804,6 +810,14 @@ EPIX_EXPORT struct MaterialProperties {
     bool reads_view_transmission_texture = false;
     /** @brief The phase this material is drawn in. */
     RenderPhaseType render_phase_type = RenderPhaseType::Opaque;
+    /** @brief The material's own bind-group data, type-erased (Bevy
+     *  `MaterialProperties::material_key`, `material.rs:441`).
+     *
+     *  It is what lets one specialization cache serve every material type: two materials
+     *  of the same type whose data differs must not share a compiled pipeline. Bevy has no
+     *  default for this and fills it at preparation; the port spells the "no data" case as
+     *  `monostate`, which is what `MaterialData<M>` is for a material without a `Data`. */
+    ErasedMaterialKey material_key{std::monostate{}};
     /** @brief The material's bind-group layout, when it has one of its own. */
     std::optional<render::BindGroupLayoutDescriptor> material_layout;
     /** @brief The draw functions this material's phases use. */
@@ -986,6 +1000,9 @@ struct ErasedRenderAsset<::epix::pbr::MeshMaterial3d<M>> {
         properties->depth_bias                      = material.depth_bias();
         properties->reads_view_transmission_texture = reads_view_transmission_texture;
         properties->render_phase_type               = render_phase_type;
+        // Bevy builds the erased key from the material's own bind-group data
+        // (`material.rs:1761`), which is what makes the specialization key material-specific.
+        properties->material_key = ::epix::pbr::ErasedMaterialKey(AsBindGroup<M>::bind_group_data(material));
         properties->material_layout                 = material_layout;
         properties->bindless                        = ::epix::pbr::material_uses_bindless_resources<M>(device.get());
         properties->shadows_enabled                 = shadows_enabled;

@@ -163,7 +163,7 @@ struct EntitySpecializationTickPair {
  *  `SpecializedMaterial2dViewPipelineCache<M>`, `material.rs:639-652`). */
 EPIX_EXPORT template <typename M>
 struct SpecializedMaterial2dViewPipelineCache {
-    render::sync_world::MainEntityHashMap<std::pair<ecs::Tick, render::CachedPipelineId>> map;
+    render::sync_world::MainEntityHashMap<std::pair<ecs::Tick, render::CachedRenderPipelineId>> map;
 };
 
 /** @brief Per-view specialized pipeline caches for one material (Bevy
