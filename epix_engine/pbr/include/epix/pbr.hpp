@@ -10,6 +10,7 @@
 #include <epix/pbr/light_consts.hpp>
 #include <epix/pbr/light_meta.hpp>
 #include <epix/pbr/light_systems.hpp>
+#include <epix/pbr/material_plugin.hpp>
 #include <epix/pbr/mesh_pipeline_key.hpp>
 #include <epix/pbr/point_light.hpp>
 #include <epix/pbr/probe.hpp>

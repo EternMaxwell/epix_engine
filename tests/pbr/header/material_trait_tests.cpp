@@ -4,6 +4,7 @@
 #include <epix/image.hpp>
 #include <epix/pbr/material.hpp>
 #include <epix/pbr/material_bind_groups.hpp>
+#include <epix/pbr/material_plugin.hpp>
 #include <epix/render.hpp>
 #include <epix/render/alpha.hpp>
 #include <epix/shader.hpp>
@@ -1132,6 +1133,31 @@ TEST(MaterialTrait, TheErasedKeySeparatesMaterialDataAndType) {
     EXPECT_EQ(properties.material_key, pbr::ErasedMaterialKey{})
         << "a material with no bind-group data of its own hashes as the empty key, which is "
            "the default the port needs and Bevy has no counterpart for";
+}
+
+/** @brief A material's properties carry one draw function per phase label, and a label
+ *  nothing registered answers nothing (Bevy `MaterialProperties::draw_functions`,
+ *  `material.rs:1533`, and `get_draw_function`, `:1570-1576`).
+ *
+ *  This is the lookup the queue makes: a miss is what makes it skip a mesh rather than draw
+ *  it with the previous item's pipeline, so a label that silently matched another phase's
+ *  entry would be worse than no entry at all. */
+TEST(MaterialTrait, TheDrawFunctionListIsKeyedByLabel) {
+    pbr::MaterialProperties properties;
+    EXPECT_FALSE(properties.get_draw_function<pbr::MainPassOpaqueDrawFunction>().has_value())
+        << "a material with no prepared properties has no draw function for any phase";
+
+    properties.draw_functions.push_back(
+        {epix::render::label::intern(epix::render::phase::DrawFunctionLabel{pbr::MainPassOpaqueDrawFunction{}}),
+         epix::render::phase::DrawFunctionId{7}});
+
+    const auto opaque = properties.get_draw_function<pbr::MainPassOpaqueDrawFunction>();
+    ASSERT_TRUE(opaque.has_value()) << "the label it was filed under finds it";
+    EXPECT_EQ(opaque->get(), 7u);
+    EXPECT_FALSE(properties.get_draw_function<pbr::MainPassAlphaMaskDrawFunction>().has_value())
+        << "and another phase's label does not";
+    EXPECT_FALSE(properties.get_draw_function<pbr::PrepassOpaqueDrawFunction>().has_value())
+        << "nor does a prepass label for a main-pass entry";
 }
 
 TEST(MaterialBindGroupAllocator, DispatchDrivesTheBindlessArmEndToEnd) {

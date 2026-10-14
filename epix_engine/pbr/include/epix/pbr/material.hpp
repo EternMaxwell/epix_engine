@@ -629,119 +629,9 @@ EPIX_EXPORT struct EPIX_API MaterialsPlugin {
     void attach(epix::app::App& app);
 };
 
-/** @brief Registers one 3D material type (Bevy `MaterialPlugin<M>`,
- *  `bevy_pbr/src/material.rs:339-404`).
- *
- *  What is here is the half the port has: the material asset is registered, and
- *  the registry plus the three extraction and sweep systems are wired in Bevy's
- *  order - extraction inside `MaterialExtractionSystems`, the early sweep after it
- *  and before the late sweep, which is what lets a material of one type be replaced
- *  by another in the same frame.
- *
- *  What is **not** here is the per-view specialization and queueing: there is no
- *  `specialize_material_meshes` and no `queue_material_meshes`, and the shadow half
- *  (`specialize_shadows`, `queue_shadows`, `DrawFunctions<Shadow>`) is unported, so a
- *  material's bind group is prepared and its draw sequence is registered while nothing
- *  specializes it against the mesh pipeline for a view or queues it into a phase.
- *  A material's bind group *is* prepared - by the `ErasedRenderAsset` specialization this
- *  plugin registers - so `PreparedMaterial` and `MaterialProperties` are constructed after
- *  all; what they still lack is the draw-function ids and the shader handles (PBR-66).
- *  The globals every material type shares - `RenderMaterialInstances`,
- *  `MaterialBindGroupAllocators`, the two specialization caches, the material pipeline
- *  resource and the pair that builds and uploads the allocators' bind groups - live in
- *  `MaterialsPlugin` (`material.rs:276-335`), which `PbrPlugin` installs, and the bindings
- *  map lives in `PbrPlugin` itself (`lib.rs:343`), as Bevy has both. */
-EPIX_EXPORT template <typename M>
-    requires std::derived_from<M, Material<M>>
-struct MaterialPlugin {
-    void attach(app::App& app) {
-        assets::app_register_asset<M>(app);
-        // Bevy's `build` installs the prepass pipeline plugin beside the material plugin
-        // (`material.rs:283`), which is what registers the prepass draw sequence. Like Bevy's,
-        // that plugin returns early when no render sub-app exists yet, so a material plugin
-        // must follow `RenderPlugin`.
-        app.add_plugins(PrepassPipelinePlugin{});
-        // Bevy registers the material through the erased render-asset pipeline in the same
-        // plugin build: that is what prepares a material's bind group and records it in the
-        // untyped bindings map. Guarded for the same reason the allocator registration is -
-        // this plugin is instantiated for materials that specialize nothing, and those have
-        // no bind group to prepare.
-        if constexpr (render::render_resource::AsBindGroupImpl<M>) {
-            app.add_plugins(render::erased_render_asset::ErasedRenderAssetPlugin<MeshMaterial3d<M>>{});
-        }
-        // Bevy initialises the specialization queue in `build` too; without it the
-        // PostUpdate system that fills it fails validation and the queue stays empty,
-        // which is what the extraction then has nothing to read.
-        app.world_mut().init_resource<EntitiesNeedingSpecialization<M>>();
-
-        auto render_app = app.get_sub_app_mut(render::Render);
-        if (!render_app) return;
-
-        // Bevy registers the allocator unconditionally, because every Bevy material derives
-        // `AsBindGroup` and so has the label, the layout entries and the bindless members.
-        // This port's `MaterialPlugin` is instantiated for materials that specialize nothing
-        // - its own tests do - so the system is registered only where those pieces exist.
-        // Constraining the plugin itself, as Bevy's supertrait does, is the faithful
-        // alternative and is recorded as remaining work rather than assumed here.
-        if constexpr (render::render_resource::AsBindGroupImpl<M>) {
-            render_app->get().add_systems(
-                render::RenderStartup,
-                ecs::into(add_material_bind_group_allocator<M>).set_name("add material bind group allocator"));
-        }
-
-        // The set must be in the schedule before anything can be ordered against it:
-        // the port warns and *ignores* a hierarchy or dependency whose set is absent,
-        // which is how a declared ordering can end up enforcing nothing. `SetConfig`'s
-        // label is private, so the documented `sets(...)` helper is the way in.
-        render_app->get().configure_sets(app::ScheduleInfo(render::ExtractSchedule),
-                                         ecs::sets(MaterialExtractionSystems::Extract));
-        render_app->get().add_systems(
-            app::ScheduleInfo(render::ExtractSchedule),
-            ecs::into(extract_mesh_materials<M>).in_set(MaterialExtractionSystems::Extract).set_name(
-                "extract mesh materials"));
-        render_app->get().add_systems(
-            app::ScheduleInfo(render::ExtractSchedule),
-            // A system function is a valid ordering label here - `add_systems` takes
-            // it as `SystemSetLabel` - so Bevy's `.before(late_sweep_material_instances)`
-            // is expressible after all, and the early sweep really does run before the
-            // late one that advances the tick.
-            ecs::into(early_sweep_material_instances<M>)
-                .after(MaterialExtractionSystems::Extract)
-                .before(late_sweep_material_instances)
-                .set_name("early sweep material instances"));
-        render_app->get().add_systems(app::ScheduleInfo(render::ExtractSchedule),
-                                      ecs::into(late_sweep_material_instances).set_name("late sweep material instances"));
-
-        if (render_app) {
-            // Bevy orders this set's systems after the mesh extraction and before
-            // the sweep; the set has to be registered for the ordering to apply.
-            render_app->get().configure_sets(app::ScheduleInfo(render::ExtractSchedule),
-                                             ecs::sets(MaterialExtractEntitiesNeedingSpecializationSystems::Extract));
-            render_app->get().add_systems(
-                app::ScheduleInfo(render::ExtractSchedule),
-                ecs::into(extract_entities_needs_specialization<M>)
-                    .in_set(MaterialExtractEntitiesNeedingSpecializationSystems::Extract)
-                    .set_name("extract entities needing material specialization"));            render_app->get().add_systems(
-                app::ScheduleInfo(render::ExtractSchedule),
-                ecs::into(sweep_entities_needing_specialization<M>)
-                    .after(MaterialExtractEntitiesNeedingSpecializationSystems::Extract)
-                    .set_name("sweep entities needing material specialization"));
-        }
-        app.add_systems(app::ScheduleInfo(app::PostUpdate),
-                        ecs::into(check_entities_needing_specialization<M>)
-                            .after(assets::AssetSystems::WriteEvents)
-                            .set_name("check entities needing material specialization"));
-        // Bevy adds the light half only when the material enables shadows.
-        if (M::enable_shadows()) {
-            app.add_systems(app::ScheduleInfo(app::PostUpdate),
-                            ecs::into(check_light_entities_needing_specialization<M>)
-                                .after(assets::AssetSystems::WriteEvents)
-                                .set_name("check light entities needing material specialization"));
-        }
-    }
-
-
-};
+// `MaterialPlugin` and the 3D material's `ErasedRenderAsset` specialization live in
+// `epix/pbr/material_plugin.hpp`: they resolve the phase draw-function ids by name, and those
+// sequences are declared in `mesh_instance.hpp`.
 
 
 /** @brief Marks a mesh as changed when the material it renders with changed (Bevy
@@ -796,6 +686,23 @@ EPIX_EXPORT struct MaterialFragmentShader {};
  *  taking a `MaterialPipeline` and an `ErasedMaterialPipelineKey`, neither of which
  *  is ported - they belong to the pipeline half (`PBR-868`), and this struct gains
  *  the member with them. */
+/** @brief The draw-function labels a material's properties are keyed by (Bevy
+ *  `material.rs:1408-1427`).
+ *
+ *  Bevy resolves each of these to the id its phase registered the draw sequence under, at
+ *  preparation time, and stores the pair in `MaterialProperties::draw_functions`; the queue
+ *  then asks for one by label. `ShadowsDrawFunction` is declared but never filled: the shadow
+ *  family is unported (PBR-72). */
+EPIX_EXPORT struct MainPassOpaqueDrawFunction {};
+EPIX_EXPORT struct MainPassAlphaMaskDrawFunction {};
+EPIX_EXPORT struct MainPassTransmissiveDrawFunction {};
+EPIX_EXPORT struct MainPassTransparentDrawFunction {};
+EPIX_EXPORT struct PrepassOpaqueDrawFunction {};
+EPIX_EXPORT struct PrepassAlphaMaskDrawFunction {};
+EPIX_EXPORT struct DeferredOpaqueDrawFunction {};
+EPIX_EXPORT struct DeferredAlphaMaskDrawFunction {};
+EPIX_EXPORT struct ShadowsDrawFunction {};
+
 EPIX_EXPORT struct MaterialProperties {
     /** @brief Which renderer draws this material. */
     OpaqueRendererMethod render_method = OpaqueRendererMethod::Forward;
@@ -847,6 +754,23 @@ EPIX_EXPORT struct MaterialProperties {
         }
         return nullptr;
     }
+
+    /** @brief The draw function this material registered under @p Label, or nothing (Bevy
+     *  `MaterialProperties::get_draw_function`, `material.rs:1570-1576`).
+     *
+     *  Bevy's takes the label as a value and this takes it as a type parameter, matching
+     *  `get_shader` above: the port keys both lists by their interned label. A material's
+     *  properties carry one entry per phase the phase plugin registered, so a miss means the
+     *  phase has no sequence and the queue skips the mesh rather than drawing it unbound. */
+    template <typename Label>
+    std::optional<render::phase::DrawFunctionId> get_draw_function() const noexcept {
+        const render::phase::InternedDrawFunctionLabel wanted =
+            render::label::intern(render::phase::DrawFunctionLabel{Label{}});
+        for (const auto& [label, draw_function] : draw_functions) {
+            if (label == wanted) return draw_function;
+        }
+        return std::nullopt;
+    }
 };
 
 /** @brief Specializes a 3D material's pipeline against the mesh pipeline, with the
@@ -891,128 +815,9 @@ EPIX_EXPORT struct PreparedMaterial {
 
 }  // namespace epix::pbr
 
-namespace epix::render::erased_render_asset {
+// The 3D material's `ErasedRenderAsset` specialization lives in `epix/pbr/material_plugin.hpp`
+// beside the plugin that installs it; see the note there.
 
-using ::epix::render::render_resource::AsBindGroup;
-using ::epix::render::render_resource::AsBindGroupImpl;
-using ::epix::render::render_resource::RetryBindGroupNextUpdate;
-
-/** @brief Preparing one 3D material's GPU data (Bevy's `ErasedRenderAsset for
- *  MeshMaterial3d<M>`, `material.rs:1611-1861`).
- *
- *  The bind group is allocated through the per-material-type allocator and the result
- *  recorded in the untyped `RenderMaterialBindings`, which is what the mesh builder and the
- *  material draw command read - a prepared material holds only a binding *id*, never the
- *  group. Re-preparing a material frees and reallocates rather than updating in place, as
- *  Bevy does (its own TODO).
- *
- *  Two members are filled only in part: Bevy resolves the nine draw-function ids and the six
- *  shader handles here, and the port has neither the draw commands nor all the shader labels
- *  yet, so `draw_functions` and `shaders` stay empty until they land (PBR-66). */
-template <typename M>
-    requires std::derived_from<M, ::epix::pbr::Material<M>> && AsBindGroupImpl<M>
-struct ErasedRenderAsset<::epix::pbr::MeshMaterial3d<M>> {
-    using SourceAsset    = M;
-    using ExtractedAsset = M;
-    using ErasedAsset    = ::epix::pbr::PreparedMaterial;
-    using Param          = std::tuple<ecs::Res<wgpu::Device>,
-                                      ecs::Res<PipelineServer>,
-                                      ecs::Res<::epix::pbr::DefaultOpaqueRendererMethod>,
-                                      ecs::ResMut<::epix::pbr::MaterialBindGroupAllocators>,
-                                      ecs::ResMut<::epix::pbr::RenderMaterialBindings>,
-                                      typename AsBindGroup<M>::Param>;
-
-    static std::expected<::epix::pbr::PreparedMaterial, PrepareAssetError<M>> prepare_asset(
-        M&& material, const assets::AssetId<M>& material_id, Param& params, const ::epix::pbr::PreparedMaterial*) {
-        auto&& [device, pipeline_server, default_opaque_render_method, bind_group_allocators,
-                render_material_bindings, material_param] = params;
-
-        using ::epix::pbr::Material;
-        using ::epix::pbr::MeshPipelineKey;
-        using ::epix::pbr::OpaqueRendererMethod;
-        using ::epix::pbr::RenderPhaseType;
-
-        const bool shadows_enabled = M::enable_shadows();
-        const bool prepass_enabled = M::enable_prepass();
-
-        const OpaqueRendererMethod render_method = material.opaque_render_method() == OpaqueRendererMethod::Auto
-                                                       ? default_opaque_render_method->method()
-                                                       : material.opaque_render_method();
-
-        // The one mesh-pipeline bit a material contributes itself.
-        const bool reads_view_transmission_texture = material.reads_view_transmission_texture();
-        MeshPipelineKey mesh_pipeline_key_bits     = MeshPipelineKey::NONE;
-        if (reads_view_transmission_texture) {
-            mesh_pipeline_key_bits |= MeshPipelineKey::READS_VIEW_TRANSMISSION_TEXTURE;
-        }
-
-        RenderPhaseType render_phase_type = RenderPhaseType::Opaque;
-        switch (material.alpha_mode().type) {
-            case render::AlphaMode::Type::Blend:
-            case render::AlphaMode::Type::Premultiplied:
-            case render::AlphaMode::Type::Add:
-            case render::AlphaMode::Type::Multiply: render_phase_type = RenderPhaseType::Transparent; break;
-            case render::AlphaMode::Type::Opaque:
-            case render::AlphaMode::Type::AlphaToCoverage:
-                render_phase_type =
-                    reads_view_transmission_texture ? RenderPhaseType::Transmissive : RenderPhaseType::Opaque;
-                break;
-            case render::AlphaMode::Type::Mask: render_phase_type = RenderPhaseType::AlphaMask; break;
-        }
-
-        const BindGroupLayoutDescriptor material_layout =
-            BindGroupLayoutDescriptor()
-                .set_label(std::string(AsBindGroup<M>::label()))
-                .set_entries(AsBindGroup<M>::layout_entries());
-        const wgpu::BindGroupLayout bind_group_layout = pipeline_server->get_bind_group_layout(material_layout);
-
-        auto unprepared = AsBindGroup<M>::unprepared_bind_group(device.get(), bind_group_layout, material,
-                                                                material_param);
-        if (!unprepared) {
-            auto error = std::move(unprepared.error());
-            if (std::holds_alternative<RetryBindGroupNextUpdate>(error)) {
-                return std::unexpected(PrepareAssetError<M>{RetryNextUpdate<M>{std::move(material)}});
-            }
-            return std::unexpected(PrepareAssetError<M>{std::move(error)});
-        }
-
-        // Bevy unwraps here: a material whose type was never registered cannot be prepared.
-        ::epix::pbr::MaterialBindGroupAllocator* allocator =
-            bind_group_allocators->get(::epix::meta::type_id<M>());
-        assert(allocator != nullptr);
-
-        const assets::UntypedAssetId untyped_id{material_id};
-        ::epix::pbr::MaterialBindingId binding{};
-        const auto existing = render_material_bindings->bindings.find(untyped_id);
-        if (existing != render_material_bindings->bindings.end()) {
-            allocator->free(existing->second);
-            binding      = allocator->allocate_unprepared(std::move(*unprepared), material_layout);
-            existing->second = binding;
-        } else {
-            binding = allocator->allocate_unprepared(std::move(*unprepared), material_layout);
-            render_material_bindings->bindings.insert_or_assign(untyped_id, binding);
-        }
-
-        auto properties                             = std::make_shared<::epix::pbr::MaterialProperties>();
-        properties->render_method                   = render_method;
-        properties->alpha_mode                      = material.alpha_mode();
-        properties->mesh_pipeline_key_bits          = mesh_pipeline_key_bits;
-        properties->depth_bias                      = material.depth_bias();
-        properties->reads_view_transmission_texture = reads_view_transmission_texture;
-        properties->render_phase_type               = render_phase_type;
-        // Bevy builds the erased key from the material's own bind-group data
-        // (`material.rs:1761`), which is what makes the specialization key material-specific.
-        properties->material_key = ::epix::pbr::ErasedMaterialKey(AsBindGroup<M>::bind_group_data(material));
-        properties->material_layout                 = material_layout;
-        properties->bindless                        = ::epix::pbr::material_uses_bindless_resources<M>(device.get());
-        properties->shadows_enabled                 = shadows_enabled;
-        properties->prepass_enabled                 = prepass_enabled;
-
-        return ::epix::pbr::PreparedMaterial{.binding = binding, .properties = std::move(properties)};
-    }
-};
-
-}  // namespace epix::render::erased_render_asset
 
 namespace epix::pbr {
 

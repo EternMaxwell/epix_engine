@@ -6,6 +6,7 @@
 #include <epix/image.hpp>
 #include <epix/mesh.hpp>
 #include <epix/pbr/material.hpp>
+#include <epix/pbr/material_plugin.hpp>
 #include <epix/pbr/mesh_view_key.hpp>
 #include <epix/pbr/scattering_medium.hpp>
 #include <epix/pbr/scattering_medium_plugin.hpp>
