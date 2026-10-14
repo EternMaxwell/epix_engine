@@ -1197,6 +1197,154 @@ TEST(MaterialBindGroupAllocator, DispatchDrivesTheBindlessArmEndToEnd) {
         << "a bindless material has no say in its own bind group, so a prepared one is refused";
 }
 
+/** @brief Two stand-in material types: the allocator registry is keyed by material type,
+ *  and what the prepare systems have to reach is every key in it. */
+struct FirstPreparedMaterial {};
+struct SecondPreparedMaterial {};
+
+/** @brief The two `PrepareBindGroups` systems drive *every* registered allocator (Bevy
+ *  `prepare_material_bind_groups` and `write_material_bind_group_buffers`,
+ *  `material.rs:1907-1937`), which is the half that turns an allocated material into the
+ *  bind group its draw binds.
+ *
+ *  Two allocators under two type keys: a walk that stopped at the first would leave the
+ *  second material without a group, which is the failure a registry keyed by type can have
+ *  and the one this pins. Bevy runs the pair in the render world's `PrepareBindGroups`;
+ *  registering them in `RenderStartup` here drives the same systems through the same
+ *  parameter fetch, which is what a windowless test app can run. */
+TEST(MaterialBindGroupAllocator, ThePrepareSystemsDriveEveryRegisteredAllocator) {
+    App app = App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::time::TimePlugin{})
+        .add_plugins(AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::shader::ShaderPlugin{});
+    try {
+        app.add_plugins(render::RenderPlugin{.synchronous_pipeline_compilation = true});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+    // The registry and the pair are this plugin's, as they are in Bevy (`material.rs:276-335`).
+    app.add_plugins(pbr::MaterialsPlugin{});
+
+    auto render_app = app.get_sub_app_mut(render::Render);
+    ASSERT_TRUE(render_app.has_value());
+    auto& render = render_app->get();
+    pbr::MaterialBindingId first_id{};
+    pbr::MaterialBindingId second_id{};
+    {
+        auto& world               = render.world_mut();
+        const auto device         = world.get_resource<wgpu::Device>();
+        const auto queue          = world.get_resource<wgpu::Queue>();
+        const auto server         = world.get_resource<render::PipelineServer>();
+        const auto fallback_image = world.get_resource<render::texture::FallbackImage>();
+        ASSERT_TRUE(device.has_value());
+        ASSERT_TRUE(queue.has_value());
+        ASSERT_TRUE(server.has_value());
+        ASSERT_TRUE(fallback_image.has_value());
+
+        using render::render_resource::BindlessIndex;
+        using render::render_resource::BindlessResourceType;
+
+        constexpr std::uint32_t kBufferBinding = 10;
+        constexpr std::uint32_t kDataBinding   = 11;
+        constexpr std::uint32_t kCapacity      = 2;
+
+        render::render_resource::BindlessDescriptor descriptor;
+        descriptor.resources = {BindlessResourceType::Buffer, BindlessResourceType::DataBuffer};
+        descriptor.buffers.push_back(render::render_resource::BindlessBufferDescriptor{
+            .binding_number = render::render_resource::BindingNumber{kBufferBinding},
+            .bindless_index = BindlessIndex{0},
+            .size           = std::nullopt});
+        descriptor.buffers.push_back(render::render_resource::BindlessBufferDescriptor{
+            .binding_number = render::render_resource::BindingNumber{kDataBinding},
+            .bindless_index = BindlessIndex{1},
+            .size           = 16});
+        descriptor.index_tables.push_back(render::render_resource::BindlessIndexTableDescriptor{
+            .indices        = {.start = BindlessIndex{0}, .end = BindlessIndex{2}},
+            .binding_number = render::render_resource::BindingNumber{0}});
+
+        auto layout_entries = render::render_resource::create_bindless_bind_group_layout_entries(
+            1, kCapacity, render::render_resource::BindingNumber{0});
+        layout_entries.push_back(render::render_resource::binding_types::storage_buffer_read_only(false, 16)
+                                     .count(kCapacity)
+                                     .build(kBufferBinding, wgpu::ShaderStage::eVertex | wgpu::ShaderStage::eFragment));
+        layout_entries.push_back(render::render_resource::binding_types::storage_buffer_read_only(false, 16)
+                                     .build(kDataBinding, wgpu::ShaderStage::eVertex | wgpu::ShaderStage::eFragment));
+        const render::BindGroupLayoutDescriptor layout =
+            render::BindGroupLayoutDescriptor().set_label("prepare systems layout").set_entries(layout_entries);
+
+        wgpu::SamplerDescriptor filtering;
+        wgpu::SamplerDescriptor non_filtering;
+        wgpu::SamplerDescriptor comparison;
+        comparison.setCompare(wgpu::CompareFunction::eAlways);
+        const pbr::FallbackBindlessResources fallbacks{.filtering_sampler = device->get().createSampler(filtering),
+                                                       .non_filtering_sampler = device->get().createSampler(non_filtering),
+                                                       .comparison_sampler = device->get().createSampler(comparison)};
+        // The samplers a real app gets from `init_fallback_bindless_resources` in
+        // `RenderStartup`; this test runs the prepare systems in `Update`, so it supplies them.
+        world.insert_resource(fallbacks);
+
+        const auto allocate_one = [&](pbr::MaterialBindGroupAllocator& allocator) {
+            const auto buffer = device->get().createBuffer(wgpu::BufferDescriptor().setSize(16).setUsage(
+                wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst));
+            render::render_resource::BindingResources bindings;
+            bindings.push_back(0, render::render_resource::BindingResources::buffer(buffer));
+            bindings.push_back(1, render::render_resource::BindingResources::data(
+                                      render::render_resource::OwnedData{std::vector<std::byte>(16)}));
+            return allocator.allocate_unprepared(
+                render::render_resource::UnpreparedBindGroup{.bindings = std::move(bindings)}, layout);
+        };
+
+        const auto make_allocator = [&](std::string_view label) {
+            return pbr::MaterialBindGroupAllocator::make(
+                device->get(), label, descriptor, layout,
+                render::render_resource::BindlessSlabResourceLimit{.custom = kCapacity});
+        };
+
+        auto first  = make_allocator("first prep material");
+        auto second = make_allocator("second prep material");
+        first_id  = allocate_one(first);
+        second_id = allocate_one(second);
+
+        const auto before = first.get(first_id.group);
+        ASSERT_TRUE(before.has_value());
+        EXPECT_EQ(before->bind_group(), nullptr)
+            << "an allocated material has no bind group until the prepare systems build one";
+
+        auto& allocators = world.resource_mut<pbr::MaterialBindGroupAllocators>();
+        allocators.insert(epix::meta::type_id<FirstPreparedMaterial>(), std::move(first));
+        allocators.insert(epix::meta::type_id<SecondPreparedMaterial>(), std::move(second));
+    }
+
+    // Bevy runs the pair in the render world's `PrepareBindGroups`. This test drives the same
+    // two systems in `Update` instead of `RenderStartup`, because that schedule is empty here
+    // while the render world's startup holds systems this test has no app for.
+    render.add_systems(epix::app::Update,
+                       ecs::into(pbr::prepare_material_bind_groups).set_name("prepare material bind groups"));
+    render.add_systems(epix::app::Update, ecs::into(pbr::write_material_bind_group_buffers)
+                                              .after(pbr::prepare_material_bind_groups)
+                                              .set_name("write material bind group buffers"));
+    render.run_schedule(epix::app::Update);
+
+    {
+        auto& world     = render.world_mut();
+        auto& allocators = world.resource_mut<pbr::MaterialBindGroupAllocators>();
+        const auto* first_allocator  = allocators.get(epix::meta::type_id<FirstPreparedMaterial>());
+        const auto* second_allocator = allocators.get(epix::meta::type_id<SecondPreparedMaterial>());
+        ASSERT_NE(first_allocator, nullptr);
+        ASSERT_NE(second_allocator, nullptr);
+
+        const auto first_slab  = first_allocator->get(first_id.group);
+        const auto second_slab = second_allocator->get(second_id.group);
+        ASSERT_TRUE(first_slab.has_value());
+        ASSERT_TRUE(second_slab.has_value());
+        EXPECT_NE(first_slab->bind_group(), nullptr) << "the systems built the first material's group";
+        EXPECT_NE(second_slab->bind_group(), nullptr)
+            << "and the second's, which a walk that stopped at the first allocator would miss";
+    }
+}
+
 /** @brief A buffer array's base entry carries its first buffer as well as the chain (the
  *  minimal case behind BND-5).
  *
@@ -1442,12 +1590,16 @@ TEST(MaterialBindGroupAllocator, RegisteringAMaterialInstantiatesThePreparingPat
     // real app gets both from `DefaultPlugins`.
     app.add_plugins(epix::core_graph::CoreGraphPlugin{});
 
+    // The globals a material type shares are `MaterialsPlugin`'s, which `PbrPlugin` installs
+    // in a real app (`lib.rs:222-228`); `MaterialPlugin<M>` registers its own type's pieces.
+    app.add_plugins(pbr::MaterialsPlugin{});
+
     // The assertion is that this compiles and runs: the bodies above are instantiated by it.
     app.add_plugins(pbr::MaterialPlugin<MaterialPrepMaterial>{});
     auto render_app = app.get_sub_app_mut(render::Render);
     ASSERT_TRUE(render_app.has_value());
     EXPECT_TRUE(render_app->get().world().get_resource<pbr::MaterialBindGroupAllocators>().has_value())
-        << "the plugin initialises the allocator registry beside the instances";
+        << "MaterialsPlugin initialises the allocator registry every material type shares";
 }
 
 /** @brief Which mesh bind group a view gets (Bevy `MeshPhaseBindGroups::get`,

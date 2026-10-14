@@ -587,6 +587,42 @@ EPIX_EXPORT struct MaterialPipeline {
  *  piece of the system half that turns a material into a drawable pipeline. */
 EPIX_EXPORT EPIX_API void init_material_pipeline(ecs::Commands commands, ecs::Res<MeshPipeline> mesh_pipeline);
 
+/** @brief Create and recreate any bind groups holding materials that were modified,
+ *  by asking every registered allocator to prepare its own (Bevy
+ *  `prepare_material_bind_groups`, `material.rs:1907-1922`).
+ *
+ *  Bevy walks the registry through its `Deref`; here the map is a member, and the
+ *  dispatch takes the union of what its two arms need - the queue for the non-bindless
+ *  arm's uniform buffers, the fallback resources and image for the bindless one. */
+EPIX_EXPORT EPIX_API void prepare_material_bind_groups(ecs::ResMut<MaterialBindGroupAllocators> allocators,
+                                                       ecs::Res<wgpu::Device> render_device,
+                                                       ecs::Res<wgpu::Queue> render_queue,
+                                                       ecs::Res<render::PipelineServer> pipeline_server,
+                                                       ecs::Res<render::texture::FallbackImage> fallback_image,
+                                                       ecs::Res<FallbackBindlessResources> fallback_resources);
+
+/** @brief Upload every buffer the allocators manage (Bevy
+ *  `write_material_bind_group_buffers`, `material.rs:1929-1937`).
+ *
+ *  Only the bindless arm owns buffers - the non-bindless one keeps its data in uniform
+ *  buffers it writes itself - so this is a no-op for a non-bindless material type. */
+EPIX_EXPORT EPIX_API void write_material_bind_group_buffers(ecs::ResMut<MaterialBindGroupAllocators> allocators,
+                                                            ecs::Res<wgpu::Device> render_device,
+                                                            ecs::Res<wgpu::Queue> render_queue);
+
+/** @brief Bevy `MaterialsPlugin` (`material.rs:276-335`), the once-per-app plugin that
+ *  owns everything every material type shares, added by `PbrPlugin` (`lib.rs:225`).
+ *
+ *  Bevy also registers here the material draw commands, `specialize_material_meshes`,
+ *  `queue_material_meshes`, the shadow family and the three light caches. The port
+ *  registers the draw commands from the plugins that own their phases - an equivalence
+ *  recorded against PBR-67 and PBR-69 - and has none of the systems or caches the rest
+ *  need, so what this carries is the shared registries, the material pipeline resource
+ *  and the pair that builds then uploads the allocators' bind groups. */
+EPIX_EXPORT struct EPIX_API MaterialsPlugin {
+    void attach(epix::app::App& app);
+};
+
 /** @brief Registers one 3D material type (Bevy `MaterialPlugin<M>`,
  *  `bevy_pbr/src/material.rs:339-404`).
  *
@@ -596,26 +632,19 @@ EPIX_EXPORT EPIX_API void init_material_pipeline(ecs::Commands commands, ecs::Re
  *  and before the late sweep, which is what lets a material of one type be replaced
  *  by another in the same frame.
  *
- *  What is **not** here is every system that would turn an extracted material into
- *  something drawable: there is no `prepare_materials`, no
- *  `specialize_material_meshes` and no `queue_material_meshes`, so nothing specializes a
- *  material's pipeline against the mesh pipeline or queues it into a render phase. A
- *  material's bind group *is* prepared - by the `ErasedRenderAsset` specialization this
+ *  What is **not** here is the per-view specialization and queueing: there is no
+ *  `specialize_material_meshes` and no `queue_material_meshes`, and the shadow half
+ *  (`specialize_shadows`, `queue_shadows`, `DrawFunctions<Shadow>`) is unported, so a
+ *  material's bind group is prepared and its draw sequence is registered while nothing
+ *  specializes it against the mesh pipeline for a view or queues it into a phase.
+ *  A material's bind group *is* prepared - by the `ErasedRenderAsset` specialization this
  *  plugin registers - so `PreparedMaterial` and `MaterialProperties` are constructed after
- *  all; what they still lack is the draw-function ids and the shader handles (PBR-66), and
- *  there is no draw command yet for a phase to use them with. Also
- *  What is absent is the render-world half and the bind-group allocator:
- *  `add_material_bind_group_allocator` with `MaterialBindGroupAllocator`, then
- *  `prepare_materials`, `specialize_material_meshes` and `queue_material_meshes`
- *  (PBR-34, PBR-39). The PostUpdate bookkeeping is **not** missing - the four
- *  `EntitiesNeedingSpecialization` systems (`check_`,
- *  `extract_entities_needs_specialization`, `check_light_` and `sweep_`) and both
- *  mesh-change markers are in this file and in `epix/mesh/components.hpp` - and
- *  neither are the erased render-asset plugin
- *  (`epix/render/erased_render_asset.hpp`), the specialization caches,
- *  `ErasedMaterialPipelineKey` or `MaterialPipelineSpecializer`. The registry
- *  resource is inserted here rather than by Bevy's `MaterialsPlugin`, which is
- *  global and unported. */
+ *  all; what they still lack is the draw-function ids and the shader handles (PBR-66).
+ *  The globals every material type shares - `RenderMaterialInstances`,
+ *  `MaterialBindGroupAllocators`, the two specialization caches, the material pipeline
+ *  resource and the pair that builds and uploads the allocators' bind groups - live in
+ *  `MaterialsPlugin` (`material.rs:276-335`), which `PbrPlugin` installs, and the bindings
+ *  map lives in `PbrPlugin` itself (`lib.rs:343`), as Bevy has both. */
 EPIX_EXPORT template <typename M>
     requires std::derived_from<M, Material<M>>
 struct MaterialPlugin {
@@ -641,20 +670,6 @@ struct MaterialPlugin {
 
         auto render_app = app.get_sub_app_mut(render::Render);
         if (!render_app) return;
-
-        // `init_resource` rather than `insert_resource`: one registry serves every
-        // material type, so a second material plugin must not wipe the first's
-        // contents.
-        render_app->get().world_mut().init_resource<RenderMaterialInstances>();
-        // Bevy initialises the allocator registry in `MaterialsPlugin`, which this port
-        // does not have; like the instances above, one registry serves every material type.
-        render_app->get().world_mut().init_resource<MaterialBindGroupAllocators>();
-
-        // Bevy registers the material-pipeline resource in `RenderStartup`, before
-        // anything specializes against it (`material.rs:300`), and the allocator
-        // registration in the same schedule (`material.rs:382`).
-        render_app->get().add_systems(render::RenderStartup,
-                                      ecs::into(init_material_pipeline).set_name("init material pipeline"));
 
         // Bevy registers the allocator unconditionally, because every Bevy material derives
         // `AsBindGroup` and so has the label, the layout entries and the bindless members.
@@ -696,17 +711,6 @@ struct MaterialPlugin {
             // the sweep; the set has to be registered for the ordering to apply.
             render_app->get().configure_sets(app::ScheduleInfo(render::ExtractSchedule),
                                              ecs::sets(MaterialExtractEntitiesNeedingSpecializationSystems::Extract));
-            render_app->get().world_mut().init_resource<EntitySpecializationTicks>();
-            // The bindings map the extraction and the instance builder both read. It
-            // was created by nothing at all until batch 155 - the same omission as
-            // `EntitiesNeedingSpecialization` (batch 128) and
-            // `SpecializedMaterialPipelineCache` (batch 131), and this one made the
-            // mesh extraction skip itself on parameter validation in *both* branches.
-            render_app->get().world_mut().init_resource<RenderMaterialBindings>();
-            // The sweep clears this cache, so it has to exist for the sweep to run at
-            // all - without it the system fails parameter validation and the port logs
-            // the error, which is how this was found.
-            render_app->get().world_mut().init_resource<SpecializedMaterialPipelineCache>();
             render_app->get().add_systems(
                 app::ScheduleInfo(render::ExtractSchedule),
                 ecs::into(extract_entities_needs_specialization<M>)

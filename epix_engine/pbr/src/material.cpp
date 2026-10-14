@@ -35,6 +35,57 @@ void init_material_pipeline(ecs::Commands commands, ecs::Res<MeshPipeline> mesh_
     commands.insert_resource(MaterialPipeline{.mesh_pipeline = *mesh_pipeline});
 }
 
+void prepare_material_bind_groups(ecs::ResMut<MaterialBindGroupAllocators> allocators,
+                                  ecs::Res<wgpu::Device> render_device, ecs::Res<wgpu::Queue> render_queue,
+                                  ecs::Res<render::PipelineServer> pipeline_server,
+                                  ecs::Res<render::texture::FallbackImage> fallback_image,
+                                  ecs::Res<FallbackBindlessResources> fallback_resources) {
+    // Bevy `prepare_material_bind_groups` (`material.rs:1907-1922`).
+    for (auto& [type, allocator] : allocators->allocators) {
+        (void)type;
+        allocator.prepare_bind_groups(*render_device, *render_queue, *pipeline_server, *fallback_resources,
+                                      *fallback_image);
+    }
+}
+
+void write_material_bind_group_buffers(ecs::ResMut<MaterialBindGroupAllocators> allocators,
+                                       ecs::Res<wgpu::Device> render_device, ecs::Res<wgpu::Queue> render_queue) {
+    // Bevy `write_material_bind_group_buffers` (`material.rs:1929-1937`).
+    for (auto& [type, allocator] : allocators->allocators) {
+        (void)type;
+        allocator.write_buffers(*render_device, *render_queue);
+    }
+}
+
+void MaterialsPlugin::attach(epix::app::App& app) {
+    // Bevy `MaterialsPlugin::build` (`material.rs:281-335`), as far as the port has it.
+    auto render_app = app.get_sub_app_mut(render::Render);
+    if (!render_app) return;
+    auto& render = render_app->get();
+
+    // `init_resource` rather than `insert_resource`: one registry serves every material
+    // type, so a second material plugin must not wipe the first's contents.
+    render.world_mut().init_resource<RenderMaterialInstances>();
+    render.world_mut().init_resource<MaterialBindGroupAllocators>();
+    render.world_mut().init_resource<EntitySpecializationTicks>();
+    render.world_mut().init_resource<SpecializedMaterialPipelineCache>();
+    render.world_mut().init_resource<render::SpecializedMeshPipelines<MaterialPipelineSpecializer>>();
+
+    // Bevy registers the material-pipeline resource in `RenderStartup`, before anything
+    // specializes against it (`material.rs:300`).
+    render.add_systems(render::RenderStartup,
+                       ecs::into(init_material_pipeline).set_name("init material pipeline"));
+
+    // Bevy chains the pair and puts both in `PrepareBindGroups` (`material.rs:312-320`).
+    render.add_systems(render::Render, ecs::into(prepare_material_bind_groups)
+                                           .in_set(render::RenderSystems::PrepareBindGroups)
+                                           .set_name("prepare material bind groups"));
+    render.add_systems(render::Render, ecs::into(write_material_bind_group_buffers)
+                                           .after(prepare_material_bind_groups)
+                                           .in_set(render::RenderSystems::PrepareBindGroups)
+                                           .set_name("write material bind group buffers"));
+}
+
 std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineError>
 MaterialPipelineSpecializer::specialize(const Key& key, const mesh::MeshVertexBufferLayoutRef& layout) const {
     // Bevy `SpecializedMeshPipeline for MaterialPipelineSpecializer`

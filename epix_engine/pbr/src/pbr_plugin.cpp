@@ -16,8 +16,11 @@ void PbrPlugin::attach(epix::app::App& app) {
     app.world_mut().init_resource<DefaultOpaqueRendererMethod>();
 
     // Bevy passes its own `use_gpu_instance_buffer_builder` and `debug_flags` through to
-    // these two; this port has the first, and no debug flags to pass yet.
+    // these two; this port has the first, and no debug flags to pass yet. `MaterialsPlugin`
+    // follows `MeshRenderPlugin` in Bevy's tuple (`lib.rs:222-228`), and it is the plugin
+    // that owns the globals every material type shares.
     app.add_plugins(MeshRenderPlugin{.use_gpu_instance_buffer_builder = use_gpu_instance_buffer_builder});
+    app.add_plugins(MaterialsPlugin{});
     app.add_plugins(epix::render::ExtractResourcePlugin<DefaultOpaqueRendererMethod>{});
     app.add_plugins(LightmapPlugin{});
     app.add_plugins(LightPlugin{});
@@ -44,6 +47,11 @@ void PbrPlugin::ready(epix::app::App& app) {
     render_app->get().add_systems(render::RenderStartup,
                                   ecs::into(init_fallback_bindless_resources)
                                       .set_name("init fallback bindless resources"));
+
+    // Bevy creates this beside `LightMeta` in `PbrPlugin::finish` (`lib.rs:343`). The mesh
+    // extraction, the instance builder and `SetMaterialBindGroup` all read it, and an app
+    // that adds `MaterialPlugin` without this plugin has nothing to record bindings in.
+    render_app->get().world_mut().init_resource<RenderMaterialBindings>();
 }
 
 }  // namespace epix::pbr

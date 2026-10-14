@@ -78,9 +78,14 @@ void add_render_dependent_prerequisites(App& app) {
     // `DefaultPlugins`; Bevy's `MaterialPlugin` has the same requirement, since it is
     // what registers the commands there.
     app.add_plugins(epix::core_graph::CoreGraphPlugin{});
+    // The globals every material type shares - the allocator registry, the specialization
+    // caches and the material pipeline resource - belong to `MaterialsPlugin`, which
+    // `PbrPlugin` installs beside `MeshRenderPlugin` in a real app (`lib.rs:222-228`).
+    // `MaterialPlugin<M>` registers only its own type's pieces.
+    app.add_plugins(pbr::MaterialsPlugin{});
 
     // `extract_meshes_for_cpu_building` takes `Res<RenderMaterialBindings>`, which
-    // `MaterialPlugin` creates (material.hpp:475). Bevy's signature requires it too
+    // `PbrPlugin` creates in a real app (`lib.rs:343`). Bevy's signature requires it too
     // (bevy_pbr/src/render/mesh.rs:1346-1351). Tests that drive the extraction systems
     // without that plugin still need the resource present, exactly as
     // mesh_instance_tests.cpp does.
