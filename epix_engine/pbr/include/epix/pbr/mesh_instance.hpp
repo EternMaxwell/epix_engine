@@ -616,6 +616,30 @@ EPIX_EXPORT EPIX_API void specialize_material_meshes(
     ecs::ResMut<render::SpecializedMeshPipelines<MaterialPipelineSpecializer>> pipelines,
     ecs::Res<MaterialPipeline> pipeline, ecs::Res<render::PipelineServer> pipeline_server,
     ecs::SystemChangeTick ticks);
+
+/** @brief Queue each visible mesh into the phase its material belongs to (Bevy
+ *  `queue_material_meshes`, `material.rs:1152-1350`).
+ *
+ *  Bevy registers it in `RenderSystems::QueueMeshes`, after `specialize_material_meshes` has
+ *  filled the per-view pipeline cache it reads. The four arms are the four phase kinds: the
+ *  sorted ones take a view-space distance plus the material's depth bias, the binned ones a
+ *  batch-set key holding the pipeline, the draw function, the material's bind group and the
+ *  mesh's slabs. The opaque arm additionally honours the deferred renderer by *updating the
+ *  cache without queuing*, so the entity is not re-examined every frame while it is drawn by
+ *  the deferred pass. */
+EPIX_EXPORT EPIX_API void queue_material_meshes(
+    ecs::Res<render::erased_render_asset::ErasedRenderAssets<PreparedMaterial>> render_materials,
+    ecs::Res<RenderMeshInstances> render_mesh_instances,
+    ecs::Res<RenderMaterialInstances> render_material_instances, ecs::Res<render::mesh::MeshAllocator> mesh_allocator,
+    ecs::Res<render::batching::GpuPreprocessingSupport> gpu_preprocessing_support,
+    ecs::ResMut<render::phase::ViewBinnedRenderPhases<core_graph::core_3d::Opaque3d>> opaque_render_phases,
+    ecs::ResMut<render::phase::ViewBinnedRenderPhases<core_graph::core_3d::AlphaMask3d>> alpha_mask_render_phases,
+    ecs::ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_3d::Transmissive3d>> transmissive_render_phases,
+    ecs::ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_3d::Transparent3d>> transparent_render_phases,
+    ecs::Query<ecs::Item<const render::sync_world::MainEntity&, const render::view::ExtractedView&,
+                         const render::view::RenderVisibleEntities&>>
+        views,
+    ecs::Res<SpecializedMaterialPipelineCache> specialized_material_pipeline_cache);
 /** @brief Bind one mesh's bind group at slot `I`. The tag Bevy spells
  *  `SetMeshBindGroup<const I: usize>` (`render/mesh.rs:3080`); the command is the
  *  `RenderCommand` specialisation below, in `epix::render::phase` where the trait lives. */

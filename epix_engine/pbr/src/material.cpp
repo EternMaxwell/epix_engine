@@ -180,6 +180,159 @@ void specialize_material_meshes(
     std::erase_if(cache, [&all_views](const auto& entry) { return !all_views.contains(entry.first); });
 }
 
+void queue_material_meshes(
+    ecs::Res<render::erased_render_asset::ErasedRenderAssets<PreparedMaterial>> render_materials,
+    ecs::Res<RenderMeshInstances> render_mesh_instances,
+    ecs::Res<RenderMaterialInstances> render_material_instances, ecs::Res<render::mesh::MeshAllocator> mesh_allocator,
+    ecs::Res<render::batching::GpuPreprocessingSupport> gpu_preprocessing_support,
+    ecs::ResMut<render::phase::ViewBinnedRenderPhases<core_graph::core_3d::Opaque3d>> opaque_render_phases,
+    ecs::ResMut<render::phase::ViewBinnedRenderPhases<core_graph::core_3d::AlphaMask3d>> alpha_mask_render_phases,
+    ecs::ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_3d::Transmissive3d>> transmissive_render_phases,
+    ecs::ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_3d::Transparent3d>> transparent_render_phases,
+    ecs::Query<ecs::Item<const render::sync_world::MainEntity&, const render::view::ExtractedView&,
+                         const render::view::RenderVisibleEntities&>>
+        views,
+    ecs::Res<SpecializedMaterialPipelineCache> specialized_material_pipeline_cache) {
+    // Bevy `queue_material_meshes` (`material.rs:1152-1350`).
+    using core_graph::core_3d::Opaque3dBatchSetKey;
+    using core_graph::core_3d::Opaque3dBinKey;
+    using core_graph::core_3d::OpaqueNoLightmap3dBatchSetKey;
+    using core_graph::core_3d::OpaqueNoLightmap3dBinKey;
+    using core_graph::core_3d::Transmissive3d;
+    using core_graph::core_3d::Transparent3d;
+
+    for (auto&& [view_entity, view, visible_entities] : views.iter()) {
+        (void)view_entity;
+        // Bevy requires all four phases for a view before it queues anything into any of
+        // them, so a view that is in one pass but not another is skipped whole.
+        const auto transparent_phase = transparent_render_phases->find(view.retained_view_entity);
+        if (transparent_phase == transparent_render_phases->end()) continue;
+        const auto transmissive_phase = transmissive_render_phases->find(view.retained_view_entity);
+        if (transmissive_phase == transmissive_render_phases->end()) continue;
+        auto opaque_phase = opaque_render_phases->phases.find(view.retained_view_entity);
+        if (opaque_phase == opaque_render_phases->phases.end()) continue;
+        auto alpha_mask_phase = alpha_mask_render_phases->phases.find(view.retained_view_entity);
+        if (alpha_mask_phase == alpha_mask_render_phases->phases.end()) continue;
+
+        const auto view_cache_it = specialized_material_pipeline_cache->map.find(view.retained_view_entity);
+        if (view_cache_it == specialized_material_pipeline_cache->map.end()) continue;
+        const auto& view_cache = view_cache_it->second;
+
+        const auto rangefinder = view.rangefinder3d();
+
+        for (auto&& [visible_render_entity, visible_main_entity] :
+             visible_entities.template get<epix::mesh::Mesh3d>()) {
+            const auto cached_it = view_cache.map.find(visible_main_entity);
+            if (cached_it == view_cache.map.end()) continue;
+            const auto current_change_tick = cached_it->second.first;
+            const auto pipeline_id         = cached_it->second.second;
+
+            // A binned phase that already holds the entity up to date needs no work; the
+            // sorted phases always re-queue, because their order depends on the camera.
+            if (opaque_phase->second.validate_cached_entity(visible_main_entity, current_change_tick) ||
+                alpha_mask_phase->second.validate_cached_entity(visible_main_entity, current_change_tick)) {
+                continue;
+            }
+
+            const auto material_it = render_material_instances->instances.find(visible_main_entity);
+            if (material_it == render_material_instances->instances.end()) continue;
+            const auto mesh_instance = render_mesh_instances->render_mesh_queue_data(visible_main_entity);
+            if (!mesh_instance.has_value()) continue;
+            const auto* material = render_materials->get(material_it->second.asset_id);
+            if (material == nullptr) continue;
+
+            // The slabs the mesh's vertex and index data live in, as the batch-set key needs
+            // them (Bevy `mesh_allocator.mesh_slabs`).
+            const auto [vertex_slab, index_slab] = mesh_allocator->mesh_slabs(mesh_instance->record().mesh_asset_id);
+            const auto entity_value              = std::pair{visible_render_entity, visible_main_entity};
+            const auto material_bind_group_index = std::optional{material->binding.group.index};
+            const auto batch_phase_type =
+                render::phase::binned_render_phase_type_for_mesh(mesh_instance->record().should_batch(),
+                                                                 *gpu_preprocessing_support);
+
+            switch (material->properties->render_phase_type) {
+                case RenderPhaseType::Transmissive: {
+                    const float distance =
+                        rangefinder.distance(mesh_instance->center) + material->properties->depth_bias;
+                    const auto draw_function =
+                        material->properties->get_draw_function<MainPassTransmissiveDrawFunction>();
+                    if (!draw_function.has_value()) continue;
+                    transmissive_phase->second.add(Transmissive3d{
+                        .distance          = distance,
+                        .pipeline_id       = pipeline_id,
+                        .entity_value      = entity_value,
+                        .draw_func         = *draw_function,
+                        .batch_range_value = {0u, 1u},
+                        .extra_index_value = render::phase::PhaseItemExtraIndex{},
+                        .indexed_value     = index_slab.has_value(),
+                    });
+                    break;
+                }
+                case RenderPhaseType::Opaque: {
+                    if (material->properties->render_method == OpaqueRendererMethod::Deferred) {
+                        // Not queued, but still cached, so the entity is not re-examined every
+                        // frame while the deferred pass draws it (Bevy `material.rs:1239-1246`).
+                        opaque_phase->second.update_cache(visible_main_entity, std::nullopt, current_change_tick);
+                        continue;
+                    }
+                    const auto draw_function = material->properties->get_draw_function<MainPassOpaqueDrawFunction>();
+                    if (!draw_function.has_value()) continue;
+                    opaque_phase->second.add(
+                        Opaque3dBatchSetKey{
+                            .pipeline_id               = pipeline_id,
+                            .draw_func                 = *draw_function,
+                            .material_bind_group_index = material_bind_group_index,
+                            .vertex_slab               = vertex_slab.value_or(render::mesh::SlabId{}),
+                            .index_slab                = index_slab,
+                            .lightmap_slab =
+                                mesh_instance->record().lightmap_slab_index.has_value()
+                                    ? std::optional{mesh_instance->record().lightmap_slab_index->index}
+                                    : std::nullopt,
+                        },
+                        Opaque3dBinKey{.asset_id = assets::UntypedAssetId{
+                                           mesh_instance->record().mesh_asset_id}},
+                        entity_value, mesh_instance->current_uniform_index, batch_phase_type, current_change_tick);
+                    break;
+                }
+                case RenderPhaseType::AlphaMask: {
+                    const auto draw_function =
+                        material->properties->get_draw_function<MainPassAlphaMaskDrawFunction>();
+                    if (!draw_function.has_value()) continue;
+                    alpha_mask_phase->second.add(
+                        OpaqueNoLightmap3dBatchSetKey{
+                            .pipeline_id               = pipeline_id,
+                            .draw_func                 = *draw_function,
+                            .material_bind_group_index = material_bind_group_index,
+                            .vertex_slab               = vertex_slab.value_or(render::mesh::SlabId{}),
+                            .index_slab                = index_slab,
+                        },
+                        OpaqueNoLightmap3dBinKey{.asset_id = assets::UntypedAssetId{
+                                                     mesh_instance->record().mesh_asset_id}},
+                        entity_value, mesh_instance->current_uniform_index, batch_phase_type, current_change_tick);
+                    break;
+                }
+                case RenderPhaseType::Transparent: {
+                    const float distance =
+                        rangefinder.distance(mesh_instance->center) + material->properties->depth_bias;
+                    const auto draw_function =
+                        material->properties->get_draw_function<MainPassTransparentDrawFunction>();
+                    if (!draw_function.has_value()) continue;
+                    transparent_phase->second.add(Transparent3d{
+                        .distance          = distance,
+                        .pipeline_id       = pipeline_id,
+                        .entity_value      = entity_value,
+                        .draw_func         = *draw_function,
+                        .batch_range_value = {0u, 1u},
+                        .extra_index_value = render::phase::PhaseItemExtraIndex{},
+                        .indexed_value     = index_slab.has_value(),
+                    });
+                    break;
+                }
+            }
+        }
+    }
+}
+
 void MaterialsPlugin::attach(epix::app::App& app) {
     // Bevy `MaterialsPlugin::build` (`material.rs:281-335`), as far as the port has it.
     auto render_app = app.get_sub_app_mut(render::Render);
@@ -210,13 +363,21 @@ void MaterialsPlugin::attach(epix::app::App& app) {
 
     // Bevy's orderings are what make this system's three inputs ready: the mesh assets it
     // reads are prepared, the GPU-built meshes are collected and the motion-vector flags are
-    // set before it runs (`material.rs:304-308`).
+    // set before it runs (`material.rs:304-308`). The collect step is ordered *before* the
+    // motion-vector flags here rather than alongside them: the port registers that system only
+    // on the GPU instance path (PBR-16), so naming it from this schedule would be an ignored
+    // dependency with a warning, and the order it exists for is already implied.
     render.add_systems(render::Render, ecs::into(specialize_material_meshes)
                                            .in_set(render::RenderSystems::PrepareMeshes)
                                            .after(render::prepare_assets<render::mesh::RenderMesh>)
-                                           .after(collect_meshes_for_gpu_building)
                                            .after(set_mesh_motion_vector_flags)
                                            .set_name("specialize material meshes"));
+    // Bevy queues in `QueueMeshes`, which the render schedule runs after `PrepareMeshes`
+    // (`material.rs:309`), and the queue reads the cache that system filled.
+    render.add_systems(render::Render, ecs::into(queue_material_meshes)
+                                           .in_set(render::RenderSystems::QueueMeshes)
+                                           .after(specialize_material_meshes)
+                                           .set_name("queue material meshes"));
 }
 
 std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineError>
