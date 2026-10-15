@@ -92,7 +92,11 @@ TEST(MaterialTrait, DefaultsMatchBevyAndOverridesWin) {
     const pbr::MaterialPipelineKey<CustomMaterial> key{.mesh_key = {}, .bind_group_data = 7};
     const pbr::MaterialPipelineKey<CustomMaterial> same{.mesh_key = {}, .bind_group_data = 7};
     EXPECT_TRUE(key == same);
-    EXPECT_EQ(pbr::MATERIAL_BIND_GROUP_INDEX, 2u) << "Bevy's MATERIAL_BIND_GROUP";
+    // 3, not 2: the mesh pipeline's layout is `[view, view binding arrays, mesh]`, so the
+    // mesh uniform owns group 2 (`mesh_bindings.wgsl:7`) and the material's layout is
+    // inserted after it (Bevy `MATERIAL_BIND_GROUP_INDEX`, `material.rs:66`). Asserting 2
+    // here is what let the material's layout displace the mesh's and fail pipeline creation.
+    EXPECT_EQ(pbr::MATERIAL_BIND_GROUP_INDEX, 3u) << "Bevy's MATERIAL_BIND_GROUP_INDEX";
 }
 
 /** @brief The prepared-material properties default the way Bevy's do (Bevy

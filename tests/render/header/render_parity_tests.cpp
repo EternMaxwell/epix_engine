@@ -4016,6 +4016,22 @@ struct epix::render::erased_render_asset::ErasedRenderAsset<ErasedTestAdapter> {
     }
 };
 
+// Adapter: no asset_usage override at all - the case every other fixture here avoids, and
+// the one the port got wrong: Bevy's default is *both* worlds, not an empty mask.
+struct ErasedTestDefaultUsageAdapter;
+template <>
+struct epix::render::erased_render_asset::ErasedRenderAsset<ErasedTestDefaultUsageAdapter> {
+    using SourceAsset    = ErasedTestSource;
+    using ExtractedAsset = ErasedTestSource;
+    using ErasedAsset    = ErasedTestGpu;
+    using Param          = std::tuple<>;
+
+    std::expected<ErasedTestGpu, epix::render::erased_render_asset::PrepareAssetError<ErasedTestSource>> prepare_asset(
+        ErasedTestSource&& source, const epix::assets::AssetId<ErasedTestSource>&, Param&, const ErasedAsset*) const {
+        return ErasedTestGpu{source.value};
+    }
+};
+
 // Adapter: RENDER_WORLD|MAIN_WORLD usage (asset is cloned into the render world).
 struct ErasedTestCloneAdapter;
 template <>
@@ -4215,6 +4231,40 @@ TEST(ErasedRenderAsset, ExtractSystemMovesRenderWorldOnlyAssets) {
     EXPECT_TRUE(cache.added.contains(handle_a.id()));
     // RENDER_WORLD-only: the asset was moved out of the main store.
     EXPECT_FALSE(main_world.resource<epix::assets::Assets<ErasedTestSource>>().get(handle_a.id()).has_value());
+}
+
+// An asset whose specialization does not override `asset_usage` still crosses: Bevy's
+// default is `MAIN_WORLD | RENDER_WORLD`, not an empty mask (bevy_asset/src/render_asset.rs:40,
+// bevy_render/src/erased_render_asset.rs:52). The earlier empty fallback made the extraction
+// below test `usage & RENDER_WORLD` against zero, so the asset was skipped in silence - which
+// is why every material went unprepared (PBR-77). Every other fixture in this file overrides
+// `asset_usage`, which is exactly how the defect stayed hidden.
+TEST(ErasedRenderAsset, ExtractSystemExtractsAssetsThatDoNotOverrideAssetUsage) {
+    epix::ecs::World main_world(2);
+    epix::ecs::World render_world(2);
+    render_world.insert_resource(epix::app::ExtractedWorld{main_world});
+    render_world.insert_resource(erased_render_asset::ExtractedAssets<ErasedTestDefaultUsageAdapter>{});
+    render_world.insert_resource(erased_render_asset::ErasedRenderAssets<ErasedTestGpu>{});
+    main_world.insert_resource(epix::assets::Assets<ErasedTestSource>{});
+    main_world.insert_resource(epix::ecs::Events<epix::assets::AssetEvent<ErasedTestSource>>{});
+
+    const erased_render_asset::ErasedRenderAsset<ErasedTestDefaultUsageAdapter> impl;
+    const auto usage = erased_render_asset::detail::erased_asset_usage(impl, ErasedTestSource{});
+    EXPECT_TRUE(static_cast<bool>(usage & epix::assets::RenderAssetUsages::MAIN_WORLD));
+    EXPECT_TRUE(static_cast<bool>(usage & epix::assets::RenderAssetUsages::RENDER_WORLD));
+
+    auto& store = main_world.resource_mut<epix::assets::Assets<ErasedTestSource>>();
+    auto handle = store.emplace(ErasedTestSource{7});
+    main_world.resource_mut<epix::ecs::Events<epix::assets::AssetEvent<ErasedTestSource>>>().push(
+        epix::assets::AssetEvent<ErasedTestSource>::added(handle.id()));
+
+    auto system = make_system_unique(erased_render_asset::extract_erased_render_asset<ErasedTestDefaultUsageAdapter>);
+    system->initialize(render_world);
+    ASSERT_TRUE(system->run({}, render_world).has_value());
+
+    auto& cache = render_world.resource<erased_render_asset::ExtractedAssets<ErasedTestDefaultUsageAdapter>>();
+    ASSERT_EQ(cache.extracted.size(), 1u) << "the default usage must let the asset cross to the render world";
+    EXPECT_EQ(cache.extracted[0].second.value, 7);
 }
 
 // extract_erased_render_asset: RENDER_WORLD|MAIN_WORLD assets are cloned and stay

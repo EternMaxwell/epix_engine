@@ -125,10 +125,16 @@ assets::RenderAssetUsages erased_asset_usage(const ErasedRenderAsset<A>& asset,
     if constexpr (HasErasedAssetUsage<A>) {
         return asset.asset_usage(source);
     } else {
-        // Bevy default: RenderAssetUsages::default() (empty).
+        // Bevy's default is `RenderAssetUsages::default()`, which is *both* worlds
+        // (bevy_asset/src/render_asset.rs:40), matching `ErasedRenderAsset::asset_usage`'s
+        // own default (`bevy_render/src/erased_render_asset.rs:52`). An empty mask is a
+        // different thing: the extract step tests `usage & RENDER_WORLD` before it extracts
+        // anything, so an empty default makes every asset of a type that does not override
+        // `asset_usage` silently unextractable.
         (void)asset;
         (void)source;
-        return assets::RenderAssetUsages{};
+        return static_cast<assets::RenderAssetUsages>(assets::RenderAssetUsages::MAIN_WORLD |
+                                                      assets::RenderAssetUsages::RENDER_WORLD);
     }
 }
 

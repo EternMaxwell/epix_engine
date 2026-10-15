@@ -162,9 +162,15 @@ struct MaterialData<M, std::void_t<typename M::Data>> {
     using type = typename M::Data;
 };
 
-/** @brief The bind group a 3D material is bound at (Bevy `MATERIAL_BIND_GROUP`,
- *  `material.rs:136`). */
-inline constexpr std::uint32_t MATERIAL_BIND_GROUP_INDEX = 2;
+/** @brief The bind group a 3D material is bound at (Bevy `MATERIAL_BIND_GROUP_INDEX`,
+ *  `material.rs:66`).
+ *
+ *  It is 3, not 2: the mesh pipeline's layout is `[view, view binding arrays, mesh]`, so the
+ *  mesh uniform owns group 2 - `mesh_bindings.wgsl:7` declares it there and
+ *  `SetMeshBindGroup<2>` binds it - and the material's layout is inserted after it. The two
+ *  have to agree, or the material's layout displaces the mesh's and the mesh pipeline fails
+ *  to create with `group 2, binding 0 is not available in the pipeline layout`. */
+inline constexpr std::uint32_t MATERIAL_BIND_GROUP_INDEX = 3;
 
 /** @brief Whether an opaque or mask material goes through the forward or the
  *  deferred renderer (Bevy `OpaqueRendererMethod`, `material.rs:157-163`).
