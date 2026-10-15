@@ -3985,6 +3985,45 @@ TEST(PipelineDescriptor, FragmentMut) {
     EXPECT_EQ(rpd.fragment->targets.size(), 1u);
 }
 
+// ---------- label interning (bevy_render 0.18 label.rs / bevy_ecs intern) ----------
+namespace {
+struct SlotLabel {
+    int value = 0;
+    bool operator==(const SlotLabel&) const = default;
+};
+int slot_label_factory_calls = 0;
+epix::render::label::InternerBase* make_slot_label() {
+    ++slot_label_factory_calls;
+    return new epix::render::label::Interner<SlotLabel>();
+}
+}  // namespace
+
+/** @brief The interner is one process-wide slot per label type, not one per module.
+ *
+ *  Bevy's interner is a static in a single binary; this port builds the engine as a shared
+ *  library, so the module that interns a label (a material's erased-render-asset prepare,
+ *  instantiated in the consumer) is not the module that looks it up (the queue, inside the
+ *  engine). A function-local static in the header gave each module its own interner, so equal
+ *  labels produced different pointers and every `get_draw_function<Label>()` missed - eight
+ *  draw functions present, none findable. The assertion that catches that is the cross-module
+ *  one: interning through the template must land in the same slot the engine hands out. */
+TEST(LabelInterner, OneProcessWideSlotPerLabelType) {
+    const auto type = epix::meta::type_index(epix::meta::type_id<SlotLabel>());
+
+    auto* first  = epix::render::label::label_interner_slot(type, make_slot_label);
+    auto* second = epix::render::label::label_interner_slot(type, make_slot_label);
+    EXPECT_EQ(first, second) << "the slot is resolved centrally, not created per call";
+    EXPECT_EQ(slot_label_factory_calls, 1) << "the factory runs once, when the slot is first asked for";
+
+    auto* slot_interner = static_cast<epix::render::label::Interner<SlotLabel>*>(first);
+    const auto slot_interned      = slot_interner->intern(SlotLabel{7});
+    const auto template_interned  = epix::render::label::intern(SlotLabel{7});
+    EXPECT_EQ(slot_interned.get(), template_interned.get())
+        << "interning through the template must use the same shared slot, in whichever module it is called";
+    EXPECT_EQ(slot_interner->intern(SlotLabel{7}).get(), slot_interned.get())
+        << "equal values intern to one pointer";
+}
+
 // ---------- erased asset pipeline (bevy_render 0.18 erased_render_asset.rs) ----------
 // The ErasedRenderAsset specializations live at global scope: MSVC rejects
 // defining an enclosing-namespace template specialization inside an anonymous

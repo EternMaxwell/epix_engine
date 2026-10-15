@@ -15,6 +15,21 @@ namespace epix::render::label {
 template <typename T>
 class Interner;
 
+/** @brief Type-erased base of the per-label-type interners. */
+EPIX_EXPORT struct InternerBase {
+    virtual ~InternerBase() = default;
+};
+
+/** @brief The process-wide interner for a label type (Bevy's static interner per label).
+ *
+ *  The map this hands out from lives in the engine library rather than in a function-local
+ *  static here, because a shared build puts the module that interns a label and the module
+ *  that looks it up in different modules - a material's erased-render-asset prepare is
+ *  instantiated in the consumer, its queue lives in the engine - and a per-module static
+ *  hands them different pointers for equal labels. */
+EPIX_EXPORT EPIX_API InternerBase* label_interner_slot(const meta::type_index& label_type,
+                                                       InternerBase* (*make)());
+
 /**
  * @brief An interned value; stays valid until the end of the program and is
  * never dropped (Bevy `bevy_ecs::intern::Interned<T>`).
@@ -58,7 +73,7 @@ class Interned {
  * @tparam T The value type (must provide `operator==`).
  */
 EPIX_EXPORT template <typename T>
-class Interner {
+class Interner : public InternerBase {
    public:
     /**
      * @brief Return the `Interned<T>` corresponding to `value`, leaking a
@@ -83,11 +98,14 @@ class Interner {
 };
 
 /** @brief Process-wide interner instance for type T (Bevy's static
- * `INTERNER` per `define_label!`). */
+ * `INTERNER` per `define_label!`).
+ *
+ *  The instance is owned by the engine library (`label_interner_slot`); only the factory
+ *  pointer is cached here, which is a constant and so safe to duplicate per module. */
 EPIX_EXPORT template <typename T>
 Interner<T>& interner() {
-    static Interner<T> instance;
-    return instance;
+    static InternerBase* (*make)() = []() -> InternerBase* { return new Interner<T>(); };
+    return *static_cast<Interner<T>*>(label_interner_slot(meta::type_index(meta::type_id<T>()), make));
 }
 
 /** @brief Intern `value`, returning a stable `Interned<T>` (Bevy

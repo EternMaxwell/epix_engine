@@ -10,6 +10,7 @@
 #include <format>
 #include <memory>
 #include <stacktrace>
+#include <unordered_map>
 #include <vector>
 #include <webgpu/webgpu.hpp>
 
@@ -770,3 +771,21 @@ void RenderPlugin::attach(App& app) {
     app.add_plugins(render::experimental::OcclusionCullingPlugin{});
 }
 void RenderPlugin::detach(App& app) noexcept {}
+
+namespace epix::render::label {
+
+InternerBase* label_interner_slot(const meta::type_index& label_type, InternerBase* (*make)()) {
+    // One map for the whole program. This function is defined only in the engine library, so
+    // its local static is the single instance every module shares - which is the point: the
+    // module that interns a label and the module that looks it up need the same pointer.
+    static std::mutex mutex;
+    static std::unordered_map<meta::type_index, std::unique_ptr<InternerBase>> interners;
+    const std::lock_guard lock(mutex);
+    auto& slot = interners[label_type];
+    if (!slot) {
+        slot.reset(make());
+    }
+    return slot.get();
+}
+
+}  // namespace epix::render::label
