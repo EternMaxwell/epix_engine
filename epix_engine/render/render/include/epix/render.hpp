@@ -30,7 +30,6 @@
 #include <epix/render/gpu_readback.hpp>
 #include <epix/render/graph.hpp>
 #include <epix/render/image.hpp>
-#include <epix/render/label.hpp>
 #include <epix/render/manual_texture_view.hpp>
 #include <epix/render/maths.hpp>
 #include <epix/render/mesh/offset_allocator.hpp>

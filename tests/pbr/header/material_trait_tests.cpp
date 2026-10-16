@@ -207,7 +207,7 @@ TEST(MaterialTrait, ShaderLookupIsByLabel) {
         epix::assets::AssetId<epix::shader::Shader>::invalid()};
     pbr::MaterialProperties properties;
     properties.shaders.emplace_back(
-        render::label::intern(render::phase::ShaderLabel{pbr::MaterialVertexShader{}}), vertex);
+        epix::ecs::intern(render::phase::ShaderLabel{pbr::MaterialVertexShader{}}), vertex);
 
     ASSERT_NE(properties.get_shader<pbr::MaterialVertexShader>(), nullptr);
     EXPECT_TRUE(*properties.get_shader<pbr::MaterialVertexShader>() == vertex);
@@ -1152,7 +1152,7 @@ TEST(MaterialTrait, TheDrawFunctionListIsKeyedByLabel) {
         << "a material with no prepared properties has no draw function for any phase";
 
     properties.draw_functions.push_back(
-        {epix::render::label::intern(epix::render::phase::DrawFunctionLabel{pbr::MainPassOpaqueDrawFunction{}}),
+        {epix::ecs::intern(epix::render::phase::DrawFunctionLabel{pbr::MainPassOpaqueDrawFunction{}}),
          epix::render::phase::DrawFunctionId{7}});
 
     const auto opaque = properties.get_draw_function<pbr::MainPassOpaqueDrawFunction>();

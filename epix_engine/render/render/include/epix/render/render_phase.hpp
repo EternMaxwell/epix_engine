@@ -35,7 +35,6 @@
 #endif
 
 #include <epix/render/graph.hpp>
-#include <epix/render/label.hpp>
 #include <epix/render/pipeline.hpp>
 #include <epix/render/pipeline_server.hpp>
 #include <epix/render/retained_view_entity.hpp>
@@ -854,14 +853,14 @@ EPIX_EXPORT struct ViewRangefinder3d {
  */
 EPIX_EXPORT EPIX_MAKE_LABEL(DrawFunctionLabel);
 /** @brief Interned form of `DrawFunctionLabel` (Bevy `InternedDrawFunctionLabel`). */
-using InternedDrawFunctionLabel = label::Interned<DrawFunctionLabel>;
+using InternedDrawFunctionLabel = epix::ecs::Interned<DrawFunctionLabel>;
 
 /**
  * @brief Strongly-typed label for shader imports (Bevy `ShaderLabel`).
  */
 EPIX_EXPORT EPIX_MAKE_LABEL(ShaderLabel);
 /** @brief Interned form of `ShaderLabel` (Bevy `InternedShaderLabel`). */
-using InternedShaderLabel = label::Interned<ShaderLabel>;
+using InternedShaderLabel = epix::ecs::Interned<ShaderLabel>;
 
 /**
  * @brief A wrapper around `wgpu::RenderPassEncoder` that tracks pipeline, bind

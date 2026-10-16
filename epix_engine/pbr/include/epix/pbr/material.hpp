@@ -754,7 +754,7 @@ EPIX_EXPORT struct MaterialProperties {
     template <typename Label>
     const assets::Handle<shader::Shader>* get_shader() const noexcept {
         const render::phase::InternedShaderLabel wanted =
-            render::label::intern(render::phase::ShaderLabel{Label{}});
+            ecs::intern(render::phase::ShaderLabel{Label{}});
         for (const auto& [label, shader] : shaders) {
             if (label == wanted) return &shader;
         }
@@ -771,7 +771,7 @@ EPIX_EXPORT struct MaterialProperties {
     template <typename Label>
     std::optional<render::phase::DrawFunctionId> get_draw_function() const noexcept {
         const render::phase::InternedDrawFunctionLabel wanted =
-            render::label::intern(render::phase::DrawFunctionLabel{Label{}});
+            ecs::intern(render::phase::DrawFunctionLabel{Label{}});
         for (const auto& [label, draw_function] : draw_functions) {
             if (label == wanted) return draw_function;
         }

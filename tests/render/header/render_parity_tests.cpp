@@ -842,12 +842,12 @@ TEST(SyncWorld, ComponentRemovedRespawnsRenderEntity) {
 // same interned pointer; distinct types intern separately; equality is
 // reference identity.
 TEST(LabelInterner, DeduplicatesByValue) {
-    auto a = label::intern(phase::DrawFunctionLabel{});
-    auto b = label::intern(phase::DrawFunctionLabel{});
+    auto a = intern(phase::DrawFunctionLabel{});
+    auto b = intern(phase::DrawFunctionLabel{});
     EXPECT_EQ(a, b);
     EXPECT_EQ(a.get(), b.get());
     // distinct types intern to distinct values (not cross-comparable, like Bevy)
-    auto shader = label::intern(phase::ShaderLabel{});
+    auto shader = intern(phase::ShaderLabel{});
     EXPECT_NE(static_cast<const void*>(shader.get()), static_cast<const void*>(a.get()));
     // type identity is carried by the Interned<T> static type
     EXPECT_EQ(a.type(), epix::meta::type_index(epix::meta::type_id<phase::DrawFunctionLabel>()));
@@ -855,10 +855,44 @@ TEST(LabelInterner, DeduplicatesByValue) {
 }
 
 TEST(LabelInterner, TypedAliases) {
-    static_assert(std::same_as<phase::InternedDrawFunctionLabel, label::Interned<phase::DrawFunctionLabel>>);
-    static_assert(std::same_as<phase::InternedShaderLabel, label::Interned<phase::ShaderLabel>>);
-    phase::InternedShaderLabel s = label::intern(phase::ShaderLabel{});
-    EXPECT_EQ(s, label::intern(phase::ShaderLabel{}));
+    static_assert(std::same_as<phase::InternedDrawFunctionLabel, Interned<phase::DrawFunctionLabel>>);
+    static_assert(std::same_as<phase::InternedShaderLabel, Interned<phase::ShaderLabel>>);
+    phase::InternedShaderLabel s = intern(phase::ShaderLabel{});
+    EXPECT_EQ(s, intern(phase::ShaderLabel{}));
+}
+
+/** @brief The interner is one process-wide slot per value type, not one per module.
+ *
+ *  Bevy's interner is a static in a single binary; this port builds the engine as a shared
+ *  library, so the module that interns a value (a material's erased-render-asset prepare,
+ *  instantiated in the consumer) is not the module that looks it up (the queue, inside the
+ *  engine). A function-local static in the header gave each module its own interner, so equal
+ *  labels produced different pointers and every `get_draw_function<Label>()` missed - eight
+ *  draw functions present, none findable. The assertion that catches that is the cross-module
+ *  one: interning through the template has to land in the same slot the engine hands out. */
+TEST(LabelInterner, OneProcessWideSlotPerValueType) {
+    struct SlotLabel {
+        int value = 0;
+        bool operator==(const SlotLabel&) const = default;
+    };
+    static int factory_calls = 0;
+    const auto make_slot     = +[]() -> InternerBase* {
+        ++factory_calls;
+        return new Interner<SlotLabel>();
+    };
+    const auto type = epix::meta::type_index(epix::meta::type_id<SlotLabel>());
+
+    auto* first  = interner_slot(type, make_slot);
+    auto* second = interner_slot(type, make_slot);
+    EXPECT_EQ(first, second) << "the slot is resolved centrally, not created per call";
+    EXPECT_EQ(factory_calls, 1) << "the factory runs once, when the slot is first asked for";
+
+    const auto via_slot     = static_cast<Interner<SlotLabel>*>(first)->intern(SlotLabel{7});
+    const auto via_template = intern(SlotLabel{7});
+    EXPECT_EQ(via_slot.get(), via_template.get())
+        << "interning through the template must use the same shared slot, in whichever module it is called";
+    EXPECT_EQ(static_cast<Interner<SlotLabel>*>(first)->intern(SlotLabel{7}).get(), via_slot.get())
+        << "equal values intern to one pointer";
 }
 
 TEST(PhaseItemExtraIndex, PreservesDynamicAndIndirectPayloads) {

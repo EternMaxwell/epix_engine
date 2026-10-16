@@ -177,21 +177,21 @@ struct ErasedRenderAsset<::epix::pbr::MeshMaterial3d<M>> {
         properties->shadows_enabled                 = shadows_enabled;
         properties->prepass_enabled                 = prepass_enabled;
         properties->draw_functions                  = {
-            {render::label::intern(render::phase::DrawFunctionLabel{::epix::pbr::MainPassOpaqueDrawFunction{}}),
+            {ecs::intern(render::phase::DrawFunctionLabel{::epix::pbr::MainPassOpaqueDrawFunction{}}),
               draw_opaque},
-            {render::label::intern(render::phase::DrawFunctionLabel{::epix::pbr::MainPassAlphaMaskDrawFunction{}}),
+            {ecs::intern(render::phase::DrawFunctionLabel{::epix::pbr::MainPassAlphaMaskDrawFunction{}}),
               draw_alpha_mask},
-            {render::label::intern(render::phase::DrawFunctionLabel{::epix::pbr::MainPassTransmissiveDrawFunction{}}),
+            {ecs::intern(render::phase::DrawFunctionLabel{::epix::pbr::MainPassTransmissiveDrawFunction{}}),
               draw_transmissive},
-            {render::label::intern(render::phase::DrawFunctionLabel{::epix::pbr::MainPassTransparentDrawFunction{}}),
+            {ecs::intern(render::phase::DrawFunctionLabel{::epix::pbr::MainPassTransparentDrawFunction{}}),
               draw_transparent},
-            {render::label::intern(render::phase::DrawFunctionLabel{::epix::pbr::PrepassOpaqueDrawFunction{}}),
+            {ecs::intern(render::phase::DrawFunctionLabel{::epix::pbr::PrepassOpaqueDrawFunction{}}),
               draw_opaque_prepass},
-            {render::label::intern(render::phase::DrawFunctionLabel{::epix::pbr::PrepassAlphaMaskDrawFunction{}}),
+            {ecs::intern(render::phase::DrawFunctionLabel{::epix::pbr::PrepassAlphaMaskDrawFunction{}}),
               draw_alpha_mask_prepass},
-            {render::label::intern(render::phase::DrawFunctionLabel{::epix::pbr::DeferredOpaqueDrawFunction{}}),
+            {ecs::intern(render::phase::DrawFunctionLabel{::epix::pbr::DeferredOpaqueDrawFunction{}}),
               draw_opaque_deferred},
-            {render::label::intern(render::phase::DrawFunctionLabel{::epix::pbr::DeferredAlphaMaskDrawFunction{}}),
+            {ecs::intern(render::phase::DrawFunctionLabel{::epix::pbr::DeferredAlphaMaskDrawFunction{}}),
               draw_alpha_mask_deferred},
         };
 

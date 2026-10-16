@@ -3,14 +3,13 @@
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <epix/common.hpp>
-#include <epix/ecs.hpp>
 #include <epix/meta.hpp>
 #include <memory>
 #include <mutex>
 #include <vector>
 #endif
 
-namespace epix::render::label {
+namespace epix::ecs {
 
 template <typename T>
 class Interner;
@@ -20,7 +19,8 @@ class Interner;
  * never dropped (Bevy `bevy_ecs::intern::Interned<T>`).
  *
  * Comparisons use reference equality (the stored pointer), so two interned
- * values are equal only if they were produced by the same `Interner`.
+ * values are equal only if they were produced by the same `Interner` - which
+ * is now one interner per process, not one per module.
  * @tparam T The value type (must be copy-constructible and equality
  * comparable).
  */
@@ -48,6 +48,23 @@ class Interned {
     const T* m_value = nullptr;
 };
 
+/** @brief Type-erased base of the per-value-type interners. */
+EPIX_EXPORT struct InternerBase {
+    virtual ~InternerBase() = default;
+};
+
+/**
+ * @brief The process-wide interner for a value type (Bevy's static interner per
+ * `define_label!`).
+ *
+ * The map this hands out from lives in the engine library rather than in a function-local
+ * static in this header. In a shared build the module that interns a value is not necessarily
+ * the module that looks it up - a material's erased-render-asset prepare is instantiated in
+ * the consumer, its queue lives in the engine - and a per-module static hands them different
+ * pointers for equal values, which is a silent miss everywhere identity is compared.
+ */
+EPIX_EXPORT EPIX_API InternerBase* interner_slot(const meta::type_index& value_type, InternerBase* (*make)());
+
 /**
  * @brief A thread-safe interner which creates `Interned<T>` values from `&T`
  * (Bevy `bevy_ecs::intern::Interner<T>`).
@@ -58,7 +75,7 @@ class Interned {
  * @tparam T The value type (must provide `operator==`).
  */
 EPIX_EXPORT template <typename T>
-class Interner {
+class Interner : public InternerBase {
    public:
     /**
      * @brief Return the `Interned<T>` corresponding to `value`, leaking a
@@ -82,19 +99,22 @@ class Interner {
     std::vector<std::unique_ptr<T>> m_values;
 };
 
-/** @brief Process-wide interner instance for type T (Bevy's static
- * `INTERNER` per `define_label!`). */
+/** @brief Process-wide interner instance for type T (Bevy's static `INTERNER` per
+ *  `define_label!`).
+ *
+ *  The instance is owned by the engine library (`interner_slot`); only the factory pointer is
+ *  cached here, which is a constant and so safe to duplicate per module. */
 EPIX_EXPORT template <typename T>
 Interner<T>& interner() {
-    static Interner<T> instance;
-    return instance;
+    static InternerBase* (*make)() = []() -> InternerBase* { return new Interner<T>(); };
+    return *static_cast<Interner<T>*>(interner_slot(meta::type_index(meta::type_id<T>()), make));
 }
 
 /** @brief Intern `value`, returning a stable `Interned<T>` (Bevy
- * `label.intern()`). */
+ *  `label.intern()`). */
 EPIX_EXPORT template <typename T>
 Interned<T> intern(const T& value) {
     return interner<T>().intern(value);
 }
 
-}  // namespace epix::render::label
+}  // namespace epix::ecs
