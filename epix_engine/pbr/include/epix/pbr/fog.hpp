@@ -275,4 +275,23 @@ EPIX_EXPORT EPIX_API void prepare_fog(ecs::Commands commands,
                                       ecs::Query<ecs::Item<ecs::Entity, ecs::Opt<const DistanceFog&>>,
                                                  ecs::With<::epix::render::view::ExtractedView>> views);
 
+/** @brief Registers fog extraction and preparation (Bevy `FogPlugin`,
+ *  `render/fog.rs:128-141`). */
+EPIX_EXPORT struct EPIX_API FogPlugin {
+    void attach(epix::app::App& app);
+};
+
 }  // namespace epix::pbr
+
+namespace epix::render {
+/** @brief The camera's `DistanceFog` reaches its view unchanged (Bevy's
+ *  `ExtractComponentPlugin<DistanceFog>`, `render/fog.rs:132`, whose blanket
+ *  implementation for a `Clone + Component` is the identity). */
+template <>
+struct ExtractComponent<::epix::pbr::DistanceFog> {
+    using QueryData   = const ::epix::pbr::DistanceFog&;
+    using QueryFilter = epix::ecs::Filter<>;
+    using Out         = ::epix::pbr::DistanceFog;
+    static std::optional<Out> extract_component(const ::epix::pbr::DistanceFog& item) { return item; }
+};
+}  // namespace epix::render

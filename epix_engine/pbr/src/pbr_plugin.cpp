@@ -1,6 +1,7 @@
 #include <epix/pbr/pbr_plugin.hpp>
 
 #include <epix/pbr/cluster.hpp>
+#include <epix/pbr/fog.hpp>
 #include <epix/pbr/light_plugin.hpp>
 #include <epix/pbr/lightmap.hpp>
 #include <epix/pbr/material.hpp>
@@ -24,6 +25,9 @@ void PbrPlugin::attach(epix::app::App& app) {
     app.add_plugins(epix::render::ExtractResourcePlugin<DefaultOpaqueRendererMethod>{});
     app.add_plugins(LightmapPlugin{});
     app.add_plugins(LightPlugin{});
+    // Bevy's tuple carries `FogPlugin` too (`lib.rs:222-228`); it extracts the camera's fog
+    // and stamps each view with the fog uniform offset the mesh view bind group reads.
+    app.add_plugins(FogPlugin{});
 }
 
 void PbrPlugin::ready(epix::app::App& app) {
