@@ -3,6 +3,7 @@
 #include <epix/pbr/cluster.hpp>
 #include <epix/pbr/fog.hpp>
 #include <epix/pbr/light_plugin.hpp>
+#include <epix/pbr/light_probe.hpp>
 #include <epix/pbr/lightmap.hpp>
 #include <epix/pbr/material.hpp>
 #include <epix/pbr/material_bind_groups.hpp>
@@ -28,6 +29,9 @@ void PbrPlugin::attach(epix::app::App& app) {
     // Bevy's tuple carries `FogPlugin` too (`lib.rs:222-228`); it extracts the camera's fog
     // and stamps each view with the fog uniform offset the mesh view bind group reads.
     app.add_plugins(FogPlugin{});
+    // Bevy's tuple carries `LightProbePlugin` as well (`lib.rs:222-228`), which is what
+    // gives a view its environment-map uniform offset.
+    app.add_plugins(LightProbePlugin{});
 }
 
 void PbrPlugin::ready(epix::app::App& app) {

@@ -321,4 +321,17 @@ irradiance_volume_bind_group_layout_entries(bool binding_arrays_are_usable) {
     return {texture_3d_binding, sampler(wgpu::SamplerBindingType::eFiltering)};
 }
 
+/** @brief Registers environment-map and light-probe extraction and preparation (Bevy
+ *  `LightProbePlugin`, `light_probe/mod.rs:291-315`).
+ *
+ *  Two of Bevy's four systems are ported - `gather_environment_map_uniform` and
+ *  `prepare_environment_uniform_buffer`, the pair that gives every 3D view its environment
+ *  map uniform and stamps `ViewEnvironmentMapUniformOffset` on it. The other two,
+ *  `gather_light_probes<T>` and `upload_light_probes`, are not: until they are, no view
+ *  carries `ViewLightProbesUniformOffset` (nor the `LightProbesUniform` it points at), and
+ *  the mesh view bind group cannot be bound for it - part of PBR-80. */
+EPIX_EXPORT struct EPIX_API LightProbePlugin {
+    void attach(epix::app::App& app);
+};
+
 }  // namespace epix::pbr

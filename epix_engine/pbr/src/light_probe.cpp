@@ -77,4 +77,21 @@ void light_probes_gather_list(std::vector<RenderLightProbe>& out,
     }
 }
 
+void LightProbePlugin::attach(epix::app::App& app) {
+    // Bevy `LightProbePlugin` (`light_probe/mod.rs:291-315`), minus the environment-map
+    // generation plugin and the two systems named in the header: what is registered here is
+    // the pair the port has, with their render-world resources.
+    if (auto render_app = app.get_sub_app_mut(render::Render)) {
+        render_app->get().world_mut().init_resource<LightProbesBuffer>();
+        render_app->get().world_mut().init_resource<EnvironmentMapUniformBuffer>();
+        render_app->get().add_systems(app::ScheduleInfo(render::ExtractSchedule),
+                                      ecs::into(gather_environment_map_uniform)
+                                          .set_name("gather environment map uniform"));
+        render_app->get().add_systems(render::Render,
+                                      ecs::into(prepare_environment_uniform_buffer)
+                                          .in_set(render::RenderSystems::PrepareResources)
+                                          .set_name("prepare environment uniform buffer"));
+    }
+}
+
 }  // namespace epix::pbr
