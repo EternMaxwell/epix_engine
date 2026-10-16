@@ -28,6 +28,16 @@ project ("epix_engine.cmake" LANGUAGES CXX C)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(cmake/utils.cmake)
+# The vendored libraries are built statically, whatever `BUILD_SHARED_LIBS` happens to be.
+# `epix_engine`'s own type is EPIX_ENABLE_SHARED's business (see epix_create_engine_target), and
+# the vendored projects must not follow the engine: `libs/efsw/CMakeLists.txt` declares
+# `option(BUILD_SHARED_LIBS ... ON)`, and `option()` writes a cache entry, so a cache created
+# without this line turns every vendored library into a DLL -- glm and libtess2 export no
+# symbols, so MSVC writes no import library for them and epix_engine fails to link with
+# LNK1104 on libs/glm/glm/glm.lib. A normal variable here is inherited by every subdirectory
+# added below, and with CMP0077 (NEW at this project's 3.30 minimum) it also stops that
+# `option()` from caching ON.
+set(BUILD_SHARED_LIBS OFF)
 include(cmake/libs.cmake)
 
 set(CMAKE_CXX_SCAN_FOR_MODULES ${EPIX_CXX_MODULE})
