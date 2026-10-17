@@ -48,6 +48,10 @@ void PbrPlugin::attach(epix::app::App& app) {
                                           .set_name("init global clusterable object meta"));
         render_app->get().add_systems(app::ScheduleInfo(render::ExtractSchedule),
                                       ecs::into(extract_clusters).set_name("extract clusters"));
+        // Bevy extracts the lights in the same schedule, right beside the clusters
+        // (`lib.rs:325`): the two together are what the lighting prepare consumes.
+        render_app->get().add_systems(app::ScheduleInfo(render::ExtractSchedule),
+                                      ecs::into(extract_lights).set_name("extract lights"));
         render_app->get().add_systems(render::Render,
                                       ecs::into(prepare_clusters)
                                           .in_set(render::RenderSystems::PrepareResources)

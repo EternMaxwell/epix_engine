@@ -193,4 +193,101 @@ void despawn_entities(ecs::Commands commands, const std::vector<ecs::Entity>& en
     }
 }
 
+/** @brief Re-key one view's visible meshes into the render world (Bevy
+ *  `create_render_visible_mesh_entities`, `render/light.rs:600-614`).
+ *
+ *  An entity the sync did not map becomes the default entity, which is Bevy's
+ *  `Entity::PLACEHOLDER`. */
+namespace {
+RenderVisibleMeshEntities create_render_visible_mesh_entities(
+    app::Extract<ecs::Query<ecs::Item<const ::epix::render::sync_world::RenderEntity&>>>& mapper,
+    const ::epix::camera::VisibleMeshEntities& visible_entities) {
+    RenderVisibleMeshEntities rendered;
+    rendered.entities.reserve(visible_entities.entities.size());
+    for (const ecs::Entity visible : visible_entities.entities) {
+        const auto row = mapper.get(visible);
+        rendered.entities.emplace_back(row.has_value() ? std::get<0>(*row).id() : ecs::Entity{},
+                                       ::epix::render::sync_world::MainEntity(visible));
+    }
+    return rendered;
+}
+}  // namespace
+
+void extract_lights(
+    ecs::Commands commands,
+    app::Extract<ecs::Query<ecs::Item<ecs::Entity, const ::epix::render::sync_world::RenderEntity&,
+                                     const DirectionalLight&, const ::epix::camera::CascadesVisibleEntities&,
+                                     const Cascades&, const CascadeShadowConfig&,
+                                     const ::epix::camera::CascadesFrusta&,
+                                     const ::epix::transform::GlobalTransform&,
+                                     const ::epix::camera::ViewVisibility&,
+                                     ecs::Opt<const ::epix::camera::RenderLayers&>,
+                                     ecs::Has<::epix::render::experimental::OcclusionCulling>>>>
+        directional_lights,
+    app::Extract<ecs::Query<ecs::Item<const ::epix::render::sync_world::RenderEntity&>>> mapper) {
+    // Bevy `extract_lights`' directional arm (`render/light.rs:505-599`). The point and spot
+    // arms share one `ExtractedPointLight` and are the next slice.
+    for (auto&& [main_entity, render_entity, light, visible_entities, cascades, cascade_config, frusta, transform,
+                 view_visibility, layers, occlusion_culling] : directional_lights.iter()) {
+        const ecs::Entity render_light = render_entity.id();
+        if (!view_visibility.get()) {
+            // Bevy removes the pair rather than leaving a stale light on an invisible one.
+            commands.entity(render_light)
+                .remove<ExtractedDirectionalLight, RenderCascadesVisibleEntities>();
+            continue;
+        }
+
+        // The main world keys these by view; the render world keys them by the view's render
+        // entity, and a view the sync did not map is skipped - Bevy breaks out of its loop.
+        std::unordered_map<ecs::Entity, std::vector<Cascade>> extracted_cascades;
+        for (const auto& [view_entity, view_cascades] : cascades.cascades) {
+            const auto row = mapper.get(view_entity);
+            if (!row.has_value()) continue;
+            extracted_cascades.emplace(std::get<0>(*row).id(), view_cascades);
+        }
+        std::unordered_map<ecs::Entity, std::vector<::epix::camera::Frustum>> extracted_frusta;
+        for (const auto& [view_entity, view_frusta] : frusta.frusta) {
+            const auto row = mapper.get(view_entity);
+            if (!row.has_value()) continue;
+            extracted_frusta.emplace(std::get<0>(*row).id(), view_frusta);
+        }
+        ::epix::render::sync_world::MainEntityHashMap<std::vector<RenderVisibleMeshEntities>>
+            cascade_visible_entities;
+        for (const auto& [view_entity, per_cascade] : visible_entities.entities) {
+            const auto row = mapper.get(view_entity);
+            if (!row.has_value()) continue;
+            std::vector<RenderVisibleMeshEntities> rendered;
+            rendered.reserve(per_cascade.size());
+            for (const ::epix::camera::VisibleMeshEntities& list : per_cascade) {
+                rendered.push_back(create_render_visible_mesh_entities(mapper, list));
+            }
+            cascade_visible_entities.emplace(std::get<0>(*row).id(), std::move(rendered));
+        }
+
+        commands.entity(render_light)
+            .insert(ExtractedDirectionalLight{
+                        .color                            = light.color.linear().vec4(),
+                        .illuminance                      = light.illuminance,
+                        .transform                        = transform.matrix,
+                        .shadows_enabled                  = light.shadows_enabled,
+                        .volumetric                       = false,
+                        .affects_lightmapped_mesh_diffuse = light.affects_lightmapped_mesh_diffuse,
+                        .shadow_depth_bias                = light.shadow_depth_bias,
+                        // Bevy scales the normal bias by sqrt(2), for the worst-case
+                        // diagonal offset (`light.rs:584`).
+                        .shadow_normal_bias = light.shadow_normal_bias * std::numbers::sqrt2_v<float>,
+                        .cascade_shadow_config = cascade_config,
+                        .cascades              = std::move(extracted_cascades),
+                        .frusta                = std::move(extracted_frusta),
+                        .render_layers         = layers.has_value() ? layers->get()
+                                                                   : ::epix::camera::RenderLayers::layer(0),
+                        .soft_shadow_size      = std::nullopt,
+                        .occlusion_culling     = occlusion_culling,
+                        .sun_disk_angular_size = 0.0f,
+                        .sun_disk_intensity    = 0.0f},
+                    RenderCascadesVisibleEntities{.entities = std::move(cascade_visible_entities)},
+                    ::epix::render::sync_world::MainEntity(main_entity));
+    }
+}
+
 }  // namespace epix::pbr

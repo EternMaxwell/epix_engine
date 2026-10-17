@@ -5,8 +5,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <epix/common.hpp>
+#include <epix/core_graph/core3d.hpp>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
+#include <epix/transform.hpp>
 #include <numbers>
 #include <optional>
 #include <span>
@@ -22,6 +24,7 @@
 #include <epix/camera/visibility.hpp>
 #include <epix/pbr/ambient_light.hpp>
 #include <epix/pbr/cascade.hpp>
+#include <epix/pbr/directional_light.hpp>
 #include <epix/pbr/gpu_lights.hpp>
 #include <epix/pbr/light_cluster.hpp>
 
@@ -309,6 +312,31 @@ EPIX_EXPORT EPIX_API LightCounts count_lights(const std::vector<ExtractedPointLi
                                             const std::vector<ExtractedDirectionalLight>& directional_lights,
                                             std::size_t max_texture_array_layers,
                                             std::size_t max_texture_cubes);
+
+/** @brief Copy each visible light into the render world for the lighting prepare (Bevy
+ *  `extract_lights`, `render/light.rs:280-599`).
+ *
+ *  Bevy extracts point, spot and directional lights in one system; this port has the
+ *  directional half so far - the two light types that share `ExtractedPointLight` are the
+ *  next slice of PBR-81. A light whose view visibility is false is removed from the render
+ *  world rather than skipped, and the per-view cascade, frustum and visible-entity maps are
+ *  re-keyed from main-world views to their render entities through the mapper, exactly as
+ *  Bevy re-keys them.
+ *
+ *  `sun_disk_angular_size` and `sun_disk_intensity` are written as zero because this port has
+ *  no `SunDisk` component; zero is also what Bevy writes for a light without one. */
+EPIX_EXPORT EPIX_API void extract_lights(
+    ecs::Commands commands,
+    app::Extract<ecs::Query<ecs::Item<ecs::Entity, const ::epix::render::sync_world::RenderEntity&,
+                                     const DirectionalLight&, const ::epix::camera::CascadesVisibleEntities&,
+                                     const Cascades&, const CascadeShadowConfig&,
+                                     const ::epix::camera::CascadesFrusta&,
+                                     const ::epix::transform::GlobalTransform&,
+                                     const ::epix::camera::ViewVisibility&,
+                                     ecs::Opt<const ::epix::camera::RenderLayers&>,
+                                     ecs::Has<::epix::render::experimental::OcclusionCulling>>>>
+        directional_lights,
+    app::Extract<ecs::Query<ecs::Item<const ::epix::render::sync_world::RenderEntity&>>> mapper);
 
 /** @brief The clusterable form of an extracted point light (Bevy
  *  `point_or_spot_light_to_clusterable`, `light.rs:2362-2375`): a point light
