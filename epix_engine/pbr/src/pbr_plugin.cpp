@@ -10,6 +10,9 @@
 #include <epix/pbr/material.hpp>
 #include <epix/pbr/material_bind_groups.hpp>
 #include <epix/pbr/mesh_shaders.hpp>
+#include <epix/pbr/point_light.hpp>
+#include <epix/pbr/shadow_filtering_method.hpp>
+#include <epix/pbr/spot_light.hpp>
 #include <epix/render.hpp>
 
 namespace epix::pbr {
@@ -34,6 +37,17 @@ void PbrPlugin::attach(epix::app::App& app) {
     // Bevy's tuple carries `LightProbePlugin` as well (`lib.rs:222-228`), which is what
     // gives a view its environment-map uniform offset.
     app.add_plugins(LightProbePlugin{});
+
+    // Bevy's tuple also syncs the light types and the shadow-filtering method to the render
+    // world (`lib.rs:235-250`), and these are what make a light *exist* there: without them a
+    // light has no `RenderEntity`, so no extraction can find it and nothing can read its
+    // visibility. Their absence is why `extract_lights` reported zero lights for a scene that
+    // had one.
+    app.add_plugins(render::SyncComponentPlugin<ShadowFilteringMethod>{});
+    app.add_plugins(render::SyncComponentPlugin<DirectionalLight>{});
+    app.add_plugins(render::SyncComponentPlugin<PointLight>{});
+    app.add_plugins(render::SyncComponentPlugin<SpotLight>{});
+    app.add_plugins(render::SyncComponentPlugin<AmbientLight>{});
 
     // Bevy registers the cluster pair straight from `PbrPlugin::build` (`lib.rs:322-341`):
     // extraction in `ExtractSchedule`, the per-view bindings in `PrepareResources`, and the
