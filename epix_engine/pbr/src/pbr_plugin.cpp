@@ -1,7 +1,9 @@
 #include <epix/pbr/pbr_plugin.hpp>
 
 #include <epix/pbr/cluster.hpp>
+#include <epix/pbr/cluster_prepare.hpp>
 #include <epix/pbr/fog.hpp>
+#include <epix/pbr/light_meta.hpp>
 #include <epix/pbr/light_plugin.hpp>
 #include <epix/pbr/light_probe.hpp>
 #include <epix/pbr/lightmap.hpp>
@@ -32,6 +34,25 @@ void PbrPlugin::attach(epix::app::App& app) {
     // Bevy's tuple carries `LightProbePlugin` as well (`lib.rs:222-228`), which is what
     // gives a view its environment-map uniform offset.
     app.add_plugins(LightProbePlugin{});
+
+    // Bevy registers the cluster pair straight from `PbrPlugin::build` (`lib.rs:322-341`):
+    // extraction in `ExtractSchedule`, the per-view bindings in `PrepareResources`, and the
+    // scene-wide resource in render-world startup, before the mesh pipeline that is built from
+    // the same binding type. Both systems were written in this port and neither was ever
+    // registered, so no view carried its extracted clusters and `prepare_lights` - once it
+    // exists - would have had nothing to fill.
+    if (auto render_app = app.get_sub_app_mut(render::Render)) {
+        render_app->get().world_mut().init_resource<LightMeta>();
+        render_app->get().add_systems(render::RenderStartup,
+                                      ecs::into(init_global_clusterable_object_meta)
+                                          .set_name("init global clusterable object meta"));
+        render_app->get().add_systems(app::ScheduleInfo(render::ExtractSchedule),
+                                      ecs::into(extract_clusters).set_name("extract clusters"));
+        render_app->get().add_systems(render::Render,
+                                      ecs::into(prepare_clusters)
+                                          .in_set(render::RenderSystems::PrepareResources)
+                                          .set_name("prepare clusters"));
+    }
 }
 
 void PbrPlugin::ready(epix::app::App& app) {

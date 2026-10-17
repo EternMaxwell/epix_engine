@@ -262,6 +262,15 @@ EPIX_EXPORT struct GlobalClusterableObjectMeta {
         : gpu_clusterable_objects(GpuClusterableObjects::from_binding_type(binding_type)) {}
 };
 
+/** @brief Insert the scene-wide cluster resource with the binding type the device supports
+ *  (Bevy `init_global_clusterable_object_meta`, `cluster.rs:153-167`).
+ *
+ *  It runs in render-world startup, where the device exists and before the mesh pipeline that
+ *  is built from the same binding type; `prepare_lights` is what later fills the buffers this
+ *  resource owns. */
+EPIX_EXPORT EPIX_API void init_global_clusterable_object_meta(ecs::Commands commands,
+                                                              ecs::Res<wgpu::Device> render_device);
+
 /** @brief A view's cluster-binding limits (Bevy `ViewClusterBindings`,
  *  `bevy_pbr/src/cluster.rs:339-341`).
  *

@@ -95,4 +95,21 @@ void prepare_clusters(ecs::Commands commands, ecs::Res<wgpu::Device> render_devi
     }
 }
 
+void init_global_clusterable_object_meta(ecs::Commands commands, ecs::Res<wgpu::Device> render_device) {
+    // Bevy `init_global_clusterable_object_meta` (`cluster.rs:153-167`): the binding type is
+    // the one the device can offer for the clustered-forward array, which is the same value
+    // the mesh pipeline is built with - the cluster buffers and the bind group have to agree
+    // on it. `read_only_binding_type` is Bevy's `RenderDevice::get_supported_read_only_binding_type`,
+    // spelled here the way the mesh pipeline and the prepass spell it.
+    wgpu::Limits limits{};
+    render_device->getLimits(&limits);
+    const auto read_only_binding_type = [&limits](std::uint32_t buffers_per_shader_stage) {
+        return limits.maxStorageBuffersPerShaderStage >= buffers_per_shader_stage
+                   ? wgpu::BufferBindingType::eStorage
+                   : wgpu::BufferBindingType::eUniform;
+    };
+    commands.insert_resource(
+        GlobalClusterableObjectMeta(read_only_binding_type(CLUSTERED_FORWARD_STORAGE_BUFFER_COUNT)));
+}
+
 }  // namespace epix::pbr
