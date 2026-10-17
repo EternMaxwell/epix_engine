@@ -2,6 +2,7 @@
 
 #include <epix/core_graph/core3d.hpp>
 #include <epix/ecs.hpp>
+#include <epix/pbr/cluster.hpp>
 #include <epix/pbr/directional_light.hpp>
 #include <epix/pbr/gpu_lights.hpp>
 #include <epix/pbr/light_meta.hpp>
@@ -212,6 +213,113 @@ RenderVisibleMeshEntities create_render_visible_mesh_entities(
     return rendered;
 }
 }  // namespace
+
+void extract_ambient_light_resource(ecs::Commands commands,
+                                    app::Extract<ecs::Res<GlobalAmbientLight>> ambient_light) {
+    // Bevy `extract_ambient_light_resource` (`render/light.rs:249-267`): the scene-wide ambient
+    // light is a main-world resource the render world reads, and this is what puts it there.
+    // Bevy guards the copy with `is_changed`; this port copies every frame, which yields the
+    // same value each time.
+    commands.insert_resource(*ambient_light);
+}
+
+void prepare_view_lights(ecs::Commands commands,
+                         ecs::Res<wgpu::Device> render_device,
+                         ecs::Res<wgpu::Queue> render_queue,
+                         ecs::Res<GlobalAmbientLight> ambient_light,
+                         ecs::ResMut<LightMeta> light_meta,
+                         ecs::Query<ecs::Item<ecs::Entity, const ::epix::render::view::ExtractedView&,
+                                              const ExtractedClusterConfig&,
+                                              ecs::Opt<const ::epix::camera::RenderLayers&>,
+                                              ecs::Opt<const AmbientLight&>>> views,
+                         ecs::Query<ecs::Item<const ExtractedPointLight&>> point_lights,
+                         ecs::Query<ecs::Item<const ExtractedDirectionalLight&>> directional_lights) {
+    // Bevy's `prepare_lights` tail (`render/light.rs:1113-1250` and the write at `:1630-1650`):
+    // one `GpuLights` per view, in view order, each view stamped with the offset
+    // `SetMeshViewBindGroup<I>` reads at binding 1. Bevy writes this in one function with the
+    // shadow-texture head this port keeps unwired in `light_prepare.cpp`, so the tail is
+    // registered on its own until that head lands.
+    std::vector<ExtractedPointLight> extracted_point_lights;
+    for (auto&& [light] : point_lights.iter()) extracted_point_lights.push_back(light);
+    std::vector<ExtractedDirectionalLight> extracted_directional_lights;
+    for (auto&& [light] : directional_lights.iter()) extracted_directional_lights.push_back(light);
+
+    wgpu::Limits limits{};
+    render_device->getLimits(&limits);
+    const auto max_texture_array_layers = static_cast<std::size_t>(limits.maxTextureArrayLayers);
+    const auto max_texture_cubes        = max_texture_array_layers / 6;
+    const LightCounts counts =
+        count_lights(extracted_point_lights, extracted_directional_lights, max_texture_array_layers,
+                     max_texture_cubes);
+
+    auto& gpu_lights_buffer = light_meta->view_gpu_lights;
+    gpu_lights_buffer.clear();
+    for (auto&& [entity, view, clusters, view_layers, view_ambient] : views.iter()) {
+        const ::epix::camera::RenderLayers& layers =
+            view_layers.has_value() ? view_layers->get() : ::epix::camera::RenderLayers::layer(0);
+
+        // The view's directional lights, in the order the extracted list carries them, with the
+        // layer filter and the light cap Bevy applies (`light.rs:1163-1169`).
+        std::array<GpuDirectionalLight, MAX_DIRECTIONAL_LIGHTS> gpu_directional_lights{};
+        std::size_t num_directional_lights = 0;
+        std::size_t num_cascades_enabled   = 0;
+        for (const ExtractedDirectionalLight& light : extracted_directional_lights) {
+            if (num_directional_lights >= MAX_DIRECTIONAL_LIGHTS) break;
+            if (!layers.intersects(light.render_layers)) continue;
+            const std::size_t index = num_directional_lights;
+            ++num_directional_lights;
+
+            const DirectionalLightFlagsAndCascades flags_and_cascades =
+                directional_light_gpu_flags(light, index, counts.directional_volumetric_enabled,
+                                            num_cascades_enabled, max_texture_array_layers);
+            GpuDirectionalLight gpu{};
+            gpu.color                       = pack_directional_color(light.color, light.illuminance);
+            // Bevy negates the light's forward axis so the shader can use it for N.L directly
+            // (`light.rs:1209`).
+            gpu.dir_to_light                = -glm::vec3(light.transform[2]);
+            gpu.flags                       = flags_and_cascades.flags;
+            gpu.soft_shadow_size            = light.soft_shadow_size.value_or(0.0f);
+            gpu.shadow_depth_bias           = light.shadow_depth_bias;
+            gpu.shadow_normal_bias          = light.shadow_normal_bias;
+            gpu.num_cascades                = flags_and_cascades.num_cascades;
+            gpu.cascades_overlap_proportion = light.cascade_shadow_config.overlap_proportion;
+            gpu.depth_texture_base_index    = static_cast<std::uint32_t>(num_cascades_enabled);
+            gpu.decal_index                 = NO_CLUSTERED_DECAL;
+            gpu.sun_disk_angular_size       = light.sun_disk_angular_size;
+            gpu.sun_disk_intensity          = light.sun_disk_intensity;
+            gpu_directional_lights[index]   = gpu;
+            num_cascades_enabled += flags_and_cascades.num_cascades;
+        }
+
+        const AmbientLight resolved_ambient =
+            resolve_ambient_light(view_ambient.has_value() ? &view_ambient->get() : nullptr, *ambient_light);
+
+        // Bevy's cluster factors: xy scale the tile grid to the viewport, and zw are the
+        // log-based pair `calculate_cluster_factors` returns (`light.rs:1233-1240`).
+        const glm::vec2 cluster_factors_zw = calculate_cluster_factors(
+            clusters.near_plane, clusters.far_plane, static_cast<float>(clusters.dimensions.z), false);
+
+        GpuLights gpu_lights{};
+        gpu_lights.directional_lights  = gpu_directional_lights;
+        gpu_lights.ambient_color       = resolved_ambient.color.linear().vec4() * resolved_ambient.brightness;
+        gpu_lights.cluster_dimensions  = glm::uvec4(
+            clusters.dimensions.x, clusters.dimensions.y, clusters.dimensions.z,
+            clusters.dimensions.x * clusters.dimensions.y * clusters.dimensions.z);
+        gpu_lights.cluster_factors = glm::vec4(
+            static_cast<float>(clusters.dimensions.x) / static_cast<float>(view.viewport.z),
+            static_cast<float>(clusters.dimensions.y) / static_cast<float>(view.viewport.w),
+            cluster_factors_zw.x, cluster_factors_zw.y);
+        gpu_lights.n_directional_lights = static_cast<std::uint32_t>(num_directional_lights);
+        gpu_lights.spot_light_shadowmap_offset =
+            spot_light_shadowmap_offset(num_cascades_enabled, counts.point_lights);
+        gpu_lights.ambient_light_affects_lightmapped_meshes =
+            resolved_ambient.affects_lightmapped_meshes ? 1u : 0u;
+
+        const std::size_t offset = gpu_lights_buffer.push(gpu_lights);
+        commands.entity(entity).insert(ViewLightsUniformOffset{.offset = static_cast<std::uint32_t>(offset)});
+    }
+    gpu_lights_buffer.write_buffer(render_device.get(), render_queue.get());
+}
 
 void extract_lights(
     ecs::Commands commands,

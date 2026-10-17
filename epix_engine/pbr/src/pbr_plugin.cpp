@@ -66,6 +66,17 @@ void PbrPlugin::attach(epix::app::App& app) {
         // (`lib.rs:325`): the two together are what the lighting prepare consumes.
         render_app->get().add_systems(app::ScheduleInfo(render::ExtractSchedule),
                                       ecs::into(extract_lights).set_name("extract lights"));
+        // The scene-wide ambient light has to exist in the render world before the prepare
+        // reads it, and Bevy extracts it in the same schedule (`lib.rs:326`).
+        render_app->get().add_systems(app::ScheduleInfo(render::ExtractSchedule),
+                                      ecs::into(extract_ambient_light_resource)
+                                          .set_name("extract ambient light resource"));
+        // Bevy registers the tail as `prepare_lights` in `ManageViews`, after `sort_cameras`
+        // (`lib.rs:334-337`); this port sorts no cameras yet, so only the set is set.
+        render_app->get().add_systems(render::Render,
+                                      ecs::into(prepare_view_lights)
+                                          .in_set(render::RenderSystems::ManageViews)
+                                          .set_name("prepare view lights"));
         render_app->get().add_systems(render::Render,
                                       ecs::into(prepare_clusters)
                                           .in_set(render::RenderSystems::PrepareResources)
