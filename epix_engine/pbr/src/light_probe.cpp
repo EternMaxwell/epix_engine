@@ -77,10 +77,49 @@ void light_probes_gather_list(std::vector<RenderLightProbe>& out,
     }
 }
 
+void upload_light_probes(ecs::Commands commands,
+                         ecs::Res<wgpu::Device> render_device,
+                         ecs::Res<wgpu::Queue> render_queue,
+                         ecs::ResMut<LightProbesBuffer> light_probes_buffer,
+                         ecs::Query<ecs::Item<ecs::Entity>, ecs::With<::epix::render::view::ExtractedView>> views) {
+    // Bevy `upload_light_probes` (`light_probe/mod.rs:436-517`): one `LightProbesUniform` per
+    // view, written in view order, each view stamped with its own offset - the offset
+    // `SetMeshViewBindGroup<I>` reads at binding 13, and the last component the 3D mesh draw's
+    // view query requires.
+    //
+    // Bevy's query also takes an optional `RenderViewLightProbes<EnvironmentMapLight>` and
+    // `<IrradianceVolume>` per view, which its `gather_light_probes<T>` systems fill. Those are
+    // not ported yet, so every view takes the arm Bevy takes when nothing was gathered: both
+    // counts zero, `view_cubemap_index` -1 as "no cubemap", `intensity_for_view` 1 and the
+    // lightmapped-mesh flag set. That is why a view still gets a valid uniform rather than
+    // none.
+    if (std::ranges::distance(views.iter()) == 0) {
+        return;
+    }
+    auto writer = light_probes_buffer->uniforms.get_writer(
+        static_cast<std::size_t>(std::ranges::distance(views.iter())), render_device.get(), render_queue.get());
+    if (!writer.has_value()) {
+        return;
+    }
+
+    for (auto&& [entity] : views.iter()) {
+        LightProbesUniform uniform{};
+        uniform.reflection_probe_count  = 0;
+        uniform.irradiance_volume_count = 0;
+        uniform.view_cubemap_index      = -1;
+        uniform.smallest_specular_mip_level_for_view = 0;
+        uniform.intensity_for_view                   = 1.0f;
+        uniform.view_environment_map_affects_lightmapped_mesh_diffuse = 1u;
+        const std::uint32_t offset = writer->write(uniform);
+        commands.entity(entity).insert(ViewLightProbesUniformOffset{.offset = offset});
+    }
+}
+
 void LightProbePlugin::attach(epix::app::App& app) {
     // Bevy `LightProbePlugin` (`light_probe/mod.rs:291-315`), minus the environment-map
-    // generation plugin and the two systems named in the header: what is registered here is
-    // the pair the port has, with their render-world resources.
+    // generation plugin and the probe-gathering systems named in the header: what is
+    // registered here is the pair of prepare systems the port has, with their render-world
+    // resources.
     if (auto render_app = app.get_sub_app_mut(render::Render)) {
         render_app->get().world_mut().init_resource<LightProbesBuffer>();
         render_app->get().world_mut().init_resource<EnvironmentMapUniformBuffer>();
@@ -91,6 +130,10 @@ void LightProbePlugin::attach(epix::app::App& app) {
                                       ecs::into(prepare_environment_uniform_buffer)
                                           .in_set(render::RenderSystems::PrepareResources)
                                           .set_name("prepare environment uniform buffer"));
+        render_app->get().add_systems(render::Render,
+                                      ecs::into(upload_light_probes)
+                                          .in_set(render::RenderSystems::PrepareResources)
+                                          .set_name("upload light probes"));
     }
 }
 

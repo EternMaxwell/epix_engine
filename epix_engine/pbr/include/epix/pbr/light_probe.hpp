@@ -321,15 +321,27 @@ irradiance_volume_bind_group_layout_entries(bool binding_arrays_are_usable) {
     return {texture_3d_binding, sampler(wgpu::SamplerBindingType::eFiltering)};
 }
 
+/** @brief Write one `LightProbesUniform` per view and stamp each view with its offset (Bevy
+ *  `upload_light_probes`, `light_probe/mod.rs:436-517`).
+ *
+ *  This is the system that gives a view its light-probe uniform and the
+ *  `ViewLightProbesUniformOffset` the mesh view bind group reads at binding 13. Bevy's version
+ *  also reads an optional `RenderViewLightProbes<EnvironmentMapLight>` and `<IrradianceVolume>`
+ *  per view, filled by `gather_light_probes<T>`; those systems are still unported, so each view
+ *  takes the arm Bevy takes when nothing was gathered - both counts zero, `view_cubemap_index`
+ *  -1 meaning "no cubemap", `intensity_for_view` 1 and the lightmapped-mesh flag set. */
+EPIX_EXPORT EPIX_API void upload_light_probes(
+    ecs::Commands commands, ecs::Res<wgpu::Device> render_device, ecs::Res<wgpu::Queue> render_queue,
+    ecs::ResMut<LightProbesBuffer> light_probes_buffer,
+    ecs::Query<ecs::Item<ecs::Entity>, ecs::With<::epix::render::view::ExtractedView>> views);
+
 /** @brief Registers environment-map and light-probe extraction and preparation (Bevy
  *  `LightProbePlugin`, `light_probe/mod.rs:291-315`).
  *
- *  Two of Bevy's four systems are ported - `gather_environment_map_uniform` and
- *  `prepare_environment_uniform_buffer`, the pair that gives every 3D view its environment
- *  map uniform and stamps `ViewEnvironmentMapUniformOffset` on it. The other two,
- *  `gather_light_probes<T>` and `upload_light_probes`, are not: until they are, no view
- *  carries `ViewLightProbesUniformOffset` (nor the `LightProbesUniform` it points at), and
- *  the mesh view bind group cannot be bound for it - part of PBR-80. */
+ *  Three of Bevy's five systems are ported: `gather_environment_map_uniform`,
+ *  `prepare_environment_uniform_buffer` and `upload_light_probes`. The other two,
+ *  `gather_light_probes<EnvironmentMapLight>` and `<IrradianceVolume>`, are not - so no view
+ *  ever gathers a probe, and `upload_light_probes` writes its no-probe arm for every view. */
 EPIX_EXPORT struct EPIX_API LightProbePlugin {
     void attach(epix::app::App& app);
 };
