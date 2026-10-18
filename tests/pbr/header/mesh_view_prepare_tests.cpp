@@ -1,0 +1,514 @@
+#include <gtest/gtest.h>
+
+#include <array>
+#include <cmath>
+#include <cstring>
+#include <epix/app.hpp>
+#include <epix/assets.hpp>
+#include <epix/camera.hpp>
+#include <epix/core_graph/prepass.hpp>
+#include <epix/ecs.hpp>
+#include <epix/image.hpp>
+#include <epix/mesh.hpp>
+#include <epix/pbr/mesh_pipeline_resource.hpp>
+#include <epix/pbr/mesh_shaders.hpp>
+#include <epix/render.hpp>
+#include <epix/shader.hpp>
+#include <epix/task.hpp>
+#include <epix/time.hpp>
+#include <epix/window.hpp>
+#include <exception>
+#include <memory>
+#include <numbers>
+#include <thread>
+#include <variant>
+
+namespace {
+namespace ecs    = epix::ecs;
+namespace pbr    = epix::pbr;
+namespace render = epix::render;
+namespace core   = epix::core_graph;
+
+struct IoTaskPoolInit {
+    IoTaskPoolInit() {
+        epix::task::IoTaskPool::get_or_init(epix::task::TaskPool{epix::task::TaskPoolBuilder{}.num_threads(4)});
+    }
+} io_task_pool_init;
+
+class MeshViewPrepare : public testing::Test {
+   protected:
+    epix::app::App app = epix::app::App::create();
+    ecs::World* world  = nullptr;
+
+    void SetUp() override {
+        app.add_events<epix::window::WindowClosed>();
+        app.add_plugins(epix::time::TimePlugin{})
+            .add_plugins(epix::camera::CameraPlugin{})
+            .add_plugins(epix::assets::AssetPlugin{})
+            .add_plugins(epix::image::ImagePlugin{})
+            .add_plugins(epix::shader::ShaderPlugin{});
+        try {
+            app.add_plugins(render::RenderPlugin{.synchronous_pipeline_compilation = true});
+        } catch (const std::exception& error) {
+            GTEST_SKIP() << "GPU/Vulkan unavailable: " << error.what();
+        }
+        world = &app.get_sub_app_mut(render::Render)->get().world_mut();
+        world->insert_resource(pbr::GlobalClusterableObjectMeta{wgpu::BufferBindingType::eStorage});
+    }
+
+    template <class F>
+    void run(F function) {
+        auto system = ecs::make_system_unique(function);
+        system->initialize(*world);
+        ASSERT_TRUE(system->run({}, *world).has_value());
+        system->apply_deferred(*world);
+    }
+
+    template <class T>
+    void write_uniform(T& buffer, const auto& value) {
+        buffer.push(value);
+        buffer.write_buffer(world->resource<wgpu::Device>(), world->resource<wgpu::Queue>());
+    }
+
+    template <class T>
+    T& resource() {
+        world->init_resource<T>();
+        return world->resource_mut<T>();
+    }
+
+    wgpu::Texture texture(wgpu::TextureFormat format, std::uint32_t layers = 1, std::uint32_t samples = 1) {
+        return world->resource<wgpu::Device>().createTexture(
+            wgpu::TextureDescriptor()
+                .setDimension(wgpu::TextureDimension::e2D)
+                .setSize({4, 4, layers})
+                .setSampleCount(samples)
+                .setFormat(format)
+                .setUsage(wgpu::TextureUsage::eTextureBinding | wgpu::TextureUsage::eRenderAttachment));
+    }
+
+    void prepare_view_resources(bool binding_arrays = false) {
+        run(pbr::prepare_clusterable_objects);
+        const auto& device = world->resource<wgpu::Device>();
+        const auto& queue  = world->resource<wgpu::Queue>();
+        world->insert_resource(pbr::MeshPipeline{
+            .view_layouts = pbr::MeshPipelineViewLayouts::make(wgpu::BufferBindingType::eReadOnlyStorage,
+                                                               wgpu::BufferBindingType::eReadOnlyStorage,
+                                                               binding_arrays, false, false, false),
+            .shader =
+                epix::assets::Handle<epix::shader::Shader>{epix::assets::AssetId<epix::shader::Shader>::invalid()},
+            .binding_arrays_are_usable = binding_arrays,
+        });
+        auto& uniforms = resource<render::view::ViewUniforms>();
+        write_uniform(uniforms.uniforms, render::view::ViewUniform{});
+        auto& lights = resource<pbr::LightMeta>();
+        write_uniform(lights.view_gpu_lights, pbr::GpuLights{});
+        auto& fog = resource<pbr::FogMeta>();
+        write_uniform(fog.gpu_fogs, pbr::GpuFog{});
+        auto& probes = resource<pbr::LightProbesBuffer>();
+        write_uniform(probes.uniforms, pbr::LightProbesUniform{});
+        auto& ssr = resource<pbr::ScreenSpaceReflectionsBuffer>();
+        write_uniform(ssr.uniforms, pbr::ScreenSpaceReflectionsUniform{});
+        auto& environment = resource<pbr::EnvironmentMapUniformBuffer>();
+        write_uniform(environment.uniforms, pbr::EnvironmentMapUniform{});
+        auto& globals = resource<render::GlobalsBuffer>();
+        globals.buffer.write_buffer(device, queue);
+        auto& visibility = resource<render::view::RenderVisibilityRanges>();
+        visibility.buffer.push(glm::vec4{0.0f});
+        visibility.buffer.write_buffer(device, queue);
+        const auto invalid_image =
+            epix::assets::Handle<epix::image::Image>{epix::assets::AssetId<epix::image::Image>::invalid()};
+        world->insert_resource(core::TonemappingLuts{invalid_image, invalid_image, invalid_image});
+        world->insert_resource(pbr::make_shadow_samplers(device));
+    }
+
+    ecs::Entity spawn_view(render::view::Msaa msaa) {
+        const auto& device            = world->resource<wgpu::Device>();
+        const auto& queue             = world->resource<wgpu::Queue>();
+        const auto point_shadow       = texture(wgpu::TextureFormat::eDepth32Float, 6);
+        const auto directional_shadow = texture(wgpu::TextureFormat::eDepth32Float);
+        pbr::ViewShadowBindings shadows{
+            .point_light_depth_texture      = point_shadow,
+            .point_light_depth_texture_view = point_shadow.createView(
+                wgpu::TextureViewDescriptor().setDimension(wgpu::TextureViewDimension::eCubeArray)),
+            .directional_light_depth_texture      = directional_shadow,
+            .directional_light_depth_texture_view = directional_shadow.createView(
+                wgpu::TextureViewDescriptor().setDimension(wgpu::TextureViewDimension::e2DArray)),
+        };
+        pbr::ViewClusterBindings clusters{wgpu::BufferBindingType::eStorage};
+        clusters.push_offset_and_counts(0, {});
+        clusters.write_buffers(device, queue);
+        return world->spawn(std::move(shadows), std::move(clusters), core::Tonemapping::None, msaa).id();
+    }
+
+    void expect_groups(ecs::Entity entity) {
+        const auto groups = world->entity(entity).get<pbr::MeshViewBindGroup>();
+        ASSERT_TRUE(groups.has_value());
+        EXPECT_TRUE(groups->get().main);
+        EXPECT_TRUE(groups->get().binding_array);
+        EXPECT_TRUE(groups->get().empty);
+    }
+
+    template <class T>
+    T read_gpu_value(const wgpu::Buffer& source, std::uint32_t offset = 0) {
+        const auto& device = world->resource<wgpu::Device>();
+        const auto staging = device.createBuffer(wgpu::BufferDescriptor().setSize(sizeof(T)).setUsage(
+            wgpu::BufferUsage::eCopyDst | wgpu::BufferUsage::eMapRead));
+        const auto encoder = device.createCommandEncoder();
+        encoder.copyBufferToBuffer(source, offset, staging, 0, sizeof(T));
+        world->resource<wgpu::Queue>().submit(encoder.finish());
+        struct Result {
+            T value{};
+            bool completed = false;
+            bool mapped    = false;
+        };
+        const auto result = std::make_shared<Result>();
+        staging.mapAsync(
+            wgpu::MapMode::eRead, 0, sizeof(T),
+            wgpu::BufferMapCallbackInfo()
+                .setMode(wgpu::CallbackMode::eAllowProcessEvents)
+                .setCallback(wgpu::BufferMapCallback([result, staging](wgpu::MapAsyncStatus status, wgpu::StringView) {
+                    result->completed = true;
+                    if (status != wgpu::MapAsyncStatus::eSuccess) return;
+                    std::memcpy(&result->value, staging.getConstMappedRange(0, sizeof(T)), sizeof(T));
+                    staging.unmap();
+                    result->mapped = true;
+                })));
+        for (int attempt = 0; attempt < 1000 && !result->completed; ++attempt) device.poll(wgpu::Bool(true));
+        EXPECT_TRUE(result->mapped);
+        return result->value;
+    }
+};
+
+TEST_F(MeshViewPrepare, EmptyClusterBuffersStillSatisfyTheLayoutMinimum) {
+    run(pbr::prepare_clusterable_objects);
+    const auto& meta = world->resource<pbr::GlobalClusterableObjectMeta>();
+    ASSERT_TRUE(meta.gpu_clusterable_objects.binding());
+    EXPECT_GE(meta.gpu_clusterable_objects.binding()->get().getSize(), sizeof(pbr::GpuClusterableObject));
+    EXPECT_TRUE(meta.entity_to_index.empty());
+}
+
+TEST_F(MeshViewPrepare, ClusterUploadSortsPointAndSpotLightsAndRebuildsIndices) {
+    pbr::ExtractedPointLight spot;
+    spot.intensity         = 3.0f;
+    spot.range             = 4.0f;
+    spot.radius            = 0.5f;
+    spot.shadow_map_near_z = 0.1f;
+    spot.spot_light_angles = std::pair{0.2f, 0.4f};
+    spot.transform[3]      = glm::vec4{1, 2, 3, 1};
+    const auto spot_entity = world->spawn(spot).id();
+    auto point             = spot;
+    point.spot_light_angles.reset();
+    point.color             = {0.25f, 0.5f, 1.0f, 1.0f};
+    const auto point_entity = world->spawn(point).id();
+    run(pbr::prepare_clusterable_objects);
+    const auto& meta = world->resource<pbr::GlobalClusterableObjectMeta>();
+    ASSERT_EQ(meta.entity_to_index.size(), 2u);
+    EXPECT_EQ(meta.entity_to_index.at(point_entity), 0u);
+    EXPECT_EQ(meta.entity_to_index.at(spot_entity), 1u);
+    const auto& data = std::get<pbr::GpuClusterableObjects::Storage>(meta.gpu_clusterable_objects.buffer).get().data;
+    ASSERT_EQ(data.size(), 2u);
+    EXPECT_EQ(data[0].color_inverse_square_range, (glm::vec4{0.75f, 1.5f, 3.0f, 1.0f / 16.0f}));
+    EXPECT_EQ(data[0].position_radius, (glm::vec4{1, 2, 3, 0.5f}));
+    EXPECT_EQ(data[0].light_custom_data, (glm::vec4{0, -1, 0.1f, 0}));
+    EXPECT_NEAR(data[1].spot_light_tan_angle, std::tan(0.4f), 1e-6f);
+    EXPECT_EQ(data[1].decal_index, 0xFFFFFFFFu);
+    world->entity_mut(point_entity).remove<pbr::ExtractedPointLight>();
+    run(pbr::prepare_clusterable_objects);
+    EXPECT_EQ(meta.entity_to_index.size(), 1u);
+    EXPECT_FALSE(meta.entity_to_index.contains(point_entity));
+    EXPECT_EQ(meta.entity_to_index.at(spot_entity), 0u);
+}
+
+TEST_F(MeshViewPrepare, BuildsAllThreeGroupsForViewsWithoutProbes) {
+    prepare_view_resources();
+    const auto view = spawn_view(render::view::Msaa::Off);
+    run(pbr::prepare_mesh_view_bind_groups);
+    expect_groups(view);
+}
+
+TEST_F(MeshViewPrepare, UsesMultisampledPrepassAndTransmissionTextures) {
+    prepare_view_resources();
+    const auto view = spawn_view(render::view::Msaa::Sample4);
+    core::core_3d::ViewPrepassTextures prepass;
+    const auto depth  = texture(wgpu::TextureFormat::eDepth32Float, 1, 4);
+    const auto normal = texture(wgpu::TextureFormat::eRGBA16Float, 1, 4);
+    const auto motion = texture(wgpu::TextureFormat::eRG16Float, 1, 4);
+    prepass.depth     = render::render_resource::ColorAttachment{
+        render::render_resource::CachedTexture{depth, depth.createView(wgpu::TextureViewDescriptor{})}, std::nullopt};
+    prepass.normal = render::render_resource::ColorAttachment{
+        render::render_resource::CachedTexture{normal, normal.createView(wgpu::TextureViewDescriptor{})}, std::nullopt};
+    prepass.motion_vectors = render::render_resource::ColorAttachment{
+        render::render_resource::CachedTexture{motion, motion.createView(wgpu::TextureViewDescriptor{})}, std::nullopt};
+    const auto transmission = texture(wgpu::TextureFormat::eRGBA16Float);
+    world->entity_mut(view).insert(std::move(prepass),
+                                   core::core_3d::ViewTransmissionTexture{
+                                       transmission, transmission.createView(wgpu::TextureViewDescriptor{}),
+                                       world->resource<wgpu::Device>().createSampler(wgpu::SamplerDescriptor{})});
+    run(pbr::prepare_mesh_view_bind_groups);
+    expect_groups(view);
+}
+
+TEST_F(MeshViewPrepare, PopulatesProbeBindingArraysOnCapableDevices) {
+    if (!world->resource<wgpu::Device>().hasFeature(wgpu::FeatureName::eTextureBindingArray)) {
+        GTEST_SKIP() << "Device has no texture binding arrays";
+    }
+    prepare_view_resources(true);
+    const auto view = spawn_view(render::view::Msaa::Off);
+    run(pbr::prepare_mesh_view_bind_groups);
+    expect_groups(view);
+}
+
+TEST_F(MeshViewPrepare, UsesTheUnsignedDeferredPrepassTexture) {
+    prepare_view_resources();
+    const auto view = spawn_view(render::view::Msaa::Off);
+    core::core_3d::ViewPrepassTextures prepass;
+    const auto deferred = texture(wgpu::TextureFormat::eRGBA32Uint);
+    prepass.deferred    = render::render_resource::ColorAttachment{
+        render::render_resource::CachedTexture{deferred, deferred.createView(wgpu::TextureViewDescriptor{})}};
+    world->entity_mut(view).insert(std::move(prepass));
+    run(pbr::prepare_mesh_view_bind_groups);
+    expect_groups(view);
+}
+
+TEST_F(MeshViewPrepare, UploadedViewLightsUseBackDirectionAndOrthographicClusters) {
+    world->insert_resource(pbr::GlobalAmbientLight{});
+    auto& lights = resource<pbr::LightMeta>();
+    lights.view_gpu_lights.add_usages(wgpu::BufferUsage::eCopySrc);
+    const auto view =
+        world
+            ->spawn(
+                render::view::ExtractedView{
+                    .retained_view_entity =
+                        render::view::RetainedViewEntity{render::sync_world::MainEntity{ecs::Entity::from_index(7)}},
+                    .clip_from_view  = glm::mat4{1.0f},
+                    .world_from_view = {},
+                    .viewport        = {0, 0, 64, 32},
+                },
+                pbr::ExtractedClusterConfig{.near_plane = 1.0f, .far_plane = 17.0f, .dimensions = {4, 2, 8}})
+            .id();
+    pbr::ExtractedDirectionalLight volumetric;
+    volumetric.volumetric      = true;
+    volumetric.shadows_enabled = true;
+    volumetric.illuminance     = 10.0f;
+    world->spawn(volumetric);
+    pbr::ExtractedDirectionalLight ordinary;
+    ordinary.illuminance  = 2.0f;
+    ordinary.transform[2] = {0, 0, 2, 0};
+    world->spawn(ordinary);
+    run(pbr::prepare_view_lights);
+    const auto offset = world->entity(view).get<pbr::ViewLightsUniformOffset>();
+    ASSERT_TRUE(offset);
+    const auto uploaded = read_gpu_value<pbr::GpuLights>(*lights.view_gpu_lights.buffer(), offset->get().offset);
+    ASSERT_EQ(uploaded.n_directional_lights, 2u);
+    EXPECT_EQ(uploaded.directional_lights[0].color, glm::vec4{2.0f});
+    EXPECT_EQ(uploaded.directional_lights[0].dir_to_light, (glm::vec3{0, 0, 1}));
+    EXPECT_EQ(uploaded.directional_lights[1].color, glm::vec4{10.0f});
+    EXPECT_EQ(uploaded.cluster_factors, (glm::vec4{0.0625f, 0.0625f, -1.0f, -0.5f}));
+}
+
+TEST_F(MeshViewPrepare, ViewShaderArithmeticMatchesColumnVectorTransforms) {
+    // Exercise the actual imported library, rather than a C++ copy or a shader
+    // that merely compiles. Non-symmetric transforms expose reversed operands.
+    app.add_plugins(epix::mesh::MeshPlugin{}, epix::transform::TransformPlugin{});
+    pbr::register_mesh_shaders(app.world_mut());
+    app.add_plugins(render::FrameCountPlugin{});
+    static constexpr std::string_view source = R"slang(
+import epix.view_transformations;
+using namespace epix::view_transformations;
+// Leave the imported probe bindings (group 1, bindings 0..7) unaliased.
+[[vk::binding(8, 1)]] RWStructuredBuffer<float4> results;
+struct ProbeInputs {
+    float4 position;
+    float4 direction;
+    float4 clip;
+};
+[[vk::binding(9, 1)]] ConstantBuffer<ProbeInputs> inputs;
+[shader("compute")]
+[numthreads(1, 1, 1)]
+void main() {
+    float3 p = inputs.position.xyz;
+    float3 d = inputs.direction.xyz;
+    float4 c = inputs.clip;
+    results[0] = float4(position_view_to_world(p), 1);
+    results[1] = float4(position_clip_to_world(c), 1);
+    results[2] = float4(position_ndc_to_world(c.xyz), 1);
+    results[3] = float4(direction_view_to_world(d), 0);
+    results[4] = float4(direction_clip_to_world(float4(d, 0)), 0);
+    results[5] = float4(position_world_to_view(p), 1);
+    results[6] = float4(position_clip_to_view(c), 1);
+    results[7] = float4(position_ndc_to_view(c.xyz), 1);
+    results[8] = float4(direction_world_to_view(d), 0);
+    results[9] = float4(direction_clip_to_view(float4(d, 0)), 0);
+    results[10] = float4(position_world_to_prev_view(p), 1);
+    results[11] = float4(position_world_to_prev_ndc(p), 1);
+    results[12] = position_world_to_clip(p);
+    results[13] = position_view_to_clip(p);
+    results[14] = direction_world_to_clip(d);
+    results[15] = direction_view_to_clip(d);
+    results[16] = float4(position_world_to_ndc(p), 1);
+    results[17] = float4(position_view_to_ndc(p), 1);
+    results[18] = float4(perspective_camera_near(), depth_ndc_to_view_z(0.4),
+        view_z_to_depth_ndc(-3.0), prev_view_z_to_depth_ndc(-3.0));
+}
+)slang";
+    app.resource_mut<epix::assets::EmbeddedAssetRegistry>().insert_asset_static(
+        "tests/pbr/view_transform_oracle.slang",
+        std::span<const std::byte>{reinterpret_cast<const std::byte*>(source.data()), source.size()});
+    const auto shader = app.resource<epix::assets::AssetServer>().load<epix::shader::Shader>(
+        "embedded://tests/pbr/view_transform_oracle.slang");
+    const auto& asset_server = app.resource<epix::assets::AssetServer>();
+    const std::array required_shaders{asset_server.load<epix::shader::Shader>("embedded://epix/shaders/view.slang"),
+                                      asset_server.load<epix::shader::Shader>("embedded://epix/shaders/globals.slang"),
+                                      app.resource<pbr::MeshShaderHandles>().view_transformations, shader};
+    const auto dependencies_loaded = [&] {
+        return std::ranges::all_of(required_shaders, [&](const auto& handle) {
+            return asset_server.is_loaded_with_dependencies(handle.id());
+        });
+    };
+    // Do not queue against a partially populated shader import cache. Previous
+    // fixtures leave asynchronous work on the process-wide IO pool too.
+    for (int attempt = 0; attempt < 10000 && !dependencies_loaded(); ++attempt) {
+        app.run_schedule(epix::app::PreUpdate);
+        app.run_schedule(epix::app::PostUpdate);
+        app.run_schedule(epix::app::Last);
+        std::this_thread::yield();
+    }
+    ASSERT_TRUE(dependencies_loaded());
+    const auto uniform_entry = [](std::uint32_t binding, std::uint64_t size) {
+        return wgpu::BindGroupLayoutEntry()
+            .setBinding(binding)
+            .setVisibility(wgpu::ShaderStage::eCompute)
+            .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eUniform).setMinBindingSize(size));
+    };
+    const auto view_layout = render::BindGroupLayoutDescriptor::create(
+        "view oracle uniforms", std::array{uniform_entry(0, sizeof(render::view::ViewUniform)),
+                                           uniform_entry(2, sizeof(core::PreviousViewData))});
+    const auto output_layout = render::BindGroupLayoutDescriptor::create(
+        "view oracle output",
+        std::array{wgpu::BindGroupLayoutEntry()
+                       .setBinding(8)
+                       .setVisibility(wgpu::ShaderStage::eCompute)
+                       .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eStorage)),
+                   uniform_entry(9, 3 * sizeof(glm::vec4))});
+    using Values       = std::array<glm::vec4, 19>;
+    const auto& device = world->resource<wgpu::Device>();
+    const auto& queue  = world->resource<wgpu::Queue>();
+    // Use runtime inputs, as production shaders do. Constant probe vectors expose
+    // a Slang constant-folding bug: float4(float3, scalar) becomes an invalid
+    // two-constituent OpConstantComposite (VUID-pCode-08737).
+    const std::array inputs{glm::vec4{0.25f, -0.5f, -2.0f, 1}, glm::vec4{0.2f, 0.3f, -0.4f, 0},
+                            glm::vec4{0.1f, -0.2f, 0.3f, 1}};
+    const auto input_buffer =
+        device.createBuffer(wgpu::BufferDescriptor()
+                                .setSize(sizeof(inputs))
+                                .setUsage(wgpu::BufferUsage::eUniform | wgpu::BufferUsage::eCopyDst));
+    queue.writeBuffer(input_buffer, 0, inputs.data(), sizeof(inputs));
+    const auto output = device.createBuffer(wgpu::BufferDescriptor()
+                                                .setSize(sizeof(Values))
+                                                .setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopySrc));
+    auto& server      = app.resource<render::PipelineServer>();
+    render::render_resource::UniformBuffer<render::view::ViewUniform> view_buffer;
+    render::render_resource::UniformBuffer<core::PreviousViewData> previous_buffer;
+
+    for (int variant = 0; variant < 3; ++variant) {
+        SCOPED_TRACE(variant);  // generic, perspective specialization, orthographic specialization
+        render::view::ViewUniform view{};
+        view.world_from_view = glm::translate(glm::mat4{1.0f}, glm::vec3{3, -2, 5}) *
+                               glm::rotate(glm::mat4{1.0f}, 0.3f, glm::vec3{0, 1, 0});
+        view.view_from_world = glm::inverse(view.world_from_view);
+        view.clip_from_view  = variant == 2 ? glm::orthoRH_ZO(-3.0f, 5.0f, -2.0f, 4.0f, 0.3f, 17.0f)
+                                            : epix::camera::perspective_infinite_reverse_rh(1.1f, 1.5f, 0.3f);
+        view.view_from_clip  = glm::inverse(view.clip_from_view);
+        view.clip_from_world = view.clip_from_view * view.view_from_world;
+        view.world_from_clip = glm::inverse(view.clip_from_world);
+        core::PreviousViewData previous;
+        previous.view_from_world = glm::inverse(glm::translate(glm::mat4{1.0f}, glm::vec3{-1, 2, 4}));
+        previous.clip_from_view  = view.clip_from_view;
+        previous.clip_from_world = view.clip_from_view * previous.view_from_world;
+        view_buffer.set(view);
+        previous_buffer.set(previous);
+        view_buffer.write_buffer(device, queue);
+        previous_buffer.write_buffer(device, queue);
+        render::ComputePipelineDescriptor descriptor{
+            .label       = "view transformations arithmetic oracle",
+            .layouts     = {view_layout, output_layout},
+            .shader      = shader,
+            .shader_defs = pbr::specialize_mesh_capability_shader_defs(false, false, false, std::nullopt),
+            .entry_point = "main",
+        };
+        descriptor.shader_defs.push_back(epix::shader::ShaderDefVal::from_uint("AVAILABLE_STORAGE_BUFFER_BINDINGS", 8));
+        if (variant != 0)
+            descriptor.shader_defs.push_back(epix::shader::ShaderDefVal::from_bool(
+                variant == 1 ? "VIEW_PROJECTION_PERSPECTIVE" : "VIEW_PROJECTION_ORTHOGRAPHIC"));
+        const auto pipeline_id = server.queue_compute_pipeline(std::move(descriptor));
+        for (int attempt = 0; attempt < 10000 && !server.get_compute_pipeline(pipeline_id); ++attempt) {
+            app.run_schedule(epix::app::PreUpdate);
+            app.run_schedule(epix::app::PostUpdate);
+            app.run_schedule(epix::app::Last);
+            std::this_thread::yield();
+        }
+        const auto pipeline = server.get_compute_pipeline(pipeline_id);
+        ASSERT_TRUE(pipeline);
+        const auto uniforms_group = device.createBindGroup(
+            wgpu::BindGroupDescriptor()
+                .setLayout(server.get_bind_group_layout(view_layout))
+                .setEntries(std::array{
+                    wgpu::BindGroupEntry().setBinding(0).setBuffer(*view_buffer.buffer()).setSize(sizeof(view)),
+                    wgpu::BindGroupEntry()
+                        .setBinding(2)
+                        .setBuffer(*previous_buffer.buffer())
+                        .setSize(sizeof(previous))}));
+        const auto output_group = device.createBindGroup(
+            wgpu::BindGroupDescriptor()
+                .setLayout(server.get_bind_group_layout(output_layout))
+                .setEntries(
+                    std::array{wgpu::BindGroupEntry().setBinding(8).setBuffer(output).setSize(sizeof(Values)),
+                               wgpu::BindGroupEntry().setBinding(9).setBuffer(input_buffer).setSize(sizeof(inputs))}));
+        const auto encoder = device.createCommandEncoder();
+        const auto pass    = encoder.beginComputePass();
+        pass.setPipeline(pipeline->get().pipeline());
+        pass.setBindGroup(0, uniforms_group, std::span<const std::uint32_t>{});
+        pass.setBindGroup(1, output_group, std::span<const std::uint32_t>{});
+        pass.dispatchWorkgroups(1, 1, 1);
+        pass.end();
+        queue.submit(encoder.finish());
+
+        const auto p          = inputs[0];
+        const auto d          = inputs[1];
+        const auto c          = inputs[2];
+        const auto xyz        = [](glm::vec4 v, float w = 1.0f) { return glm::vec4{glm::vec3(v), w}; };
+        const auto ndc        = [](glm::vec4 v) { return glm::vec4{glm::vec3(v) / v.w, 1.0f}; };
+        const auto depth_view = view.view_from_clip * glm::vec4{0, 0, 0.4f, 1};
+        const auto depth_clip = view.clip_from_view * glm::vec4{0, 0, -3, 1};
+        const Values expected{
+            xyz(view.world_from_view * p),
+            xyz(view.world_from_clip * c),
+            ndc(view.world_from_clip * c),
+            xyz(view.world_from_view * d, 0),
+            xyz(view.world_from_clip * d, 0),
+            xyz(view.view_from_world * p),
+            xyz(view.view_from_clip * c),
+            ndc(view.view_from_clip * c),
+            xyz(view.view_from_world * d, 0),
+            xyz(view.view_from_clip * d, 0),
+            xyz(previous.view_from_world * p),
+            ndc(previous.clip_from_world * p),
+            view.clip_from_world * p,
+            view.clip_from_view * p,
+            view.clip_from_world * d,
+            view.clip_from_view * d,
+            ndc(view.clip_from_world * p),
+            ndc(view.clip_from_view * p),
+            glm::vec4{view.clip_from_view[3][2], depth_view.z / depth_view.w, depth_clip.z / depth_clip.w,
+                      depth_clip.z / depth_clip.w},
+        };
+        const auto actual = read_gpu_value<Values>(output);
+        for (std::size_t index = 0; index < expected.size(); ++index) {
+            SCOPED_TRACE(index);
+            for (int component = 0; component < 4; ++component)
+                EXPECT_NEAR(actual[index][component], expected[index][component], 1e-4f);
+        }
+    }
+}
+
+}  // namespace

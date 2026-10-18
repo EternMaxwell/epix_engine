@@ -338,6 +338,15 @@ EPIX_EXPORT EPIX_API void prepare_lights_shadow_bindings(
     ecs::Query<ecs::Item<const ExtractedDirectionalLight&>> directional_lights,
     ecs::Query<ecs::Item<ecs::Entity, const ::epix::render::view::ExtractedView&>> views);
 
+/** @brief Sort, pack and upload the scene's point/spot lights, rebuilding their
+ * entity-to-buffer indices (Bevy `prepare_lights`, `render/light.rs:857-977,1012-1018`). */
+EPIX_EXPORT EPIX_API void prepare_clusterable_objects(
+    ecs::Res<wgpu::Device> render_device,
+    ecs::Res<wgpu::Queue> render_queue,
+    ecs::ResMut<GlobalClusterableObjectMeta> global_light_meta,
+    ecs::Query<ecs::Item<ecs::Entity, const ExtractedPointLight&>> point_lights,
+    ecs::Query<ecs::Item<const ExtractedDirectionalLight&>> directional_lights);
+
 /** @brief Write one `GpuLights` per view and stamp each view with its offset (Bevy
  *  `prepare_lights`' tail, `render/light.rs:1113-1250` and `:1630-1650`).
  *
@@ -347,21 +356,23 @@ EPIX_EXPORT EPIX_API void prepare_lights_shadow_bindings(
  *  lights left), the resolved ambient colour, the cluster dimensions and factors, and the two
  *  indices the shader uses, then writes the uniform and stamps `ViewLightsUniformOffset` -
  *  the component `SetMeshViewBindGroup<I>` reads at binding 1. Bevy writes this together with
- *  the shadow-texture head this port keeps unwired (`light_prepare.cpp`), so the tail is
- *  registered on its own until that head lands.
+ *  shadow-texture preparation; this port registers that preparation and the uniform upload
+ *  as separate systems in `ManageViews`. Shadow-view spawning and rendering remain unported.
  *
- *  `calculate_cluster_factors` is asked for the perspective pair: Bevy reads the view's
- *  orthographic flag from its projection, which this port's `ExtractedView` does not carry
- *  yet. */
+ *  The projection matrix selects orthographic clustering in the same way as Bevy. */
 EPIX_EXPORT EPIX_API void prepare_view_lights(
-    ecs::Commands commands, ecs::Res<wgpu::Device> render_device, ecs::Res<wgpu::Queue> render_queue,
-    ecs::Res<GlobalAmbientLight> ambient_light, ecs::ResMut<LightMeta> light_meta,
-    ecs::Query<ecs::Item<ecs::Entity, const ::epix::render::view::ExtractedView&,
-                         const ExtractedClusterConfig&, ecs::Opt<const ::epix::camera::RenderLayers&>,
-                         ecs::Opt<const AmbientLight&>>>
-        views,
+    ecs::Commands commands,
+    ecs::Res<wgpu::Device> render_device,
+    ecs::Res<wgpu::Queue> render_queue,
+    ecs::Res<GlobalAmbientLight> ambient_light,
+    ecs::ResMut<LightMeta> light_meta,
+    ecs::Query<ecs::Item<ecs::Entity,
+                         const ::epix::render::view::ExtractedView&,
+                         const ExtractedClusterConfig&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>,
+                         ecs::Opt<const AmbientLight&>>> views,
     ecs::Query<ecs::Item<const ExtractedPointLight&>> point_lights,
-    ecs::Query<ecs::Item<const ExtractedDirectionalLight&>> directional_lights);
+    ecs::Query<ecs::Item<ecs::Entity, const ExtractedDirectionalLight&>> directional_lights);
 
 /** @brief Copy each visible light into the render world for the lighting prepare (Bevy
  *  `extract_lights`, `render/light.rs:280-599`).

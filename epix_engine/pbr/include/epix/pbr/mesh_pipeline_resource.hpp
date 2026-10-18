@@ -6,19 +6,28 @@
 #include <cstdint>
 #include <epix/assets.hpp>
 #include <epix/common.hpp>
+#include <epix/core_graph/tonemapping.hpp>
 #include <epix/render/bind_group_layout.hpp>
+#include <epix/render/fallback_image.hpp>
+#include <epix/render/globals.hpp>
 #include <epix/render/render_resource.hpp>
+#include <epix/render/visibility_range.hpp>
 #include <epix/shader.hpp>
 #include <optional>
 #include <utility>
 #include <webgpu/webgpu.hpp>
 #endif
 
+#include <epix/pbr/cluster.hpp>
+#include <epix/pbr/light_meta.hpp>
+#include <epix/pbr/light_probe.hpp>
 #include <epix/pbr/mesh_bindings.hpp>
 #include <epix/pbr/mesh_pipeline_key.hpp>
 #include <epix/pbr/mesh_uniform.hpp>
 #include <epix/pbr/mesh_view_bindings.hpp>
+#include <epix/pbr/shadow_samplers.hpp>
 #include <epix/pbr/skin.hpp>
+#include <epix/pbr/ssr.hpp>
 
 namespace epix::pbr {
 
@@ -115,5 +124,40 @@ EPIX_EXPORT struct ViewKeyCache {
 EPIX_EXPORT struct ViewSpecializationTicks {
     std::unordered_map<render::view::RetainedViewEntity, ecs::Tick> ticks;
 };
+
+/** @brief Build each view's mesh view bind group (Bevy `prepare_mesh_view_bind_groups`,
+ *  `render/mesh_view_bindings.rs:563-869`).
+ *
+ *  It is declared here rather than beside the view layouts because it names `MeshPipeline`, and
+ *  this is the header where that type and the layouts meet; declaring it in
+ *  `mesh_view_bindings.hpp` would need it to include this file, which already includes that one.
+ *  `SetMeshViewBindGroup<I>` requires the component this inserts, so no opaque mesh can be drawn
+ *  until it runs. */
+EPIX_EXPORT EPIX_API void prepare_mesh_view_bind_groups(
+    ecs::Commands commands,
+    ecs::Res<wgpu::Device> render_device,
+    ecs::Res<render::PipelineServer> pipeline_server,
+    ecs::Res<MeshPipeline> mesh_pipeline,
+    ecs::Res<ShadowSamplers> shadow_samplers,
+    ecs::Res<LightMeta> light_meta,
+    ecs::Res<GlobalClusterableObjectMeta> global_light_meta,
+    ecs::Res<FogMeta> fog_meta,
+    ecs::Res<render::view::ViewUniforms> view_uniforms,
+    ecs::Res<render::GlobalsBuffer> globals_buffer,
+    ecs::Res<LightProbesBuffer> light_probes_buffer,
+    ecs::Res<ScreenSpaceReflectionsBuffer> ssr_buffer,
+    ecs::Res<EnvironmentMapUniformBuffer> environment_map_uniform,
+    ecs::Res<render::view::RenderVisibilityRanges> visibility_ranges,
+    ecs::Res<render::texture::FallbackImage> fallback_image,
+    ecs::Res<render::texture::FallbackImageZero> fallback_image_zero,
+    ecs::Res<render::RenderAssets<render::texture::GpuImage>> images,
+    ecs::Res<core_graph::TonemappingLuts> tonemapping_luts,
+    ecs::Query<ecs::Item<ecs::Entity,
+                         const ViewShadowBindings&,
+                         const ViewClusterBindings&,
+                         const core_graph::Tonemapping&,
+                         const render::view::Msaa&,
+                         ecs::Opt<const core_graph::core_3d::ViewPrepassTextures&>,
+                         ecs::Opt<const core_graph::core_3d::ViewTransmissionTexture&>>> views);
 
 }  // namespace epix::pbr

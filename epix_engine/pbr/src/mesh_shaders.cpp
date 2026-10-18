@@ -882,10 +882,9 @@ public [[vk::binding(2, 0)]] ConstantBuffer<epix::prepass_bindings::PreviousView
  * scope, so they are spelled bare where Bevy qualifies them with
  * `view_bindings::`/`prepass_bindings::`.
  *
- * Every matrix product flips sides for the reason the skinning module states:
- * the port keeps Bevy's matrices transposed, so `M * v` is `mul(v, M)`.
- * Two-dimensional indexing is unchanged (`M[3][2]` is the same element either
- * way), and `#else ifdef X` becomes Slang's `#elif defined(X)`.
+ * View uniforms retain GLM's column-major storage and Slang is compiled with
+ * column-major matrix layout. Matrix-vector multiplication therefore keeps
+ * Bevy's operand order. Slang indexes rows first, so WGSL's [3][2] is [2][3].
  */
 constexpr std::string_view kViewTransformationsShader = R"slang(
 module epix.view_transformations;
@@ -899,94 +898,94 @@ namespace epix::view_transformations {
 // z is 1 at the near plane and 0 at the far plane. UV: (0,0) is top-left.
 
 public float3 position_view_to_world(float3 view_pos) {
-    float4 world_pos = mul(float4(view_pos, 1.0), view.world_from_view);
+    float4 world_pos = mul(view.world_from_view, float4(view_pos, 1.0));
     return world_pos.xyz;
 }
 
 public float3 position_clip_to_world(float4 clip_pos) {
-    float4 world_pos = mul(clip_pos, view.world_from_clip);
+    float4 world_pos = mul(view.world_from_clip, clip_pos);
     return world_pos.xyz;
 }
 
 public float3 position_ndc_to_world(float3 ndc_pos) {
-    float4 world_pos = mul(float4(ndc_pos, 1.0), view.world_from_clip);
+    float4 world_pos = mul(view.world_from_clip, float4(ndc_pos, 1.0));
     return world_pos.xyz / world_pos.w;
 }
 
 public float3 direction_view_to_world(float3 view_dir) {
-    float4 world_dir = mul(float4(view_dir, 0.0), view.world_from_view);
+    float4 world_dir = mul(view.world_from_view, float4(view_dir, 0.0));
     return world_dir.xyz;
 }
 
 public float3 direction_clip_to_world(float4 clip_dir) {
-    float4 world_dir = mul(clip_dir, view.world_from_clip);
+    float4 world_dir = mul(view.world_from_clip, clip_dir);
     return world_dir.xyz;
 }
 
 public float3 position_world_to_view(float3 world_pos) {
-    float4 view_pos = mul(float4(world_pos, 1.0), view.view_from_world);
+    float4 view_pos = mul(view.view_from_world, float4(world_pos, 1.0));
     return view_pos.xyz;
 }
 
 public float3 position_clip_to_view(float4 clip_pos) {
-    float4 view_pos = mul(clip_pos, view.view_from_clip);
+    float4 view_pos = mul(view.view_from_clip, clip_pos);
     return view_pos.xyz;
 }
 
 public float3 position_ndc_to_view(float3 ndc_pos) {
-    float4 view_pos = mul(float4(ndc_pos, 1.0), view.view_from_clip);
+    float4 view_pos = mul(view.view_from_clip, float4(ndc_pos, 1.0));
     return view_pos.xyz / view_pos.w;
 }
 
 public float3 direction_world_to_view(float3 world_dir) {
-    float4 view_dir = mul(float4(world_dir, 0.0), view.view_from_world);
+    float4 view_dir = mul(view.view_from_world, float4(world_dir, 0.0));
     return view_dir.xyz;
 }
 
 public float3 direction_clip_to_view(float4 clip_dir) {
-    float4 view_dir = mul(clip_dir, view.view_from_clip);
+    float4 view_dir = mul(view.view_from_clip, clip_dir);
     return view_dir.xyz;
 }
 
 public float3 position_world_to_prev_view(float3 world_pos) {
-    float4 view_pos = mul(float4(world_pos, 1.0), previous_view_uniforms.view_from_world);
+    float4 view_pos = mul(previous_view_uniforms.view_from_world, float4(world_pos, 1.0));
     return view_pos.xyz;
 }
 
 public float3 position_world_to_prev_ndc(float3 world_pos) {
-    float4 ndc_pos = mul(float4(world_pos, 1.0), previous_view_uniforms.clip_from_world);
+    float4 ndc_pos = mul(previous_view_uniforms.clip_from_world, float4(world_pos, 1.0));
     return ndc_pos.xyz / ndc_pos.w;
 }
 
 public float4 position_world_to_clip(float3 world_pos) {
-    return mul(float4(world_pos, 1.0), view.clip_from_world);
+    return mul(view.clip_from_world, float4(world_pos, 1.0));
 }
 
 public float4 position_view_to_clip(float3 view_pos) {
-    return mul(float4(view_pos, 1.0), view.clip_from_view);
+    return mul(view.clip_from_view, float4(view_pos, 1.0));
 }
 
 public float4 direction_world_to_clip(float3 world_dir) {
-    return mul(float4(world_dir, 0.0), view.clip_from_world);
+    return mul(view.clip_from_world, float4(world_dir, 0.0));
 }
 
 public float4 direction_view_to_clip(float3 view_dir) {
-    return mul(float4(view_dir, 0.0), view.clip_from_view);
+    return mul(view.clip_from_view, float4(view_dir, 0.0));
 }
 
 public float3 position_world_to_ndc(float3 world_pos) {
-    float4 ndc_pos = mul(float4(world_pos, 1.0), view.clip_from_world);
+    float4 ndc_pos = mul(view.clip_from_world, float4(world_pos, 1.0));
     return ndc_pos.xyz / ndc_pos.w;
 }
 
 public float3 position_view_to_ndc(float3 view_pos) {
-    float4 ndc_pos = mul(float4(view_pos, 1.0), view.clip_from_view);
+    float4 ndc_pos = mul(view.clip_from_view, float4(view_pos, 1.0));
     return ndc_pos.xyz / ndc_pos.w;
 }
 
 // The perspective camera's near clipping plane.
 public float perspective_camera_near() {
-    return view.clip_from_view[3][2];
+    return view.clip_from_view[2][3];
 }
 
 // Depth values in front of the camera are negative, because -z is forward.
@@ -994,9 +993,9 @@ public float depth_ndc_to_view_z(float ndc_depth) {
 #if defined(VIEW_PROJECTION_PERSPECTIVE)
     return -perspective_camera_near() / ndc_depth;
 #elif defined(VIEW_PROJECTION_ORTHOGRAPHIC)
-    return -(view.clip_from_view[3][2] - ndc_depth) / view.clip_from_view[2][2];
+    return -(view.clip_from_view[2][3] - ndc_depth) / view.clip_from_view[2][2];
 #else
-    float4 view_pos = mul(float4(0.0, 0.0, ndc_depth, 1.0), view.view_from_clip);
+    float4 view_pos = mul(view.view_from_clip, float4(0.0, 0.0, ndc_depth, 1.0));
     return view_pos.z / view_pos.w;
 #endif
 }
@@ -1005,9 +1004,9 @@ public float view_z_to_depth_ndc(float view_z) {
 #if defined(VIEW_PROJECTION_PERSPECTIVE)
     return -perspective_camera_near() / view_z;
 #elif defined(VIEW_PROJECTION_ORTHOGRAPHIC)
-    return view.clip_from_view[3][2] + view_z * view.clip_from_view[2][2];
+    return view.clip_from_view[2][3] + view_z * view.clip_from_view[2][2];
 #else
-    float4 ndc_pos = mul(float4(0.0, 0.0, view_z, 1.0), view.clip_from_view);
+    float4 ndc_pos = mul(view.clip_from_view, float4(0.0, 0.0, view_z, 1.0));
     return ndc_pos.z / ndc_pos.w;
 #endif
 }
@@ -1016,10 +1015,10 @@ public float prev_view_z_to_depth_ndc(float view_z) {
 #if defined(VIEW_PROJECTION_PERSPECTIVE)
     return -perspective_camera_near() / view_z;
 #elif defined(VIEW_PROJECTION_ORTHOGRAPHIC)
-    return previous_view_uniforms.clip_from_view[3][2] +
+    return previous_view_uniforms.clip_from_view[2][3] +
            view_z * previous_view_uniforms.clip_from_view[2][2];
 #else
-    float4 ndc_pos = mul(float4(0.0, 0.0, view_z, 1.0), previous_view_uniforms.clip_from_view);
+    float4 ndc_pos = mul(previous_view_uniforms.clip_from_view, float4(0.0, 0.0, view_z, 1.0));
     return ndc_pos.z / ndc_pos.w;
 #endif
 }
@@ -1667,10 +1666,8 @@ void MeshRenderPlugin::attach(epix::app::App& app) {
         epix::ecs::sets(MeshExtractionSystems::Extract)
             .after(epix::render::view::extract_visibility_ranges)
             .after(late_sweep_material_instances));
-    // Bevy's `Render`-schedule block, as far as the port has the systems for it: four of
-    // the six are registered in their sets, and the two that do not exist
-    // (`prepare_mesh_bind_groups` and `prepare_mesh_view_bind_groups`, which `PBR-302`
-    // records as gated) are named against `PBR-109` rather than left to be noticed.
+    // Mesh bind groups use the CPU/GPU builder branch registered above; view
+    // bind groups are prepared by PbrPlugin after the lighting resources.
     // `set_mesh_motion_vector_flags` is Bevy's only writer of the motion-vector
     // flags; it needs `RenderMeshInstances` (inserted above) and `SkinUniforms`
     // (built in `ready`, where the device exists), and is registered here.

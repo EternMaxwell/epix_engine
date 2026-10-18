@@ -889,11 +889,9 @@ struct RenderCommand<::epix::pbr::SetMeshBindGroup<I>, P> {
 /** @brief Bind the view's mesh bind group at slot `I` (Bevy `SetMeshViewBindGroup<I>`,
  *  `render/mesh.rs:2991-3038`).
  *
- *  The offsets are the view's uniform offsets, in the order the group's dynamic bindings
- *  declare them. Bevy pushes six and optionally a seventh for order-independent transparency;
- *  this port pushes the four it has, because screen-space reflections and order-independent
- *  transparency are features it does not implement and its group's layout therefore does not
- *  declare those bindings. Pushing Bevy's six would bind offsets the layout never asked for. */
+ *  The six offsets follow the dynamic binding order: view, lights, fog, probes,
+ *  SSR and environment map. Bevy's optional seventh OIT offset remains part of
+ *  the unported OIT subsystem. */
 EPIX_EXPORT template <std::size_t I, PhaseItem P>
 struct RenderCommand<::epix::pbr::SetMeshViewBindGroup<I>, P> {
     using Param     = std::tuple<>;

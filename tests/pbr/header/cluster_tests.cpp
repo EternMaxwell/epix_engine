@@ -98,6 +98,15 @@ TEST(Cluster, RuntimeSizedClusterBuffersFollowTheData) {
     EXPECT_EQ(ShaderTypeInfo<GpuClusterOffsetsAndCountsStorage>::shader_size, 32u)
         << "one array<uvec4, 2> is the runtime list's minimum";
 
+    // encase's runtime array size uses len.max(1). An unlit scene still binds
+    // these buffers, and a zero-byte allocation violates the layout minimum.
+    EXPECT_EQ(ShaderTypeInfo<GpuClusterableObjectsStorage>::size_for({}), 80u);
+    EXPECT_EQ(ShaderTypeInfo<GpuClusterableObjectIndexListsStorage>::size_for({}), 4u);
+    EXPECT_EQ(ShaderTypeInfo<GpuClusterOffsetsAndCountsStorage>::size_for({}), 32u);
+    std::vector<std::uint8_t> empty_encoded(80u, 0u);
+    ShaderTypeInfo<GpuClusterableObjectsStorage>::write_into({}, empty_encoded);
+    EXPECT_TRUE(std::ranges::all_of(empty_encoded, [](auto byte) { return byte == 0; }));
+
     const GpuClusterableObjectsStorage objects{.data = std::vector<GpuClusterableObject>(3)};
     EXPECT_EQ(ShaderTypeInfo<GpuClusterableObjectsStorage>::size_for(objects), 3u * 80u);
     const GpuClusterableObjectIndexListsStorage indices{.data = std::vector<std::uint32_t>(7)};

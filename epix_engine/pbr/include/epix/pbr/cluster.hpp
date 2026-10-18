@@ -133,11 +133,11 @@ template <>
 struct ShaderTypeInfo<::epix::pbr::GpuClusterableObjectsStorage> {
     static constexpr std::size_t shader_size = sizeof(::epix::pbr::GpuClusterableObject);
     static std::size_t size_for(const ::epix::pbr::GpuClusterableObjectsStorage& value) noexcept {
-        return value.data.size() * sizeof(::epix::pbr::GpuClusterableObject);
+        return std::max<std::size_t>(value.data.size(), 1) * sizeof(::epix::pbr::GpuClusterableObject);
     }
     static void write_into(const ::epix::pbr::GpuClusterableObjectsStorage& value,
                            std::span<std::uint8_t> destination) {
-        const std::size_t size = size_for(value);
+        const std::size_t size = value.data.size() * sizeof(::epix::pbr::GpuClusterableObject);
         if (destination.size() < size) throw std::out_of_range("Shader destination is too small.");
         if (size != 0) std::memcpy(destination.data(), value.data.data(), size);
     }
@@ -149,11 +149,11 @@ template <>
 struct ShaderTypeInfo<::epix::pbr::GpuClusterableObjectIndexListsStorage> {
     static constexpr std::size_t shader_size = sizeof(std::uint32_t);
     static std::size_t size_for(const ::epix::pbr::GpuClusterableObjectIndexListsStorage& value) noexcept {
-        return value.data.size() * sizeof(std::uint32_t);
+        return std::max<std::size_t>(value.data.size(), 1) * sizeof(std::uint32_t);
     }
     static void write_into(const ::epix::pbr::GpuClusterableObjectIndexListsStorage& value,
                            std::span<std::uint8_t> destination) {
-        const std::size_t size = size_for(value);
+        const std::size_t size = value.data.size() * sizeof(std::uint32_t);
         if (destination.size() < size) throw std::out_of_range("Shader destination is too small.");
         if (size != 0) std::memcpy(destination.data(), value.data.data(), size);
     }
@@ -166,11 +166,11 @@ template <>
 struct ShaderTypeInfo<::epix::pbr::GpuClusterOffsetsAndCountsStorage> {
     static constexpr std::size_t shader_size = sizeof(::epix::pbr::GpuClusterOffsetsAndCounts);
     static std::size_t size_for(const ::epix::pbr::GpuClusterOffsetsAndCountsStorage& value) noexcept {
-        return value.data.size() * sizeof(::epix::pbr::GpuClusterOffsetsAndCounts);
+        return std::max<std::size_t>(value.data.size(), 1) * sizeof(::epix::pbr::GpuClusterOffsetsAndCounts);
     }
     static void write_into(const ::epix::pbr::GpuClusterOffsetsAndCountsStorage& value,
                            std::span<std::uint8_t> destination) {
-        const std::size_t size = size_for(value);
+        const std::size_t size = value.data.size() * sizeof(::epix::pbr::GpuClusterOffsetsAndCounts);
         if (destination.size() < size) throw std::out_of_range("Shader destination is too small.");
         if (size != 0) std::memcpy(destination.data(), value.data.data(), size);
     }

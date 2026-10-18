@@ -11,6 +11,61 @@
 
 namespace epix::pbr {
 
+void prepare_clusterable_objects(ecs::Res<wgpu::Device> render_device,
+                                 ecs::Res<wgpu::Queue> render_queue,
+                                 ecs::ResMut<GlobalClusterableObjectMeta> global_light_meta,
+                                 ecs::Query<ecs::Item<ecs::Entity, const ExtractedPointLight&>> point_lights,
+                                 ecs::Query<ecs::Item<const ExtractedDirectionalLight&>> directional_lights) {
+    std::vector<std::pair<ecs::Entity, ExtractedPointLight>> sorted_lights;
+    std::vector<ExtractedPointLight> point_values;
+    std::vector<ExtractedDirectionalLight> directional_values;
+    for (auto&& [entity, light] : point_lights.iter()) {
+        sorted_lights.emplace_back(entity, light);
+        point_values.push_back(light);
+    }
+    for (auto&& [light] : directional_lights.iter()) directional_values.push_back(light);
+    std::ranges::sort(sorted_lights, {},
+                      [](const auto& entry) { return point_light_sort_key(entry.first, entry.second); });
+
+    wgpu::Limits limits{};
+    render_device->getLimits(&limits);
+    const auto counts = count_lights(point_values, directional_values, limits.maxTextureArrayLayers,
+                                     limits.maxTextureArrayLayers / POINT_LIGHT_CUBE_FACE_COUNT);
+    auto& indices     = global_light_meta->entity_to_index;
+    indices.clear();
+    indices.reserve(sorted_lights.size());
+    std::vector<GpuClusterableObject> gpu_lights;
+    gpu_lights.reserve(sorted_lights.size());
+    for (const auto& [entity, light] : sorted_lights) {
+        const auto index = gpu_lights.size();
+        glm::vec4 custom_data;
+        float tan_angle = 0.0f;
+        if (light.spot_light_angles) {
+            const auto direction = -glm::normalize(glm::vec3(light.transform[2]));
+            std::tie(custom_data, tan_angle) =
+                spot_light_custom_data(light.spot_light_angles->first, light.spot_light_angles->second, direction);
+        } else {
+            custom_data = point_light_custom_data(cube_face_projection(light.shadow_map_near_z));
+        }
+        gpu_lights.push_back(GpuClusterableObject{
+            .light_custom_data          = custom_data,
+            .color_inverse_square_range = pack_light_color_intensity_range(light.color, light.intensity, light.range),
+            .position_radius            = glm::vec4(glm::vec3(light.transform[3]), light.radius),
+            .flags                      = point_light_gpu_flags(index, light, counts),
+            .shadow_depth_bias          = light.shadow_depth_bias,
+            .shadow_normal_bias         = light.shadow_normal_bias,
+            .spot_light_tan_angle       = tan_angle,
+            .soft_shadow_size           = light.soft_shadows_enabled ? light.radius : 0.0f,
+            .shadow_map_near_z          = light.shadow_map_near_z,
+            .decal_index                = NO_CLUSTERED_DECAL,
+            .pad                        = 0.0f,
+        });
+        indices.emplace(entity, index);
+    }
+    global_light_meta->gpu_clusterable_objects.set(std::move(gpu_lights));
+    global_light_meta->gpu_clusterable_objects.write_buffer(*render_device, *render_queue);
+}
+
 /** @brief Create the shadow textures and views the light views render into, and return them
  *  as one view's bindings (Bevy `prepare_lights`' head, `bevy_pbr/src/render/light.rs:817-1113`,
  *  and the per-view insertion at `:1633-1641`).
@@ -263,21 +318,25 @@ void prepare_view_lights(ecs::Commands commands,
                          ecs::Res<wgpu::Queue> render_queue,
                          ecs::Res<GlobalAmbientLight> ambient_light,
                          ecs::ResMut<LightMeta> light_meta,
-                         ecs::Query<ecs::Item<ecs::Entity, const ::epix::render::view::ExtractedView&,
+                         ecs::Query<ecs::Item<ecs::Entity,
+                                              const ::epix::render::view::ExtractedView&,
                                               const ExtractedClusterConfig&,
                                               ecs::Opt<const ::epix::camera::RenderLayers&>,
                                               ecs::Opt<const AmbientLight&>>> views,
                          ecs::Query<ecs::Item<const ExtractedPointLight&>> point_lights,
-                         ecs::Query<ecs::Item<const ExtractedDirectionalLight&>> directional_lights) {
+                         ecs::Query<ecs::Item<ecs::Entity, const ExtractedDirectionalLight&>> directional_lights) {
     // Bevy's `prepare_lights` tail (`render/light.rs:1113-1250` and the write at `:1630-1650`):
     // one `GpuLights` per view, in view order, each view stamped with the offset
-    // `SetMeshViewBindGroup<I>` reads at binding 1. Bevy writes this in one function with the
-    // shadow-texture head this port keeps unwired in `light_prepare.cpp`, so the tail is
-    // registered on its own until that head lands.
+    // `SetMeshViewBindGroup<I>` reads at binding 1. Bevy writes this in one function with
+    // shadow-texture preparation; this port registers the two separately in ManageViews.
     std::vector<ExtractedPointLight> extracted_point_lights;
     for (auto&& [light] : point_lights.iter()) extracted_point_lights.push_back(light);
+    std::vector<std::pair<ecs::Entity, ExtractedDirectionalLight>> sorted_directional_lights;
+    for (auto&& [entity, light] : directional_lights.iter()) sorted_directional_lights.emplace_back(entity, light);
+    std::ranges::sort(sorted_directional_lights, {},
+                      [](const auto& entry) { return directional_light_sort_key(entry.first, entry.second); });
     std::vector<ExtractedDirectionalLight> extracted_directional_lights;
-    for (auto&& [light] : directional_lights.iter()) extracted_directional_lights.push_back(light);
+    for (const auto& [_, light] : sorted_directional_lights) extracted_directional_lights.push_back(light);
 
     wgpu::Limits limits{};
     render_device->getLimits(&limits);
@@ -309,9 +368,8 @@ void prepare_view_lights(ecs::Commands commands,
                                             num_cascades_enabled, max_texture_array_layers);
             GpuDirectionalLight gpu{};
             gpu.color                       = pack_directional_color(light.color, light.illuminance);
-            // Bevy negates the light's forward axis so the shader can use it for N.L directly
-            // (`light.rs:1209`).
-            gpu.dir_to_light                = -glm::vec3(light.transform[2]);
+            // Transform::back() is local +Z; forward() would reverse N.L.
+            gpu.dir_to_light                = glm::normalize(glm::vec3(light.transform[2]));
             gpu.flags                       = flags_and_cascades.flags;
             gpu.soft_shadow_size            = light.soft_shadow_size.value_or(0.0f);
             gpu.shadow_depth_bias           = light.shadow_depth_bias;
@@ -331,8 +389,9 @@ void prepare_view_lights(ecs::Commands commands,
 
         // Bevy's cluster factors: xy scale the tile grid to the viewport, and zw are the
         // log-based pair `calculate_cluster_factors` returns (`light.rs:1233-1240`).
-        const glm::vec2 cluster_factors_zw = calculate_cluster_factors(
-            clusters.near_plane, clusters.far_plane, static_cast<float>(clusters.dimensions.z), false);
+        const glm::vec2 cluster_factors_zw =
+            calculate_cluster_factors(clusters.near_plane, clusters.far_plane,
+                                      static_cast<float>(clusters.dimensions.z), view.clip_from_view[3][3] == 1.0f);
 
         GpuLights gpu_lights{};
         gpu_lights.directional_lights  = gpu_directional_lights;
