@@ -13,6 +13,7 @@
 #include <epix/pbr/morph.hpp>
 #include <epix/pbr/skin.hpp>
 #include <epix/pbr/skin.hpp>
+#include <epix/pbr/ssr.hpp>
 #include <epix/render/batching.hpp>
 #include <epix/render/binned_phase.hpp>
 #include <epix/render/globals.hpp>
@@ -900,6 +901,7 @@ struct RenderCommand<::epix::pbr::SetMeshViewBindGroup<I>, P> {
                                       const ::epix::pbr::ViewLightsUniformOffset&,
                                       const ::epix::pbr::ViewFogUniformOffset&,
                                       const ::epix::pbr::ViewLightProbesUniformOffset&,
+                                      const ::epix::pbr::ViewScreenSpaceReflectionsUniformOffset&,
                                       const ::epix::pbr::ViewEnvironmentMapUniformOffset&,
                                       const ::epix::pbr::MeshViewBindGroup&>;
     using ItemQuery = epix::ecs::Item<>;
@@ -912,13 +914,18 @@ struct RenderCommand<::epix::pbr::SetMeshViewBindGroup<I>, P> {
                                                    Param,
                                                    const wgpu::RenderPassEncoder& encoder) {
         (void)entity_item;
-        const std::array<std::uint32_t, 4> offsets{
+        // One offset per dynamic binding of the view layout, in binding order (0, 1, 12, 13,
+        // 15, 17), which is how Bevy passes them (`render/mesh.rs:3016-3023`). wgpu rejects
+        // the call when the count does not match the layout's dynamic bindings.
+        const std::array<std::uint32_t, 6> offsets{
             std::get<0>(view).offset,
             std::get<1>(view).offset,
             std::get<2>(view).offset,
             std::get<3>(view).offset,
+            std::get<4>(view).offset,
+            std::get<5>(view).offset,
         };
-        encoder.setBindGroup(I, std::get<5>(view).main, offsets);
+        encoder.setBindGroup(I, std::get<6>(view).main, offsets);
         return {};
     }
 };

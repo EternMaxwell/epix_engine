@@ -93,3 +93,36 @@ template <>
 struct ShaderTypeInfo<::epix::pbr::ScreenSpaceReflectionsUniform>
     : RawShaderType<::epix::pbr::ScreenSpaceReflectionsUniform> {};
 }  // namespace epix::render::render_resource
+
+namespace epix::pbr {
+
+/** @brief One `ScreenSpaceReflectionsUniform` per view (Bevy
+ *  `ScreenSpaceReflectionsBuffer`, `bevy_pbr/src/ssr/mod.rs:168-172`).
+ *
+ *  This follows the `ShaderTypeInfo` specialization above, which is what
+ *  `DynamicUniformBuffer` instantiates and so has to be visible first. */
+EPIX_EXPORT struct ScreenSpaceReflectionsBuffer {
+    ::epix::render::render_resource::DynamicUniformBuffer<ScreenSpaceReflectionsUniform> uniforms;
+};
+
+/** @brief A view's offset into the SSR uniform buffer (Bevy
+ *  `ViewScreenSpaceReflectionsUniformOffset`, `ssr/mod.rs:174-178`). */
+EPIX_EXPORT struct ViewScreenSpaceReflectionsUniformOffset {
+    std::uint32_t offset = 0;
+};
+
+/** @brief Write one SSR uniform per view and stamp each view with its offset (Bevy
+ *  `prepare_ssr_settings`, `ssr/mod.rs:480-507`).
+ *
+ *  Bevy's SSR plugin is ported only as far as the mesh view bind group needs it: the settings
+ *  component, the uniform, and this per-view offset. The pipeline, the render-graph node and
+ *  the tracing pass are not ported, so nothing reflects yet - but binding 15 of the view
+ *  layout is a dynamic uniform that has to be bound for a mesh view bind group to exist at
+ *  all, and a view without the component takes offset 0, exactly as Bevy's `None` arm does. */
+EPIX_EXPORT EPIX_API void prepare_ssr_settings(
+    ecs::Commands commands, ecs::Res<wgpu::Device> render_device, ecs::Res<wgpu::Queue> render_queue,
+    ecs::ResMut<ScreenSpaceReflectionsBuffer> ssr_settings_buffer,
+    ecs::Query<ecs::Item<ecs::Entity, ecs::Opt<const ScreenSpaceReflectionsUniform&>>,
+               ecs::With<::epix::render::view::ExtractedView>> views);
+
+}  // namespace epix::pbr

@@ -10,6 +10,7 @@
 #include <epix/pbr/material.hpp>
 #include <epix/pbr/material_bind_groups.hpp>
 #include <epix/pbr/mesh_shaders.hpp>
+#include <epix/pbr/ssr.hpp>
 #include <epix/pbr/point_light.hpp>
 #include <epix/pbr/shadow_filtering_method.hpp>
 #include <epix/pbr/spot_light.hpp>
@@ -78,6 +79,15 @@ void PbrPlugin::attach(epix::app::App& app) {
                                       ecs::into(prepare_lights_shadow_bindings)
                                           .in_set(render::RenderSystems::ManageViews)
                                           .set_name("prepare lights shadow bindings"));
+        // Bevy's `ScreenSpaceReflectionsPlugin` initialises this buffer and writes one entry per
+        // view in `PrepareResources` (`ssr/mod.rs:197,206`). Binding 15 of the view layout is a
+        // dynamic uniform, so the mesh view bind group cannot exist without it - the port's SSR
+        // is only as far as that, with no tracing pass.
+        render_app->get().world_mut().init_resource<ScreenSpaceReflectionsBuffer>();
+        render_app->get().add_systems(render::Render,
+                                      ecs::into(prepare_ssr_settings)
+                                          .in_set(render::RenderSystems::PrepareResources)
+                                          .set_name("prepare ssr settings"));
         render_app->get().add_systems(render::Render,
                                       ecs::into(prepare_view_lights)
                                           .in_set(render::RenderSystems::ManageViews)
