@@ -11,30 +11,32 @@
 
 namespace epix::pbr {
 
-/** @brief Create the shadow textures and views the light views render into (Bevy
- *  `prepare_lights`' head, `bevy_pbr/src/render/light.rs:817-1113`).
+/** @brief Create the shadow textures and views the light views render into, and return them
+ *  as one view's bindings (Bevy `prepare_lights`' head, `bevy_pbr/src/render/light.rs:817-1113`,
+ *  and the per-view insertion at `:1633-1641`).
  *
- *  **This is the first half of a function Bevy writes in one piece, and it is
- *  deliberately unwired.** What exists here is the point-light count and its depth
- *  texture and `CubeArray` view. What does not exist yet: the directional pair and its
- *  three counts, the `DepthAttachment`s, and everything that consumes them - the
- *  per-view light-view spawning, `LightViewEntities` reuse and despawn, and the phase
- *  preparation, which are `PBR-778`. Registering this now would add a system that runs
- *  and does nothing with what it builds, which is the failure the cluster probe caught
- *  three times over; it is registered once the body can run without lying about itself.
+ *  **This is the first half of a function Bevy writes in one piece.** What exists here is both
+ *  shadow textures - the point lights' cubemap array and the directional lights' cascade array,
+ *  each with its view - returned as a `ViewShadowBindings` for `prepare_lights_shadow_bindings`
+ *  below to stamp onto every view. That is what `prepare_mesh_view_bind_groups` (PBR-83) reads
+ *  and binds at 2 and 5, so the port needs these textures bound before it can build a mesh view
+ *  bind group at all. Still owed, and `PBR-778`: the two `DepthAttachment` maps and the
+ *  per-view light-view spawning, so nothing is cast into these textures yet - they are sized
+ *  and bound, which is what the bind group needs and all it needs.
  *
  *  Two substitutions, both recorded elsewhere and both forced by this port's shape: the
  *  device limit Bevy reads as `max_texture_cubes` arrives as a parameter, as every other
  *  device limit here does, and the `wgpu` types are built through the wrapper's chained
  *  setters rather than a Rust struct literal. The webgl and simulator fallbacks Bevy
  *  carries for the view dimension do not apply to this port's targets. */
-void prepare_lights(const wgpu::Device& device, ::epix::render::render_resource::TextureCache& texture_cache,
-                    const PointLightShadowMap& point_light_shadow_map,
-                    std::size_t max_texture_cubes, std::size_t max_texture_array_layers,
-                    std::size_t max_texture_dimension_2d,
-                    const DirectionalLightShadowMap& directional_light_shadow_map,
-                    ecs::Query<ecs::Item<const ExtractedPointLight&>> point_lights,
-                    ecs::Query<ecs::Item<const ExtractedDirectionalLight&>> directional_lights) {
+ViewShadowBindings prepare_lights(const wgpu::Device& device,
+                                  ::epix::render::render_resource::TextureCache& texture_cache,
+                                  const PointLightShadowMap& point_light_shadow_map,
+                                  std::size_t max_texture_cubes, std::size_t max_texture_array_layers,
+                                  std::size_t max_texture_dimension_2d,
+                                  const DirectionalLightShadowMap& directional_light_shadow_map,
+                                  ecs::Query<ecs::Item<const ExtractedPointLight&>> point_lights,
+                                  ecs::Query<ecs::Item<const ExtractedDirectionalLight&>> directional_lights) {
     // The counts come from this port's own helper rather than a second copy of Bevy's
     // arithmetic. `count_lights` already ports `light.rs:806-853`, including the
     // shared-texture-array subtraction the spot counts need, and it counts more than this
@@ -171,10 +173,43 @@ void prepare_lights(const wgpu::Device& device, ::epix::render::render_resource:
                 .setBaseMipLevel(0)
                 .setBaseArrayLayer(0));
 
-    // Owed, in Bevy's order: the two `DepthAttachment` maps (keyed by array layer, so they
-    // belong beside the per-layer cache) and then the per-view spawning of `PBR-778`. The
-    // locals above are unused until those land, which is why this function is not
-    // registered anywhere yet.
+    // Bevy hands each view these four handles inside `prepare_lights` (`light.rs:1633-1641`);
+    // returning them is what lets the system below do the stamping. Still owed, in Bevy's
+    // order: the two `DepthAttachment` maps (keyed by array layer, so they belong beside the
+    // per-layer cache) and the per-view spawning of `PBR-778`, so nothing is cast into these
+    // textures yet - they are sized and bound, which is what the mesh view bind group needs.
+    return ViewShadowBindings{
+        .point_light_depth_texture            = point_light_depth_texture.texture,
+        .point_light_depth_texture_view       = point_light_depth_texture_view,
+        .directional_light_depth_texture      = directional_light_depth_texture.texture,
+        .directional_light_depth_texture_view = directional_light_depth_texture_view};
+}
+
+void prepare_lights_shadow_bindings(
+    ecs::Commands commands,
+    ecs::Res<wgpu::Device> render_device,
+    ecs::ResMut<::epix::render::render_resource::TextureCache> texture_cache,
+    ecs::Res<PointLightShadowMap> point_light_shadow_map,
+    ecs::Res<DirectionalLightShadowMap> directional_light_shadow_map,
+    ecs::Query<ecs::Item<const ExtractedPointLight&>> point_lights,
+    ecs::Query<ecs::Item<const ExtractedDirectionalLight&>> directional_lights,
+    ecs::Query<ecs::Item<ecs::Entity, const ::epix::render::view::ExtractedView&>> views) {
+    // Bevy creates the shadow textures and stamps every view with them inside one
+    // `prepare_lights`; this port keeps the creation in the helper above and stamps here, so
+    // each view gets the `ViewShadowBindings` that `prepare_mesh_view_bind_groups` (PBR-83)
+    // reads and binds at 2 and 5.
+    wgpu::Limits limits{};
+    render_device->getLimits(&limits);
+    const std::size_t max_texture_array_layers = static_cast<std::size_t>(limits.maxTextureArrayLayers);
+    const std::size_t max_texture_cubes        = max_texture_array_layers / 6;
+    const ViewShadowBindings bindings =
+        prepare_lights(*render_device, *texture_cache, *point_light_shadow_map, max_texture_cubes,
+                       max_texture_array_layers, static_cast<std::size_t>(limits.maxTextureDimension2D),
+                       *directional_light_shadow_map, point_lights, directional_lights);
+    for (auto&& [entity, view] : views.iter()) {
+        (void)view;
+        commands.entity(entity).insert(bindings);
+    }
 }
 
 /** @brief Despawn a list of entities through commands (Bevy `despawn_entities`,
@@ -332,7 +367,16 @@ void extract_lights(
                                      ecs::Opt<const ::epix::camera::RenderLayers&>,
                                      ecs::Has<::epix::render::experimental::OcclusionCulling>>>>
         directional_lights,
+    app::Extract<ecs::Res<PointLightShadowMap>> point_light_shadow_map,
+    app::Extract<ecs::Res<DirectionalLightShadowMap>> directional_light_shadow_map,
     app::Extract<ecs::Query<ecs::Item<const ::epix::render::sync_world::RenderEntity&>>> mapper) {
+    // Bevy extracts the two shadow-map resources here rather than through
+    // `ExtractResourcePlugin`, so the prepare that reads them cannot race the extraction
+    // (`render/light.rs:376-382`). Bevy guards its copy with `is_changed`; this port copies
+    // every frame, which is the same value each time.
+    commands.insert_resource(*point_light_shadow_map);
+    commands.insert_resource(*directional_light_shadow_map);
+
     // Bevy `extract_lights`' directional arm (`render/light.rs:505-599`). The point and spot
     // arms share one `ExtractedPointLight` and are the next slice.
     for (auto&& [main_entity, render_entity, light, visible_entities, cascades, cascade_config, frusta, transform,

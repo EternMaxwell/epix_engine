@@ -28,6 +28,7 @@
 #include <epix/pbr/directional_light.hpp>
 #include <epix/pbr/gpu_lights.hpp>
 #include <epix/pbr/light_cluster.hpp>
+#include <epix/pbr/point_light.hpp>
 
 namespace epix::pbr {
 
@@ -319,6 +320,24 @@ EPIX_EXPORT EPIX_API LightCounts count_lights(const std::vector<ExtractedPointLi
 EPIX_EXPORT EPIX_API void extract_ambient_light_resource(
     ecs::Commands commands, app::Extract<ecs::Res<GlobalAmbientLight>> ambient_light);
 
+/** @brief Create this frame's shadow textures and stamp every view with them (Bevy
+ *  `prepare_lights`' head plus its per-view insertion, `render/light.rs:1000-1110` and
+ *  `:1633-1641`).
+ *
+ *  The point lights' cubemap array is bound at 2 and the directional lights' cascade array at
+ *  5, and both entries are unconditional in this port's view layout exactly as they are in
+ *  Bevy's - so a mesh view bind group cannot be built until these textures exist, which is why
+ *  `prepare_mesh_view_bind_groups` (PBR-83) waits on this. Nothing is cast into them yet: the
+ *  `DepthAttachment`s and the per-view light-view spawning are the rest of PBR-81. */
+EPIX_EXPORT EPIX_API void prepare_lights_shadow_bindings(
+    ecs::Commands commands, ecs::Res<wgpu::Device> render_device,
+    ecs::ResMut<::epix::render::render_resource::TextureCache> texture_cache,
+    ecs::Res<PointLightShadowMap> point_light_shadow_map,
+    ecs::Res<DirectionalLightShadowMap> directional_light_shadow_map,
+    ecs::Query<ecs::Item<const ExtractedPointLight&>> point_lights,
+    ecs::Query<ecs::Item<const ExtractedDirectionalLight&>> directional_lights,
+    ecs::Query<ecs::Item<ecs::Entity, const ::epix::render::view::ExtractedView&>> views);
+
 /** @brief Write one `GpuLights` per view and stamp each view with its offset (Bevy
  *  `prepare_lights`' tail, `render/light.rs:1113-1250` and `:1630-1650`).
  *
@@ -367,6 +386,8 @@ EPIX_EXPORT EPIX_API void extract_lights(
                                      ecs::Opt<const ::epix::camera::RenderLayers&>,
                                      ecs::Has<::epix::render::experimental::OcclusionCulling>>>>
         directional_lights,
+    app::Extract<ecs::Res<PointLightShadowMap>> point_light_shadow_map,
+    app::Extract<ecs::Res<DirectionalLightShadowMap>> directional_light_shadow_map,
     app::Extract<ecs::Query<ecs::Item<const ::epix::render::sync_world::RenderEntity&>>> mapper);
 
 /** @brief The clusterable form of an extracted point light (Bevy
