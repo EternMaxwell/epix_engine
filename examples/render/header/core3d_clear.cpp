@@ -140,7 +140,11 @@ int main() {
     if (auto render_app = app.get_sub_app_mut(render::Render)) {
         render_app->get().world_mut().init_resource<Core3dProbe>();
         render_app->get().add_systems(render::Render, into(animate_clear_color).set_name("animate clear color"));
-        render_app->get().add_systems(render::Render, into(probe_core3d_pipeline).set_name("probe core3d pipeline"));
+        // Inspect only after extraction and resource preparation have applied
+        // their commands; an unordered probe can otherwise report a false miss.
+        render_app->get().add_systems(render::Render, into(probe_core3d_pipeline)
+                                                         .in_set(render::RenderSystems::PrepareBindGroups)
+                                                         .set_name("probe core3d pipeline"));
     }
 
     app.run();

@@ -497,7 +497,10 @@ struct PrepassDisplayPlugin {
             }
         }
         render_world.init_resource<PrepassProbe>();
-        render_app->get().add_systems(render::Render, into(probe_prepass).set_name("probe prepass"));
+        // The queried attachments are inserted during PrepareResources.
+        render_app->get().add_systems(render::Render, into(probe_prepass)
+                                                         .in_set(render::RenderSystems::PrepareBindGroups)
+                                                         .set_name("probe prepass"));
     }
 };
 
