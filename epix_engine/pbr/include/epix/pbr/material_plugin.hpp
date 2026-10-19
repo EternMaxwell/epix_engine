@@ -6,6 +6,7 @@
 #include <epix/ecs.hpp>
 #include <epix/render/erased_render_asset.hpp>
 #include <epix/render/render_phase.hpp>
+#include <epix/utils/variant_visitor.hpp>
 #include <memory>
 #include <optional>
 #include <tuple>
@@ -37,9 +38,9 @@ using ::epix::render::render_resource::RetryBindGroupNextUpdate;
  *  group. Re-preparing a material frees and reallocates rather than updating in place, as
  *  Bevy does (its own TODO).
  *
- *  One member is still filled only in part: Bevy resolves the six shader handles here too,
- *  and the port has not ported the shader labels or their loads, so `shaders` stays empty
- *  (PBR-66). */
+ *  Shader references are resolved here too: defaults leave the corresponding
+ *  pipeline shader untouched, handles are retained, and paths load from their
+ *  original asset source (Bevy `material.rs:1722-1744`). */
 template <typename M>
     requires std::derived_from<M, ::epix::pbr::Material<M>> && AsBindGroupImpl<M>
 struct ErasedRenderAsset<::epix::pbr::MeshMaterial3d<M>> {
@@ -58,6 +59,7 @@ struct ErasedRenderAsset<::epix::pbr::MeshMaterial3d<M>> {
         ecs::Res<phase::DrawFunctions<core_graph::core_3d::AlphaMask3dPrepass>>,
         ecs::Res<phase::DrawFunctions<core_graph::core_3d::Opaque3dDeferred>>,
         ecs::Res<phase::DrawFunctions<core_graph::core_3d::AlphaMask3dDeferred>>,
+        ecs::Res<assets::AssetServer>,
         typename AsBindGroup<M>::Param>;
 
     static std::expected<::epix::pbr::PreparedMaterial, PrepareAssetError<M>> prepare_asset(
@@ -66,7 +68,7 @@ struct ErasedRenderAsset<::epix::pbr::MeshMaterial3d<M>> {
                 render_material_bindings, opaque_draw_functions, alpha_mask_draw_functions,
                 transmissive_draw_functions, transparent_draw_functions, opaque_prepass_draw_functions,
                 alpha_mask_prepass_draw_functions, opaque_deferred_draw_functions, alpha_mask_deferred_draw_functions,
-                material_param] = params;
+                asset_server, material_param] = params;
 
         using ::epix::pbr::Material;
         using ::epix::pbr::MeshPipelineKey;
@@ -129,6 +131,29 @@ struct ErasedRenderAsset<::epix::pbr::MeshMaterial3d<M>> {
             alpha_mask_deferred_draw_functions->read()
                 ->template id<::epix::pbr::DrawPrepass<core_graph::core_3d::AlphaMask3dDeferred>>();
 
+        std::vector<std::pair<phase::InternedShaderLabel, assets::Handle<shader::Shader>>> shaders;
+        const auto add_shader = [&](phase::InternedShaderLabel label, const shader::ShaderRef& reference) {
+            auto handle = std::visit(
+                utils::visitor{
+                    [](const shader::ShaderRef::Default&) -> std::optional<assets::Handle<shader::Shader>> {
+                        return std::nullopt;
+                    },
+                    [](const shader::ShaderRef::ByHandle& value) -> std::optional<assets::Handle<shader::Shader>> {
+                        return value.handle;
+                    },
+                    [&](const shader::ShaderRef::ByPath& value) -> std::optional<assets::Handle<shader::Shader>> {
+                        return asset_server->template load<shader::Shader>(assets::AssetPath(value.path.generic_string()));
+                    },
+                }, reference.value);
+            if (handle) shaders.emplace_back(label, std::move(*handle));
+        };
+        add_shader(ecs::intern(phase::ShaderLabel{::epix::pbr::MaterialVertexShader{}}), M::vertex_shader());
+        add_shader(ecs::intern(phase::ShaderLabel{::epix::pbr::MaterialFragmentShader{}}), M::fragment_shader());
+        add_shader(ecs::intern(phase::ShaderLabel{::epix::pbr::PrepassVertexShader{}}), M::prepass_vertex_shader());
+        add_shader(ecs::intern(phase::ShaderLabel{::epix::pbr::PrepassFragmentShader{}}), M::prepass_fragment_shader());
+        add_shader(ecs::intern(phase::ShaderLabel{::epix::pbr::DeferredVertexShader{}}), M::deferred_vertex_shader());
+        add_shader(ecs::intern(phase::ShaderLabel{::epix::pbr::DeferredFragmentShader{}}), M::deferred_fragment_shader());
+
         const BindGroupLayoutDescriptor material_layout =
             BindGroupLayoutDescriptor()
                 .set_label(std::string(AsBindGroup<M>::label()))
@@ -176,6 +201,7 @@ struct ErasedRenderAsset<::epix::pbr::MeshMaterial3d<M>> {
         properties->bindless                        = ::epix::pbr::material_uses_bindless_resources<M>(device.get());
         properties->shadows_enabled                 = shadows_enabled;
         properties->prepass_enabled                 = prepass_enabled;
+        properties->shaders                         = std::move(shaders);
         properties->draw_functions                  = {
             {ecs::intern(render::phase::DrawFunctionLabel{::epix::pbr::MainPassOpaqueDrawFunction{}}),
               draw_opaque},

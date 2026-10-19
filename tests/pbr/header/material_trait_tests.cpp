@@ -34,8 +34,8 @@ struct PlainMaterial : pbr::Material<PlainMaterial> {};
 struct CustomMaterial : pbr::Material<CustomMaterial> {
     using Data = int;
 
-    static std::optional<std::string_view> vertex_shader() { return "custom/vertex.slang"; }
-    static std::optional<std::string_view> fragment_shader() { return "custom/fragment.slang"; }
+    static epix::shader::ShaderRef vertex_shader() { return epix::shader::ShaderRef::from_str("custom/vertex.slang"); }
+    static epix::shader::ShaderRef fragment_shader() { return epix::shader::ShaderRef::from_str("custom/fragment.slang"); }
     render::AlphaMode alpha_mode() const { return render::AlphaMode::mask(0.25f); }
     pbr::OpaqueRendererMethod opaque_render_method() const { return pbr::OpaqueRendererMethod::Deferred; }
     float depth_bias() const { return 1.5f; }
@@ -60,12 +60,14 @@ TEST(MaterialTrait, DefaultsMatchBevyAndOverridesWin) {
     EXPECT_FLOAT_EQ(plain.depth_bias(), 0.0f);
     EXPECT_FALSE(plain.reads_view_transmission_texture());
 
-    EXPECT_EQ(PlainMaterial::vertex_shader(), std::nullopt) << "Bevy's ShaderRef::Default is `nullopt` here";
-    EXPECT_EQ(PlainMaterial::fragment_shader(), std::nullopt);
+    EXPECT_TRUE(PlainMaterial::vertex_shader().is_default());
+    EXPECT_TRUE(PlainMaterial::fragment_shader().is_default());
     EXPECT_TRUE(PlainMaterial::enable_prepass()) << "Bevy's default is true, which is easy to invert";
     EXPECT_TRUE(PlainMaterial::enable_shadows());
-    EXPECT_EQ(PlainMaterial::prepass_vertex_shader(), std::nullopt);
-    EXPECT_EQ(PlainMaterial::deferred_fragment_shader(), std::nullopt);
+    EXPECT_TRUE(PlainMaterial::prepass_vertex_shader().is_default());
+    EXPECT_TRUE(PlainMaterial::prepass_fragment_shader().is_default());
+    EXPECT_TRUE(PlainMaterial::deferred_vertex_shader().is_default());
+    EXPECT_TRUE(PlainMaterial::deferred_fragment_shader().is_default());
 
     // The overrides answer on the material itself. This port's CRTP is static
     // dispatch, so a call through `Material<M>&` reaches the *base* defaults - which
@@ -82,7 +84,9 @@ TEST(MaterialTrait, DefaultsMatchBevyAndOverridesWin) {
         << "static dispatch: the base answers with its own default";
     EXPECT_FALSE(CustomMaterial::enable_prepass());
     EXPECT_FALSE(CustomMaterial::enable_shadows());
-    EXPECT_EQ(CustomMaterial::vertex_shader(), std::optional<std::string_view>{"custom/vertex.slang"});
+    const auto vertex = CustomMaterial::vertex_shader();
+    ASSERT_TRUE(vertex.is_path());
+    EXPECT_EQ(std::get<epix::shader::ShaderRef::ByPath>(vertex.value).path, "custom/vertex.slang");
 
     // The associated data type is Bevy's `M::Data`, and absent means monostate.
     static_assert(std::is_same_v<pbr::MaterialData<CustomMaterial>::type, int>);

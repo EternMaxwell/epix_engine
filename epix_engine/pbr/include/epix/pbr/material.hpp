@@ -14,6 +14,7 @@
 #include <epix/common.hpp>
 #include <epix/ecs/core/tick.hpp>
 #include <epix/render/sync_world.hpp>
+#include <epix/shader.hpp>
 #include <optional>
 #include <unordered_map>
 #endif
@@ -322,20 +323,17 @@ EPIX_EXPORT struct ErasedMaterialPipelineKey {
  *  material type derives from this and overrides only what it needs; the pipeline
  *  calls the derived members through static dispatch.
  *
- *  Bevy's `ShaderRef` (default, handle or path) translates to an optional
- *  source-relative shader path loaded under `embedded://`, as the 2D counterpart
- *  does: `nullopt` means the default mesh shader, which is `ShaderRef::Default`.
+ *  Shader hooks retain Bevy's Default/Handle/Path alternatives through ShaderRef.
+ *  Paths are resolved by AssetServer without changing their asset source.
  *
  *  The meshlet shaders (`meshlet_mesh_fragment_shader` and its two siblings) are
  *  absent: meshlets are a Bevy subsystem this port does not have. */
 EPIX_EXPORT template <typename M>
 struct Material : render::render_resource::AsBindGroupBase {
-    /** @brief This material's vertex shader path, or nothing for the default mesh
-     *  vertex shader. */
-    static std::optional<std::string_view> vertex_shader() { return std::nullopt; }
-    /** @brief This material's fragment shader path, or nothing for the default mesh
-     *  fragment shader. */
-    static std::optional<std::string_view> fragment_shader() { return std::nullopt; }
+    /** @brief This material's vertex shader, or the default mesh vertex shader. */
+    static shader::ShaderRef vertex_shader() { return {}; }
+    /** @brief This material's fragment shader, or the default mesh fragment shader. */
+    static shader::ShaderRef fragment_shader() { return {}; }
     /** @brief This material's alpha mode (Bevy `alpha_mode`, which defaults to
      *  `AlphaMode::Opaque`). */
     render::AlphaMode alpha_mode() const { return render::AlphaMode::opaque(); }
@@ -354,14 +352,14 @@ struct Material : render::render_resource::AsBindGroupBase {
     /** @brief Whether shadows are enabled for this material (Bevy `enable_shadows`,
      *  default `true`). */
     static bool enable_shadows() { return true; }
-    /** @brief This material's prepass vertex shader path. */
-    static std::optional<std::string_view> prepass_vertex_shader() { return std::nullopt; }
-    /** @brief This material's prepass fragment shader path. */
-    static std::optional<std::string_view> prepass_fragment_shader() { return std::nullopt; }
-    /** @brief This material's deferred vertex shader path. */
-    static std::optional<std::string_view> deferred_vertex_shader() { return std::nullopt; }
-    /** @brief This material's deferred fragment shader path. */
-    static std::optional<std::string_view> deferred_fragment_shader() { return std::nullopt; }
+    /** @brief This material's prepass vertex shader, also used for shadows. */
+    static shader::ShaderRef prepass_vertex_shader() { return {}; }
+    /** @brief This material's prepass fragment shader, also used for shadows. */
+    static shader::ShaderRef prepass_fragment_shader() { return {}; }
+    /** @brief This material's deferred vertex shader. */
+    static shader::ShaderRef deferred_vertex_shader() { return {}; }
+    /** @brief This material's deferred fragment shader. */
+    static shader::ShaderRef deferred_fragment_shader() { return {}; }
     /** @brief Customize the specialized pipeline (Bevy `Material::specialize`,
      *  `material.rs:265-272`, whose prepared pipeline parameter the port's 2D
      *  counterpart also drops). */
@@ -680,6 +678,12 @@ EPIX_EXPORT struct MaterialVertexShader {};
 /** @brief The fragment shader a material supplies (Bevy `MaterialFragmentShader`,
  *  `material.rs:1384`). */
 EPIX_EXPORT struct MaterialFragmentShader {};
+/** @brief Shader override labels for the prepass and deferred pipelines (Bevy
+ *  `material.rs:1387-1396`). */
+EPIX_EXPORT struct PrepassVertexShader {};
+EPIX_EXPORT struct PrepassFragmentShader {};
+EPIX_EXPORT struct DeferredVertexShader {};
+EPIX_EXPORT struct DeferredFragmentShader {};
 
 /** @brief Everything the pipeline needs to know about a prepared material (Bevy
  *  `MaterialProperties`, `material.rs:1510-1585`).
