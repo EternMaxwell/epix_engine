@@ -75,7 +75,7 @@ void prepare_clusterable_objects(ecs::Res<wgpu::Device> render_device,
  *  each with its view - returned as a `ViewShadowBindings` for `prepare_lights_shadow_bindings`
  *  below to stamp onto every view. That is what `prepare_mesh_view_bind_groups` (PBR-83) reads
  *  and binds at 2 and 5, so the port needs these textures bound before it can build a mesh view
- *  bind group at all. Still owed, and `PBR-778`: the two `DepthAttachment` maps and the
+ *  bind group at all. Still owed, and `PBR-81`: the two `DepthAttachment` maps and the
  *  per-view light-view spawning, so nothing is cast into these textures yet - they are sized
  *  and bound, which is what the bind group needs and all it needs.
  *
@@ -91,7 +91,8 @@ ViewShadowBindings prepare_lights(const wgpu::Device& device,
                                   std::size_t max_texture_dimension_2d,
                                   const DirectionalLightShadowMap& directional_light_shadow_map,
                                   ecs::Query<ecs::Item<const ExtractedPointLight&>> point_lights,
-                                  ecs::Query<ecs::Item<const ExtractedDirectionalLight&>> directional_lights) {
+                                  ecs::Query<ecs::Item<const ExtractedDirectionalLight&>> directional_lights,
+                                  const std::vector<camera::RenderLayers>& view_render_layers) {
     // The counts come from this port's own helper rather than a second copy of Bevy's
     // arithmetic. `count_lights` already ports `light.rs:806-853`, including the
     // shared-texture-array subtraction the spot counts need, and it counts more than this
@@ -116,44 +117,22 @@ ViewShadowBindings prepare_lights(const wgpu::Device& device,
     const std::size_t point_light_shadow_maps_count = counts.point_light_shadow_maps;
     const std::size_t spot_light_shadow_maps_count  = counts.spot_light_shadow_maps;
 
-    // Iterate the views once to find the most cascade shadow maps any one view needs
-    // (Bevy `light.rs:979-1010`). Bevy walks the sorted cameras and looks each view up;
-    // this port reads the per-view cascades the light already carries instead. Same
-    // computation: that map is keyed by the views the cascade builder produced for this
-    // light, so it has already applied the render-layers filter Bevy applies inline, and a
-    // maximum does not depend on iteration order.
-    std::size_t num_directional_cascades_enabled = 0;
-    for (auto&& [light] : directional_lights.iter()) {
-        if (!light.shadows_enabled) {
-            continue;
-        }
-        for (const auto& [view_entity, cascades] : light.cascades) {
-            (void)view_entity;
-            num_directional_cascades_enabled =
-                std::max(num_directional_cascades_enabled,
-                         std::min(cascades.size(), MAX_CASCADES_PER_LIGHT));
-        }
-    }
-    num_directional_cascades_enabled =
-        std::min(num_directional_cascades_enabled, max_texture_array_layers);
+    // Sum configured cascades for matching lights in each view, then take the
+    // largest view total (Bevy light.rs:979-1010). Cascade maps may not exist yet.
+    const std::size_t directional_cascades = num_directional_cascades_enabled(
+        view_render_layers, directional_light_values, max_texture_array_layers);
 
-    // Six faces per cubemap, and at least one layer so the texture is never zero-sized.
+    // Six faces per cubemap, and at least one complete cube even without casters.
+    const std::uint32_t point_shadow_texture_layers =
+        point_light_shadow_texture_layers(point_light_shadow_maps_count);
     wgpu::TextureDescriptor point_light_depth_texture_descriptor{};
     point_light_depth_texture_descriptor.setLabel("point_light_shadow_map_texture")
         .setSize({static_cast<std::uint32_t>(point_light_shadow_map.size),
                   static_cast<std::uint32_t>(point_light_shadow_map.size),
-                  static_cast<std::uint32_t>(point_light_shadow_maps_count) * 6u})
+                  point_shadow_texture_layers})
         .setFormat(::epix::core_graph::core_3d::CORE_3D_DEPTH_FORMAT)
         .setUsage(wgpu::TextureUsage::eRenderAttachment | wgpu::TextureUsage::eTextureBinding)
         .setDimension(wgpu::TextureDimension::e2D);
-    // Bevy leaves the layer count at its default of one only when nothing casts; the
-    // `.setSize` above already carries `max(count, 1) * 6`, so the default here is what
-    // Bevy's `.max(1)` computes.
-    if (point_light_shadow_maps_count == 0) {
-        point_light_depth_texture_descriptor.setSize(
-            {static_cast<std::uint32_t>(point_light_shadow_map.size),
-             static_cast<std::uint32_t>(point_light_shadow_map.size), 6u});
-    }
     point_light_depth_texture_descriptor.setMipLevelCount(1).setSampleCount(1);
 
     // The cache is keyed by hand here because this wrapper's descriptor exposes setters
@@ -163,7 +142,7 @@ ViewShadowBindings prepare_lights(const wgpu::Device& device,
         .dimension             = wgpu::TextureDimension::e2D,
         .width                 = static_cast<std::uint32_t>(point_light_shadow_map.size),
         .height                = static_cast<std::uint32_t>(point_light_shadow_map.size),
-        .depth_or_array_layers = static_cast<std::uint32_t>(point_light_shadow_maps_count) * 6u,
+        .depth_or_array_layers = point_shadow_texture_layers,
         .mip_level_count       = 1,
         .sample_count          = 1,
         .usage = wgpu::TextureUsage::eRenderAttachment | wgpu::TextureUsage::eTextureBinding,
@@ -182,7 +161,7 @@ ViewShadowBindings prepare_lights(const wgpu::Device& device,
     const std::uint32_t directional_shadow_texture_size =
         directional_light_shadow_texture_size(directional_light_shadow_map.size, max_texture_dimension_2d);
     const std::uint32_t directional_shadow_texture_layers =
-        directional_light_shadow_texture_layers(num_directional_cascades_enabled, spot_light_shadow_maps_count);
+        directional_light_shadow_texture_layers(directional_cascades, spot_light_shadow_maps_count);
 
     wgpu::TextureDescriptor directional_light_depth_texture_descriptor{};
     directional_light_depth_texture_descriptor.setLabel("directional_light_shadow_map_texture")
@@ -231,7 +210,7 @@ ViewShadowBindings prepare_lights(const wgpu::Device& device,
     // Bevy hands each view these four handles inside `prepare_lights` (`light.rs:1633-1641`);
     // returning them is what lets the system below do the stamping. Still owed, in Bevy's
     // order: the two `DepthAttachment` maps (keyed by array layer, so they belong beside the
-    // per-layer cache) and the per-view spawning of `PBR-778`, so nothing is cast into these
+    // per-layer cache) and the per-view spawning of `PBR-81`, so nothing is cast into these
     // textures yet - they are sized and bound, which is what the mesh view bind group needs.
     return ViewShadowBindings{
         .point_light_depth_texture            = point_light_depth_texture.texture,
@@ -248,7 +227,10 @@ void prepare_lights_shadow_bindings(
     ecs::Res<DirectionalLightShadowMap> directional_light_shadow_map,
     ecs::Query<ecs::Item<const ExtractedPointLight&>> point_lights,
     ecs::Query<ecs::Item<const ExtractedDirectionalLight&>> directional_lights,
-    ecs::Query<ecs::Item<ecs::Entity, const ::epix::render::view::ExtractedView&>> views) {
+    ecs::Res<::epix::render::camera::SortedCameras> sorted_cameras,
+    ecs::Query<ecs::Item<ecs::Entity, const ::epix::render::view::ExtractedView&,
+                         ecs::Opt<const camera::RenderLayers&>>,
+               ecs::With<camera::Camera3d, ExtractedClusterConfig, ::epix::render::sync_world::MainEntity>> views) {
     // Bevy creates the shadow textures and stamps every view with them inside one
     // `prepare_lights`; this port keeps the creation in the helper above and stamps here, so
     // each view gets the `ViewShadowBindings` that `prepare_mesh_view_bind_groups` (PBR-83)
@@ -257,12 +239,20 @@ void prepare_lights_shadow_bindings(
     render_device->getLimits(&limits);
     const std::size_t max_texture_array_layers = static_cast<std::size_t>(limits.maxTextureArrayLayers);
     const std::size_t max_texture_cubes        = max_texture_array_layers / 6;
+    std::vector<camera::RenderLayers> view_render_layers;
+    std::vector<ecs::Entity> view_entities;
+    for (const auto& camera : sorted_cameras->cameras) {
+        const auto row = views.get(camera.entity);
+        if (!row.has_value()) continue;
+        auto&& [entity, view, layers] = *row;
+        view_entities.push_back(entity);
+        view_render_layers.push_back(layers.has_value() ? layers->get() : camera::RenderLayers::layer(0));
+    }
     const ViewShadowBindings bindings =
         prepare_lights(*render_device, *texture_cache, *point_light_shadow_map, max_texture_cubes,
                        max_texture_array_layers, static_cast<std::size_t>(limits.maxTextureDimension2D),
-                       *directional_light_shadow_map, point_lights, directional_lights);
-    for (auto&& [entity, view] : views.iter()) {
-        (void)view;
+                       *directional_light_shadow_map, point_lights, directional_lights, view_render_layers);
+    for (const auto entity : view_entities) {
         commands.entity(entity).insert(bindings);
     }
 }

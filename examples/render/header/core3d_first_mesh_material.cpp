@@ -11,6 +11,7 @@
 #include <epix/input.hpp>
 #include <epix/mesh.hpp>
 #include <epix/pbr/directional_light.hpp>
+#include <epix/pbr/light_meta.hpp>
 #include <epix/pbr/material.hpp>
 #include <epix/pbr/material_plugin.hpp>
 #include <epix/pbr/pbr_plugin.hpp>
@@ -21,6 +22,7 @@
 #include <epix/transform.hpp>
 #include <epix/window.hpp>
 #include <expected>
+#include <spdlog/spdlog.h>
 #include <string_view>
 #include <tuple>
 #include <variant>
@@ -76,9 +78,15 @@ void spawn_scene(Commands cmd, ResMut<Assets<mesh::Mesh>> meshes, ResMut<Assets<
     const auto material_handle = materials->emplace(FlatMaterial{});
 
     cmd.spawn(camera::Camera3d{}, transform::Transform::from_xyz(0.75f, 0.0f, 4.5f));
-    // Exercise directional-light extraction and per-view light uniforms too; the
-    // default magenta fragment shader itself does not use lighting.
-    cmd.spawn(pbr::DirectionalLight{}, transform::Transform::from_xyz(0.0f, 4.0f, 0.0f));
+    // Two lights require five shared shadow-array layers, not the largest
+    // individual count (three). This unlit shader's appearance is unchanged;
+    // shadow views/rendering are not implemented yet.
+    cmd.spawn(pbr::DirectionalLight{.shadows_enabled = true},
+              pbr::CascadeShadowConfig{.bounds = {10.0f, 100.0f}},
+              transform::Transform::from_xyz(0.0f, 4.0f, 0.0f));
+    cmd.spawn(pbr::DirectionalLight{.shadows_enabled = true},
+              pbr::CascadeShadowConfig{.bounds = {5.0f, 20.0f, 100.0f}},
+              transform::Transform::from_xyz(0.0f, 3.0f, 0.0f));
     cmd.spawn(mesh::Mesh3d{mesh_handle}, pbr::MeshMaterial3d<FlatMaterial>{material_handle}, transform::Transform{});
 }
 
@@ -95,6 +103,21 @@ void spawn_late_mesh(Res<render::FrameCount> frames,
     const auto material_handle = materials->emplace(FlatMaterial{});
     cmd.spawn(mesh::Mesh3d{mesh_handle}, pbr::MeshMaterial3d<FlatMaterial>{material_handle},
               transform::Transform::from_xyz(1.5f, 0.0f, 0.0f));
+}
+
+void probe_shadow_allocation(Query<Item<const pbr::ViewShadowBindings&>> views, Local<unsigned> frames,
+                            Local<bool> logged) {
+    if (*logged || ++*frames < 3) return;
+    for (auto&& [shadows] : views.iter()) {
+        const auto point_layers = shadows.point_light_depth_texture.getDepthOrArrayLayers();
+        const auto directional_layers = shadows.directional_light_depth_texture.getDepthOrArrayLayers();
+        spdlog::info("[first-mesh] Shadow allocation: point_layers={} directional_layers={}",
+                     point_layers, directional_layers);
+        if (point_layers != 6 || directional_layers != 5)
+            spdlog::error("[first-mesh] Expected one fallback cube and five directional cascade layers");
+        *logged = true;
+        return;
+    }
 }
 
 }  // namespace
@@ -135,5 +158,12 @@ int main() {
     app.add_systems(Startup, into(spawn_scene).set_name("spawn first mesh scene"));
     app.world_mut().init_resource<LateSpawn>();
     app.add_systems(Update, into(spawn_late_mesh).set_name("spawn late mesh"));
+    // Only allocation is exercised here; small maps avoid paying for unused shadow passes.
+    app.world_mut().insert_resource(pbr::PointLightShadowMap{.size = 64});
+    app.world_mut().insert_resource(pbr::DirectionalLightShadowMap{.size = 64});
+    app.get_sub_app_mut(render::Render)->get().add_systems(
+        render::Render, into(probe_shadow_allocation)
+                            .in_set(render::RenderSystems::PrepareBindGroups)
+                            .set_name("probe shared shadow allocation"));
     app.run();
 }

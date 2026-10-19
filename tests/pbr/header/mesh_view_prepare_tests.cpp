@@ -140,6 +140,26 @@ class MeshViewPrepare : public testing::Test {
         return world->spawn(std::move(shadows), std::move(clusters), core::Tonemapping::None, msaa).id();
     }
 
+    static render::view::ExtractedView extracted_view(std::uint32_t index) {
+        return {
+            .retained_view_entity =
+                render::view::RetainedViewEntity{render::sync_world::MainEntity{ecs::Entity::from_index(index)}},
+            .clip_from_view = glm::mat4{1.0f},
+            .world_from_view = {},
+            .viewport = {0, 0, 4, 4},
+        };
+    }
+
+    ecs::Entity spawn_shadow_view(std::uint32_t index,
+                                  std::optional<epix::camera::RenderLayers> layers = std::nullopt) {
+        const auto entity = world->spawn(extracted_view(index), epix::camera::Camera3d{},
+                                          pbr::ExtractedClusterConfig{},
+                                          render::sync_world::MainEntity{ecs::Entity::from_index(index)}).id();
+        if (layers) world->entity_mut(entity).insert(*layers);
+        resource<render::camera::SortedCameras>().cameras.push_back({.entity = entity});
+        return entity;
+    }
+
     void expect_groups(ecs::Entity entity) {
         const auto groups = world->entity(entity).get<pbr::MeshViewBindGroup>();
         ASSERT_TRUE(groups.has_value());
@@ -224,6 +244,117 @@ TEST_F(MeshViewPrepare, BuildsAllThreeGroupsForViewsWithoutProbes) {
     const auto view = spawn_view(render::view::Msaa::Off);
     run(pbr::prepare_mesh_view_bind_groups);
     expect_groups(view);
+}
+
+TEST_F(MeshViewPrepare, ShadowArraysSumMatchingLightsThenTakeTheLargestView) {
+    resource<render::render_resource::TextureCache>();
+    world->insert_resource(pbr::PointLightShadowMap{.size = 4});
+    world->insert_resource(pbr::DirectionalLightShadowMap{.size = 8});
+    const auto default_view = spawn_shadow_view(0);
+    const auto layer1_view = spawn_shadow_view(1, epix::camera::RenderLayers::layer(1));
+    const auto add_light = [&](std::size_t cascades, std::size_t layer, bool shadows = true) {
+        pbr::ExtractedDirectionalLight light;
+        light.shadows_enabled = shadows;
+        light.render_layers = epix::camera::RenderLayers::layer(layer);
+        light.cascade_shadow_config.bounds.resize(cascades);
+        // Allocation uses configuration, not the not-yet-built per-view cascade maps.
+        return world->spawn(std::move(light)).id();
+    };
+    const auto first = add_light(2, 0);
+    const auto second = add_light(3, 0);
+    add_light(9, 1);  // Capped to four cascades for this light.
+    add_light(4, 2);  // No view sees layer 2.
+    add_light(4, 0, false);
+    pbr::ExtractedPointLight spot;
+    spot.shadows_enabled = true;
+    spot.spot_light_angles = std::pair{0.2f, 0.4f};
+    const auto spot_entity = world->spawn(spot).id();
+
+    const auto expect_layers = [&](ecs::Entity view, std::uint32_t layers) {
+        const auto bindings = world->entity(view).get<pbr::ViewShadowBindings>();
+        ASSERT_TRUE(bindings);
+        EXPECT_EQ(bindings->get().directional_light_depth_texture.getDepthOrArrayLayers(), layers);
+        EXPECT_EQ(bindings->get().directional_light_depth_texture.getWidth(), 8u);
+        EXPECT_EQ(bindings->get().point_light_depth_texture.getDepthOrArrayLayers(), 6u);
+        EXPECT_EQ(bindings->get().point_light_depth_texture.getWidth(), 4u);
+    };
+    run(pbr::prepare_lights_shadow_bindings);
+    expect_layers(default_view, 6);  // max(2 + 3, 4) + one spot.
+    expect_layers(layer1_view, 6);
+    for (const auto& [entity, count] : std::array{std::pair{first, 2u}, std::pair{second, 3u}}) {
+        auto light = world->entity(entity).get<pbr::ExtractedDirectionalLight>()->get();
+        light.cascades[default_view].resize(count);
+        world->entity_mut(entity).insert(std::move(light));
+    }
+    run(pbr::prepare_lights_shadow_bindings);
+    expect_layers(default_view, 6);  // Populating cascade maps must not change the allocation.
+    world->entity_mut(second).remove<pbr::ExtractedDirectionalLight>();
+    run(pbr::prepare_lights_shadow_bindings);
+    expect_layers(default_view, 5);  // max(2, 4) + one spot, not 2 + 4 + 1.
+    world->entity_mut(layer1_view).despawn();
+    run(pbr::prepare_lights_shadow_bindings);
+    expect_layers(default_view, 3);
+    world->entity_mut(first).remove<pbr::ExtractedDirectionalLight>();
+    world->entity_mut(spot_entity).remove<pbr::ExtractedPointLight>();
+    run(pbr::prepare_lights_shadow_bindings);
+    expect_layers(default_view, 1);  // Unmatched/disabled lights need no layers.
+}
+
+TEST_F(MeshViewPrepare, PointShadowArrayKeepsOneCubeAndResizesWithShadowCasters) {
+    resource<render::render_resource::TextureCache>();
+    world->insert_resource(pbr::PointLightShadowMap{.size = 4});
+    world->insert_resource(pbr::DirectionalLightShadowMap{.size = 4});
+    const auto view = spawn_shadow_view(0);
+    const auto expect_layers = [&](std::uint32_t layers) {
+        run(pbr::prepare_lights_shadow_bindings);
+        const auto bindings = world->entity(view).get<pbr::ViewShadowBindings>();
+        ASSERT_TRUE(bindings);
+        EXPECT_EQ(bindings->get().point_light_depth_texture.getDepthOrArrayLayers(), layers);
+        EXPECT_EQ(bindings->get().directional_light_depth_texture.getDepthOrArrayLayers(), 1u);
+        for (const auto& [key, textures] : resource<render::render_resource::TextureCache>().textures) {
+            for (const auto& cached : textures)
+                EXPECT_EQ(key.depth_or_array_layers, cached.texture.getDepthOrArrayLayers());
+        }
+    };
+    expect_layers(6);
+    pbr::ExtractedPointLight point;
+    point.shadows_enabled = true;
+    world->spawn(point);
+    const auto second = world->spawn(point).id();
+    world->spawn(pbr::ExtractedPointLight{});
+    expect_layers(12);
+    world->entity_mut(second).remove<pbr::ExtractedPointLight>();
+    expect_layers(6);
+}
+
+TEST_F(MeshViewPrepare, ShadowArraysOnlyConsiderSortedClustered3dCameraViews) {
+    resource<render::render_resource::TextureCache>();
+    world->insert_resource(pbr::PointLightShadowMap{.size = 4});
+    world->insert_resource(pbr::DirectionalLightShadowMap{.size = 4});
+    const auto view = spawn_shadow_view(0);
+    const auto layer1 = epix::camera::RenderLayers::layer(1);
+    const auto unsorted = spawn_shadow_view(1, layer1);
+    resource<render::camera::SortedCameras>().cameras.pop_back();
+    const auto not_3d = spawn_shadow_view(2, layer1);
+    world->entity_mut(not_3d).remove<epix::camera::Camera3d>();
+    const auto no_clusters = spawn_shadow_view(3, layer1);
+    world->entity_mut(no_clusters).remove<pbr::ExtractedClusterConfig>();
+    const auto no_main_entity = spawn_shadow_view(4, layer1);
+    world->entity_mut(no_main_entity).remove<render::sync_world::MainEntity>();
+    resource<render::camera::SortedCameras>().cameras.push_back({.entity = ecs::Entity::from_index(100000)});
+    pbr::ExtractedDirectionalLight light;
+    light.shadows_enabled = true;
+    light.cascade_shadow_config.bounds.resize(2);
+    world->spawn(light);
+    light.render_layers = layer1;
+    light.cascade_shadow_config.bounds.resize(4);
+    world->spawn(light);
+    run(pbr::prepare_lights_shadow_bindings);
+    const auto bindings = world->entity(view).get<pbr::ViewShadowBindings>();
+    ASSERT_TRUE(bindings);
+    EXPECT_EQ(bindings->get().directional_light_depth_texture.getDepthOrArrayLayers(), 2u);
+    for (const auto excluded : {unsorted, not_3d, no_clusters, no_main_entity})
+        EXPECT_FALSE(world->entity(excluded).contains<pbr::ViewShadowBindings>());
 }
 
 TEST_F(MeshViewPrepare, UsesMultisampledPrepassAndTransmissionTextures) {

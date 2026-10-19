@@ -72,12 +72,12 @@ void PbrPlugin::attach(epix::app::App& app) {
         render_app->get().add_systems(app::ScheduleInfo(render::ExtractSchedule),
                                       ecs::into(extract_ambient_light_resource)
                                           .set_name("extract ambient light resource"));
-        // Bevy registers the tail as `prepare_lights` in `ManageViews`, after `sort_cameras`
-        // (`lib.rs:334-337`); this port sorts no cameras yet, so only the set is set. The
-        // shadow textures come first, since the mesh view bind group binds them.
+        // Bevy prepares lights after camera sorting (lib.rs:334-337). Shadow
+        // allocation must see this frame's eligible cameras, not the previous list.
         render_app->get().add_systems(render::Render,
                                       ecs::into(prepare_lights_shadow_bindings)
                                           .in_set(render::RenderSystems::ManageViews)
+                                          .after(render::camera::sort_cameras)
                                           .set_name("prepare lights shadow bindings"));
         render_app->get().add_systems(render::Render, ecs::into(prepare_clusterable_objects)
                                                           .in_set(render::RenderSystems::ManageViews)

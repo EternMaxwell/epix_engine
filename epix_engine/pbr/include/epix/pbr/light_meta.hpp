@@ -336,7 +336,10 @@ EPIX_EXPORT EPIX_API void prepare_lights_shadow_bindings(
     ecs::Res<DirectionalLightShadowMap> directional_light_shadow_map,
     ecs::Query<ecs::Item<const ExtractedPointLight&>> point_lights,
     ecs::Query<ecs::Item<const ExtractedDirectionalLight&>> directional_lights,
-    ecs::Query<ecs::Item<ecs::Entity, const ::epix::render::view::ExtractedView&>> views);
+    ecs::Res<::epix::render::camera::SortedCameras> sorted_cameras,
+    ecs::Query<ecs::Item<ecs::Entity, const ::epix::render::view::ExtractedView&,
+                         ecs::Opt<const camera::RenderLayers&>>,
+               ecs::With<camera::Camera3d, ExtractedClusterConfig, ::epix::render::sync_world::MainEntity>> views);
 
 /** @brief Sort, pack and upload the scene's point/spot lights, rebuilding their
  * entity-to-buffer indices (Bevy `prepare_lights`, `render/light.rs:857-977,1012-1018`). */
