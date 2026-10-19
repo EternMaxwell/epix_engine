@@ -197,6 +197,15 @@ struct ErasedRenderAsset<::epix::pbr::MeshMaterial3d<M>> {
         // Bevy builds the erased key from the material's own bind-group data
         // (`material.rs:1761`), which is what makes the specialization key material-specific.
         properties->material_key = ::epix::pbr::ErasedMaterialKey(AsBindGroup<M>::bind_group_data(material));
+        properties->specialize = +[](
+            const ::epix::pbr::MaterialPipeline& pipeline, render::RenderPipelineDescriptor& descriptor,
+            const ::epix::mesh::MeshVertexBufferLayoutRef& layout, const ::epix::pbr::ErasedMaterialPipelineKey& key)
+            -> std::expected<void, render::SpecializedMeshPipelineError> {
+            return M::specialize(pipeline, descriptor, layout, ::epix::pbr::MaterialPipelineKey<M>{
+                .mesh_key = key.mesh_key,
+                .bind_group_data = key.material_key.template to_key<typename AsBindGroup<M>::Data>(),
+            });
+        };
         properties->material_layout                 = material_layout;
         properties->bindless                        = ::epix::pbr::material_uses_bindless_resources<M>(device.get());
         properties->shadows_enabled                 = shadows_enabled;

@@ -385,7 +385,7 @@ MaterialPipelineSpecializer::specialize(const Key& key, const mesh::MeshVertexBu
     // Bevy `SpecializedMeshPipeline for MaterialPipelineSpecializer`
     // (`material.rs:456-503`), in its order: the mesh pipeline first, then the two
     // shader defs, then the material's shader overrides, the bind group layout and
-    // finally the bindless define.
+    // the typed material callback, and finally the bindless define.
     auto descriptor = pipeline.mesh_pipeline.specialize(key.mesh_key, layout);
     if (!descriptor) return std::unexpected(render::SpecializedMeshPipelineError{descriptor.error()});
 
@@ -407,6 +407,11 @@ MaterialPipelineSpecializer::specialize(const Key& key, const mesh::MeshVertexBu
     if (properties->material_layout) {
         descriptor->layouts.insert(descriptor->layouts.begin() + MATERIAL_BIND_GROUP_INDEX,
                                    *properties->material_layout);
+    }
+
+    if (properties->specialize) {
+        auto result = properties->specialize(pipeline, *descriptor, layout, key);
+        if (!result) return std::unexpected(std::move(result.error()));
     }
 
     if (properties->bindless) {

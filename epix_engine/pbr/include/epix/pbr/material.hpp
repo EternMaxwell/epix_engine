@@ -15,7 +15,9 @@
 #include <epix/ecs/core/tick.hpp>
 #include <epix/render/sync_world.hpp>
 #include <epix/shader.hpp>
+#include <expected>
 #include <optional>
+#include <typeinfo>
 #include <unordered_map>
 #endif
 
@@ -152,15 +154,11 @@ EPIX_EXPORT EPIX_API void late_sweep_material_instances(
     app::Extract<ecs::RemovedComponents<mesh::Mesh3d>> removed_meshes_query);
 
 
-/** @brief A material's own bind-group data type, or `std::monostate` when it has
- *  none (Bevy's `Material` associated default). */
-template <typename M, typename = void>
-struct MaterialData {
-    using type = std::monostate;
-};
+/** @brief The material's AsBindGroup associated data (Bevy `M::Data`).
+ *  Empty bind-group specializations explicitly use std::monostate. */
 template <typename M>
-struct MaterialData<M, std::void_t<typename M::Data>> {
-    using type = typename M::Data;
+struct MaterialData {
+    using type = typename render::render_resource::AsBindGroup<M>::Data;
 };
 
 /** @brief The bind group a 3D material is bound at (Bevy `MATERIAL_BIND_GROUP_INDEX`,
@@ -219,10 +217,8 @@ EPIX_EXPORT struct DefaultOpaqueRendererMethod {
 };
 
 /** @brief The specialization key of one 3D material (Bevy `MaterialPipelineKey`,
- *  `material.rs:269`).
- *
- *  Bevy's key also carries the prepared material pipeline; the port's 2D
- *  counterpart drops that parameter and this follows it. */
+ *  `material.rs:427-435`). The prepared pipeline is a separate argument to
+ *  Material::specialize, not part of this key. */
 EPIX_EXPORT template <typename M>
 struct MaterialPipelineKey {
     /** @brief The mesh half of the key. */
@@ -277,11 +273,17 @@ EPIX_EXPORT class ErasedMaterialKey {
           m_hash(std::hash<T>{}(material_key)),
           m_value(std::make_shared<detail::ErasedMaterialKeyModel<T>>(std::move(material_key))) {}
 
-    /** @brief The key of a material with no bind-group data of its own, which is also what a
-     *  default-constructed key holds. Bevy has no counterpart because its materials always
-     *  produce a key; the port needs one so `MaterialProperties` and
-     *  `ErasedMaterialPipelineKey` stay default-constructible. */
+    /** @brief Bevy's default erased key contains the unit type. */
     ErasedMaterialKey() : ErasedMaterialKey(std::monostate{}) {}
+
+    /** @brief Clone the typed key (Bevy `to_key`). A wrong type is a contract
+     *  violation: Bevy's downcast panics; C++ reports std::bad_cast. */
+    template <typename T>
+    T to_key() const {
+        const auto* typed = dynamic_cast<const detail::ErasedMaterialKeyModel<T>*>(m_value.get());
+        if (typed == nullptr) throw std::bad_cast{};
+        return typed->value;
+    }
 
     /** @brief Bevy derives `PartialEq`, comparing the type and then the value. */
     bool operator==(const ErasedMaterialKey& other) const noexcept {
@@ -306,8 +308,8 @@ EPIX_EXPORT class ErasedMaterialKey {
  *
  *  Bevy holds both a `material_key` and a `type_id`, which are not redundant: the
  *  first identifies the *bind-group data* a material family specializes on, the
- *  second the material type it belongs to. Bevy derives `PartialEq`, `Eq` and `Hash`
- *  and has no `Default`, and this follows it. */
+ *  second the material type it belongs to. Equality and hashing include both;
+ *  C++ field initializers additionally allow aggregate/resource construction. */
 EPIX_EXPORT struct ErasedMaterialPipelineKey {
     /** @brief The mesh half of the key. */
     MeshPipelineKey mesh_key{};
@@ -318,6 +320,8 @@ EPIX_EXPORT struct ErasedMaterialPipelineKey {
 
     bool operator==(const ErasedMaterialPipelineKey&) const noexcept = default;
 };
+
+EPIX_EXPORT struct MaterialPipeline;
 
 /** @brief A 3D material (Bevy `Material`, `bevy_pbr/src/material.rs:138-273`).  A
  *  material type derives from this and overrides only what it needs; the pipeline
@@ -360,12 +364,11 @@ struct Material : render::render_resource::AsBindGroupBase {
     static shader::ShaderRef deferred_vertex_shader() { return {}; }
     /** @brief This material's deferred fragment shader. */
     static shader::ShaderRef deferred_fragment_shader() { return {}; }
-    /** @brief Customize the specialized pipeline (Bevy `Material::specialize`,
-     *  `material.rs:265-272`, whose prepared pipeline parameter the port's 2D
-     *  counterpart also drops). */
-    static void specialize(render::RenderPipelineDescriptor&,
-                           const mesh::MeshVertexBufferLayoutRef&,
-                           const MaterialPipelineKey<M>&) {}
+    /** @brief Customize the specialized pipeline and propagate errors (Bevy
+     *  `Material::specialize`, `material.rs:265-272`). */
+    static std::expected<void, render::SpecializedMeshPipelineError> specialize(
+        const MaterialPipeline&, render::RenderPipelineDescriptor&,
+        const mesh::MeshVertexBufferLayoutRef&, MaterialPipelineKey<M>) { return {}; }
 };
 
 /** @brief Whether this material ends up using bindless resources (Bevy
@@ -580,11 +583,7 @@ void sweep_entities_needing_specialization(
 
 
 /** @brief The 3D mesh pipeline data a material specializes against (Bevy
- *  `MaterialPipeline`, `bevy_pbr/src/material.rs:442-447`).
- *
- *  Bevy's `MaterialPipelineSpecializer` and `ErasedMaterialPipelineKey` are not
- *  ported: they need `AsBindGroup`'s erased key, which belongs to the render module
- *  and is recorded against `add_material_bind_group_allocator`'s row. */
+ *  `MaterialPipeline`, `bevy_pbr/src/material.rs:442-447`). */
 EPIX_EXPORT struct MaterialPipeline {
     /** @brief The mesh pipeline this material's pipeline derives from. */
     MeshPipeline mesh_pipeline;
@@ -690,12 +689,7 @@ EPIX_EXPORT struct DeferredFragmentShader {};
  *
  *  Bevy's `shaders` and `draw_functions` are `SmallVec`s sized for
  *  `StandardMaterial`'s most common cases; the port uses vectors, since the size
- *  is a performance detail rather than a behaviour.
- *
- *  **One member is absent:** Bevy's `specialize` is an erased function pointer
- *  taking a `MaterialPipeline` and an `ErasedMaterialPipelineKey`, neither of which
- *  is ported - they belong to the pipeline half (`PBR-868`), and this struct gains
- *  the member with them. */
+ *  is a performance detail rather than a behaviour. */
 /** @brief The draw-function labels a material's properties are keyed by (Bevy
  *  `material.rs:1408-1427`).
  *
@@ -731,9 +725,9 @@ EPIX_EXPORT struct MaterialProperties {
      *  `MaterialProperties::material_key`, `material.rs:441`).
      *
      *  It is what lets one specialization cache serve every material type: two materials
-     *  of the same type whose data differs must not share a compiled pipeline. Bevy has no
-     *  default for this and fills it at preparation; the port spells the "no data" case as
-     *  `monostate`, which is what `MaterialData<M>` is for a material without a `Data`. */
+     *  of the same type whose data differs must not share a compiled pipeline.
+     *  Preparation fills it from AsBindGroup::bind_group_data; empty bind-group
+     *  specializations use monostate for their associated Data. */
     ErasedMaterialKey material_key{std::monostate{}};
     /** @brief The material's bind-group layout, when it has one of its own. */
     std::optional<render::BindGroupLayoutDescriptor> material_layout;
@@ -744,6 +738,11 @@ EPIX_EXPORT struct MaterialProperties {
     /** @brief Whether this material actually uses bindless resources, once platform
      *  support is taken into account. */
     bool bindless = false;
+    /** @brief The typed material hook, erased when its material is prepared. */
+    using Specialize = std::expected<void, render::SpecializedMeshPipelineError> (*)(
+        const MaterialPipeline&, render::RenderPipelineDescriptor&,
+        const mesh::MeshVertexBufferLayoutRef&, const ErasedMaterialPipelineKey&);
+    Specialize specialize = nullptr;
     /** @brief Whether the material's shadows are enabled (Bevy `enable_shadows`, read once
      *  while preparing). */
     bool shadows_enabled = true;
@@ -789,11 +788,7 @@ EPIX_EXPORT struct MaterialProperties {
  *  Bevy holds the material pipeline and the prepared properties in an `Arc`; this
  *  holds the pipeline and a `shared_ptr`, as `PreparedMaterial` does. Bevy declares
  *  this before `MaterialProperties` and Rust does not care; C++ does, so it follows
- *  them here.
- *
- *  Bevy's `specialize` member of the properties - an erased function pointer - is not
- *  ported, so a material that customizes its own specialization is not yet
- *  expressible through the erased path. */
+ *  them here. */
 EPIX_EXPORT struct MaterialPipelineSpecializer {
     /** @brief The key this specializer is cached under (Bevy's associated `Key`). */
     using Key = ErasedMaterialPipelineKey;
@@ -805,9 +800,9 @@ EPIX_EXPORT struct MaterialPipelineSpecializer {
 
     /** @brief Specialize the mesh pipeline for this material (Bevy
      *  `SpecializedMeshPipeline for MaterialPipelineSpecializer`): push the material
-     *  group's shader def and its layout, apply the material's shader overrides, and
-     *  add the `BINDLESS` define when the material is bindless. */
-    std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineError> specialize(
+     *  group's shader def and its layout, apply shader overrides and the material
+     *  callback, then add `BINDLESS` when the material is bindless. */
+    EPIX_API std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineError> specialize(
         const Key& key, const mesh::MeshVertexBufferLayoutRef& layout) const;
 };
 

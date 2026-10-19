@@ -32,8 +32,6 @@ struct PlainMaterial : pbr::Material<PlainMaterial> {};
 
 /** @brief A material that overrides everything a material can. */
 struct CustomMaterial : pbr::Material<CustomMaterial> {
-    using Data = int;
-
     static epix::shader::ShaderRef vertex_shader() { return epix::shader::ShaderRef::from_str("custom/vertex.slang"); }
     static epix::shader::ShaderRef fragment_shader() { return epix::shader::ShaderRef::from_str("custom/fragment.slang"); }
     render::AlphaMode alpha_mode() const { return render::AlphaMode::mask(0.25f); }
@@ -44,6 +42,25 @@ struct CustomMaterial : pbr::Material<CustomMaterial> {
     static bool enable_shadows() { return false; }
 };
 }  // namespace
+
+template <typename M, typename D>
+struct TraitBindGroup : render::render_resource::AsBindGroupBase {
+    using Data = D;
+    using Param = std::tuple<>;
+    static constexpr std::string_view label() { return "material trait test"; }
+    static std::vector<wgpu::BindGroupLayoutEntry> layout_entries() { return {}; }
+    static Data bind_group_data(const M&) { return {}; }
+    static std::expected<render::render_resource::UnpreparedBindGroup,
+                         render::render_resource::AsBindGroupError>
+    unprepared_bind_group(const wgpu::Device&, const wgpu::BindGroupLayout&, const M&, Param&) {
+        return render::render_resource::UnpreparedBindGroup{};
+    }
+};
+
+template <>
+struct epix::render::render_resource::AsBindGroup<PlainMaterial> : TraitBindGroup<PlainMaterial, std::monostate> {};
+template <>
+struct epix::render::render_resource::AsBindGroup<CustomMaterial> : TraitBindGroup<CustomMaterial, int> {};
 
 /** @brief The 3D material trait answers with Bevy's defaults (Bevy `Material`,
  *  `bevy_pbr/src/material.rs:138-273`).
@@ -88,7 +105,7 @@ TEST(MaterialTrait, DefaultsMatchBevyAndOverridesWin) {
     ASSERT_TRUE(vertex.is_path());
     EXPECT_EQ(std::get<epix::shader::ShaderRef::ByPath>(vertex.value).path, "custom/vertex.slang");
 
-    // The associated data type is Bevy's `M::Data`, and absent means monostate.
+    // Bevy's M::Data is inherited from AsBindGroup, not an alias repeated on M.
     static_assert(std::is_same_v<pbr::MaterialData<CustomMaterial>::type, int>);
     static_assert(std::is_same_v<pbr::MaterialData<PlainMaterial>::type, std::monostate>);
 
