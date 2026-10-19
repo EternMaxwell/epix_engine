@@ -16,6 +16,7 @@
 #include <epix/render/sync_world.hpp>
 #include <epix/shader.hpp>
 #include <expected>
+#include <memory>
 #include <optional>
 #include <typeinfo>
 #include <unordered_map>
@@ -236,7 +237,7 @@ namespace detail {
  *  virtual members are the same two operations. */
 struct ErasedMaterialKeyConcept {
     virtual ~ErasedMaterialKeyConcept()                                          = default;
-    virtual std::shared_ptr<const ErasedMaterialKeyConcept> clone() const        = 0;
+    virtual std::unique_ptr<const ErasedMaterialKeyConcept> clone() const        = 0;
     virtual bool equals(const ErasedMaterialKeyConcept& other) const             = 0;
 };
 
@@ -244,8 +245,8 @@ template <typename T>
 struct ErasedMaterialKeyModel final : ErasedMaterialKeyConcept {
     T value;
     explicit ErasedMaterialKeyModel(T material_key) : value(std::move(material_key)) {}
-    std::shared_ptr<const ErasedMaterialKeyConcept> clone() const override {
-        return std::make_shared<ErasedMaterialKeyModel>(value);
+    std::unique_ptr<const ErasedMaterialKeyConcept> clone() const override {
+        return std::make_unique<ErasedMaterialKeyModel>(value);
     }
     bool equals(const ErasedMaterialKeyConcept& other) const override {
         const auto* typed = dynamic_cast<const ErasedMaterialKeyModel*>(&other);
@@ -259,9 +260,8 @@ struct ErasedMaterialKeyModel final : ErasedMaterialKeyConcept {
  *  specialization cache serve every material type.
  *
  *  Bevy keeps the key's `TypeId`, a precomputed `FixedHasher` hash and the boxed
- *  value; this holds the same three. The payload is shared rather than cloned on
- *  copy - it is immutable, so the two are indistinguishable through the interface
- *  (`clone` is kept for the case where a caller needs its own copy). */
+ *  value; this holds the same three. Each key owns its payload, and copying a
+ *  key clones that payload through the erased dispatch, as Bevy's Clone does. */
 EPIX_EXPORT class ErasedMaterialKey {
    public:
     /** @brief Erase one material's bind-group data, which must be cloneable,
@@ -271,10 +271,27 @@ EPIX_EXPORT class ErasedMaterialKey {
     explicit ErasedMaterialKey(T material_key)
         : m_type_id(meta::type_id<T>()),
           m_hash(std::hash<T>{}(material_key)),
-          m_value(std::make_shared<detail::ErasedMaterialKeyModel<T>>(std::move(material_key))) {}
+          m_value(std::make_unique<detail::ErasedMaterialKeyModel<T>>(std::move(material_key))) {}
 
     /** @brief Bevy's default erased key contains the unit type. */
     ErasedMaterialKey() : ErasedMaterialKey(std::monostate{}) {}
+
+    ErasedMaterialKey(const ErasedMaterialKey& other)
+        : m_type_id(other.m_type_id), m_hash(other.m_hash), m_value(other.m_value->clone()) {}
+
+    ErasedMaterialKey& operator=(const ErasedMaterialKey& other) {
+        if (this != &other) {
+            // Clone first: a throwing user copy must not partially replace the key.
+            auto value = other.m_value->clone();
+            m_type_id = other.m_type_id;
+            m_hash = other.m_hash;
+            m_value = std::move(value);
+        }
+        return *this;
+    }
+
+    ErasedMaterialKey(ErasedMaterialKey&&) noexcept = default;
+    ErasedMaterialKey& operator=(ErasedMaterialKey&&) noexcept = default;
 
     /** @brief Clone the typed key (Bevy `to_key`). A wrong type is a contract
      *  violation: Bevy's downcast panics; C++ reports std::bad_cast. */
@@ -299,7 +316,7 @@ EPIX_EXPORT class ErasedMaterialKey {
    private:
     meta::type_index m_type_id{};
     std::size_t m_hash = 0;
-    std::shared_ptr<const detail::ErasedMaterialKeyConcept> m_value;
+    std::unique_ptr<const detail::ErasedMaterialKeyConcept> m_value;
 };
 
 /** @brief The specialization key of a material whose data is erased (Bevy
@@ -943,14 +960,18 @@ struct RenderCommand<::epix::pbr::SetMaterialBindGroup<I>, P> {
 
 template <>
 struct std::hash<epix::pbr::ErasedMaterialKey> {
-    std::size_t operator()(const epix::pbr::ErasedMaterialKey& key) const noexcept { return key.hash(); }
+    std::size_t operator()(const epix::pbr::ErasedMaterialKey& key) const noexcept {
+        // Bevy hashes the data's TypeId followed by its cached value hash.
+        std::size_t h = std::hash<epix::meta::type_index>{}(key.type_id());
+        return h ^ (key.hash() + 0x9e3779b9 + (h << 6) + (h >> 2));
+    }
 };
 
 template <>
 struct std::hash<epix::pbr::ErasedMaterialPipelineKey> {
     std::size_t operator()(const epix::pbr::ErasedMaterialPipelineKey& key) const noexcept {
         std::size_t h = static_cast<std::size_t>(key.mesh_key.bits());
-        h ^= key.material_key.hash() + 0x9e3779b9 + (h << 6) + (h >> 2);
+        h ^= std::hash<epix::pbr::ErasedMaterialKey>{}(key.material_key) + 0x9e3779b9 + (h << 6) + (h >> 2);
         h ^= std::hash<epix::meta::type_index>{}(key.type_id) + 0x9e3779b9 + (h << 6) + (h >> 2);
         return h;
     }
