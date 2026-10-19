@@ -12,6 +12,8 @@
 #include <epix/mesh.hpp>
 #include <epix/pbr/mesh_pipeline_resource.hpp>
 #include <epix/pbr/mesh_shaders.hpp>
+#include <epix/pbr/mesh_uniform.hpp>
+#include <epix/pbr/skin.hpp>
 #include <epix/render.hpp>
 #include <epix/shader.hpp>
 #include <epix/task.hpp>
@@ -638,6 +640,269 @@ void main() {
             SCOPED_TRACE(index);
             for (int component = 0; component < 4; ++component)
                 EXPECT_NEAR(actual[index][component], expected[index][component], 1e-4f);
+        }
+    }
+}
+
+TEST_F(MeshViewPrepare, MeshAndSkinShaderArithmeticMatchesUploadedTransforms) {
+    app.add_plugins(epix::mesh::MeshPlugin{}, epix::transform::TransformPlugin{});
+    pbr::register_mesh_shaders(app.world_mut());
+    app.add_plugins(render::FrameCountPlugin{});
+    static constexpr std::string_view source = R"slang(
+import epix.mesh_functions;
+import epix.mesh_bindings;
+import epix.skinning;
+using namespace epix::mesh_functions;
+[[vk::binding(8, 1)]] RWStructuredBuffer<float4> results;
+struct ProbeInputs {
+    float4 position;
+    float4 normal;
+    float4 tangent;
+    float4 weights;
+    float4 zero;
+    uint4 joints;
+    uint4 metadata;
+};
+[[vk::binding(9, 1)]] ConstantBuffer<ProbeInputs> inputs;
+[shader("compute")]
+[numthreads(1, 1, 1)]
+void main() {
+    uint instance = inputs.metadata.x;
+    float4x4 model = get_world_from_local(instance);
+    float4x4 previous = get_previous_world_from_local(instance);
+    float4x4 inverse_model = get_local_from_world(instance);
+    float4x4 skin = skin_model(inputs.joints, inputs.weights, instance);
+    float4x4 previous_skin = skin_prev_model(inputs.joints, inputs.weights, instance);
+    results[0] = mesh_position_local_to_world(model, inputs.position);
+    results[1] = mesh_position_local_to_world(previous, inputs.position);
+    results[2] = mesh_position_local_to_world(inverse_model, inputs.position);
+    results[3] = mesh_position_local_to_world(inverse_model, results[0]);
+    results[4] = float4(mesh_normal_local_to_world(inputs.normal.xyz, instance), 0);
+    results[5] = float4(mesh_normal_local_to_world(inputs.zero.xyz, instance), 0);
+    results[6] = mesh_tangent_local_to_world(model, inputs.tangent, instance);
+    results[7] = mesh_tangent_local_to_world(model, inputs.zero, instance);
+    results[8] = mesh_position_local_to_clip(model, inputs.position);
+    results[9] = mesh_position_local_to_world(skin, inputs.position);
+    results[10] = mesh_position_local_to_world(previous_skin, inputs.position);
+    results[11] = float4(skin_normals(skin, inputs.normal.xyz), 0);
+    results[12] = float4(skin_normals(previous_skin, inputs.normal.xyz), 0);
+    results[13] = mesh_tangent_local_to_world(skin, inputs.tangent, instance);
+    results[14] = mesh_position_local_to_clip(skin, inputs.position);
+    results[15] = float4(sign_determinant_model_3x3m(mesh_instance(instance).flags),
+        float(get_tag(instance)), float(mesh_instance(instance).first_vertex_index),
+        float(mesh_instance(instance).current_skin_index));
+    results[16] = float4(
+        float(get_visibility_range_dither_level(instance, transpose(model)[3])),
+        float(get_visibility_range_dither_level(instance, inputs.zero)),
+        float(get_visibility_range_dither_level(instance, inputs.position)),
+        float(get_visibility_range_dither_level(instance, inputs.position * 10)));
+}
+)slang";
+    app.resource_mut<epix::assets::EmbeddedAssetRegistry>().insert_asset_static(
+        "tests/pbr/mesh_skin_oracle.slang",
+        std::span<const std::byte>{reinterpret_cast<const std::byte*>(source.data()), source.size()});
+    const auto& assets = app.resource<epix::assets::AssetServer>();
+    const auto shader = assets.load<epix::shader::Shader>("embedded://tests/pbr/mesh_skin_oracle.slang");
+    const auto& handles = app.resource<pbr::MeshShaderHandles>();
+    const std::array dependencies{
+        assets.load<epix::shader::Shader>("embedded://epix/shaders/view.slang"),
+        assets.load<epix::shader::Shader>("embedded://epix/shaders/globals.slang"),
+        assets.load<epix::shader::Shader>("embedded://epix/shaders/maths.slang"),
+        handles.mesh_bindings, handles.mesh_functions, handles.skinning, shader};
+    const auto loaded = [&] {
+        return std::ranges::all_of(dependencies, [&](const auto& handle) {
+            return assets.is_loaded_with_dependencies(handle.id());
+        });
+    };
+    const auto pump = [&] {
+        app.run_schedule(epix::app::PreUpdate);
+        app.run_schedule(epix::app::PostUpdate);
+        app.run_schedule(epix::app::Last);
+        std::this_thread::yield();
+    };
+    for (int attempt = 0; attempt < 10000 && !loaded(); ++attempt) pump();
+    ASSERT_TRUE(loaded());
+
+    const auto& device = world->resource<wgpu::Device>();
+    const auto& queue = world->resource<wgpu::Queue>();
+    auto& server = app.resource<render::PipelineServer>();
+    wgpu::Limits limits{};
+    ASSERT_EQ(device.getLimits(&limits), wgpu::Status::eSuccess);
+    const auto buffer_entry = [](std::uint32_t binding, wgpu::BufferBindingType type, std::uint64_t size) {
+        return wgpu::BindGroupLayoutEntry().setBinding(binding).setVisibility(wgpu::ShaderStage::eCompute)
+            .setBuffer(wgpu::BufferBindingLayout().setType(type).setMinBindingSize(size));
+    };
+    const auto upload = [&](std::span<const std::byte> bytes, wgpu::BufferUsage usage) {
+        const auto buffer = device.createBuffer(wgpu::BufferDescriptor().setSize(bytes.size())
+                                                    .setUsage(usage | wgpu::BufferUsage::eCopyDst));
+        queue.writeBuffer(buffer, 0, bytes.data(), bytes.size());
+        return buffer;
+    };
+    struct Inputs {
+        glm::vec4 position{0.25f, -0.5f, -2.0f, 1};
+        glm::vec4 normal{0.3f, 0.7f, 0.2f, 0};
+        glm::vec4 tangent{0.8f, -0.2f, 0.4f, -1};
+        glm::vec4 weights{0.1f, 0.2f, 0.3f, 0.4f};
+        glm::vec4 zero{0.0f};
+        glm::uvec4 joints{3, 1, 0, 2};
+        glm::uvec4 metadata{1, 0, 0, 0};
+    };
+    static_assert(sizeof(Inputs) == 7 * sizeof(glm::vec4));
+    const std::array inputs{Inputs{}};
+    const auto input_buffer = upload(std::as_bytes(std::span{inputs}), wgpu::BufferUsage::eUniform);
+    using Values = std::array<glm::vec4, 17>;
+    const auto output = device.createBuffer(wgpu::BufferDescriptor().setSize(sizeof(Values))
+                                               .setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopySrc));
+    render::view::ViewUniform view{};
+    view.world_position = {0, 0, 0};
+    view.clip_from_world = epix::camera::perspective_infinite_reverse_rh(1.1f, 1.5f, 0.3f) *
+                          glm::inverse(glm::translate(glm::mat4{1.0f}, glm::vec3{2, -3, 7}) *
+                                       glm::rotate(glm::mat4{1.0f}, 0.3f, glm::vec3{0, 1, 0}));
+    render::render_resource::UniformBuffer<render::view::ViewUniform> view_buffer;
+    view_buffer.set(view);
+    view_buffer.write_buffer(device, queue);
+    const std::array visibility_ranges{glm::vec4{0, 2, 4, 8}};
+    const auto visibility_buffer = upload(std::as_bytes(std::span{visibility_ranges}), wgpu::BufferUsage::eStorage);
+    const auto view_layout = render::BindGroupLayoutDescriptor::create(
+        "mesh oracle view", std::array{buffer_entry(0, wgpu::BufferBindingType::eUniform, sizeof(view)),
+                                        buffer_entry(14, wgpu::BufferBindingType::eReadOnlyStorage, sizeof(visibility_ranges))});
+    const auto output_layout = render::BindGroupLayoutDescriptor::create(
+        "mesh oracle output", std::array{buffer_entry(8, wgpu::BufferBindingType::eStorage, sizeof(Values)),
+                                          buffer_entry(9, wgpu::BufferBindingType::eUniform, sizeof(inputs))});
+
+    for (int variant = 0; variant < 4; ++variant) {
+        const bool uniform = variant >= 2;
+        const bool mirrored = variant % 2 != 0;
+        SCOPED_TRACE(uniform ? "uniform mesh and skin buffers" : "storage mesh and skin buffers");
+        SCOPED_TRACE(mirrored ? "negative determinant" : "positive determinant");
+        const float sign = mirrored ? -1.0f : 1.0f;
+        const glm::mat4 model = glm::translate(glm::mat4{1.0f}, glm::vec3{3, -2, 5}) *
+            glm::rotate(glm::mat4{1.0f}, 0.45f, glm::normalize(glm::vec3{1, 2, 3})) *
+            glm::scale(glm::mat4{1.0f}, glm::vec3{sign * 1.7f, 0.6f, 2.3f});
+        const glm::mat4 previous = glm::translate(glm::mat4{1.0f}, glm::vec3{-2, 4, -1}) *
+            glm::rotate(glm::mat4{1.0f}, -0.4f, glm::vec3{1, 0, 0}) *
+            glm::scale(glm::mat4{1.0f}, glm::vec3{0.9f, 1.3f, 2.2f});
+        const std::array meshes{
+            pbr::MeshUniform::make({}, 0, {}, std::nullopt, std::nullopt, std::nullopt),
+            pbr::MeshUniform::make({.world_from_local = model, .previous_world_from_local = previous,
+                                    .flags = mirrored ? 0u : pbr::MeshFlags::SIGN_DETERMINANT_MODEL_3X3},
+                                   17, {}, std::nullopt, 2u, 13u)};
+        const auto joint_offset = uniform ? std::max<std::uint64_t>(limits.minUniformBufferOffsetAlignment,
+                                                                    sizeof(glm::mat4)) : 0u;
+        const std::size_t prefix = uniform ? joint_offset / sizeof(glm::mat4) : 2;
+        const std::uint64_t joint_binding_size = (uniform ? pbr::MAX_JOINTS : 6) * sizeof(glm::mat4);
+        std::vector<glm::mat4> joints(uniform ? prefix + pbr::MAX_JOINTS : 6, glm::mat4{1.0f});
+        auto previous_joints = joints;
+        for (std::size_t index = 0; index < 4; ++index) {
+            const float i = static_cast<float>(index);
+            joints[prefix + index] = glm::translate(glm::mat4{1.0f}, glm::vec3{1 + i * 0.4f, 2 - i * 0.3f, -i}) *
+                glm::rotate(glm::mat4{1.0f}, 0.2f + i * 0.13f, glm::normalize(glm::vec3{1, 2, 1})) *
+                glm::scale(glm::mat4{1.0f}, glm::vec3{sign * (1 + i * 0.1f), 0.7f + i * 0.15f, 1.4f - i * 0.08f});
+            previous_joints[prefix + index] =
+                glm::translate(glm::mat4{1.0f}, glm::vec3{-i, 1 + i * 0.2f, 3 - i * 0.4f}) *
+                glm::rotate(glm::mat4{1.0f}, -0.1f - i * 0.2f, glm::normalize(glm::vec3{2, 1, 3})) *
+                glm::scale(glm::mat4{1.0f}, glm::vec3{sign * 0.8f, 1.2f + i * 0.1f, 0.9f});
+        }
+        glm::mat4 skin{0.0f}, previous_skin{0.0f};
+        for (int index = 0; index < 4; ++index) {
+            skin += inputs[0].weights[index] * joints[prefix + inputs[0].joints[index]];
+            previous_skin += inputs[0].weights[index] * previous_joints[prefix + inputs[0].joints[index]];
+        }
+        const auto usage = uniform ? wgpu::BufferUsage::eUniform : wgpu::BufferUsage::eStorage;
+        const auto type = uniform ? wgpu::BufferBindingType::eUniform : wgpu::BufferBindingType::eReadOnlyStorage;
+        const auto mesh_buffer = upload(std::as_bytes(std::span{meshes}), usage);
+        const auto joint_buffer = upload(std::as_bytes(std::span{joints}), usage);
+        const auto previous_joint_buffer = upload(std::as_bytes(std::span{previous_joints}), usage);
+        const auto mesh_layout = render::BindGroupLayoutDescriptor::create(
+            uniform ? "mesh oracle uniform buffers" : "mesh oracle storage buffers",
+            std::array{buffer_entry(0, type, sizeof(meshes)), buffer_entry(1, type, joint_binding_size),
+                       buffer_entry(6, type, joint_binding_size)});
+        render::ComputePipelineDescriptor descriptor{
+            .label = "mesh and skin arithmetic oracle",
+            .layouts = {view_layout, output_layout, mesh_layout},
+            .shader = shader,
+            .shader_defs = pbr::specialize_mesh_capability_shader_defs(false, false, false, std::nullopt),
+            .entry_point = "main",
+        };
+        descriptor.shader_defs.push_back(epix::shader::ShaderDefVal::from_bool("SKINNED"));
+        descriptor.shader_defs.push_back(epix::shader::ShaderDefVal::from_bool("VISIBILITY_RANGE_DITHER"));
+        descriptor.shader_defs.push_back(epix::shader::ShaderDefVal::from_uint("AVAILABLE_STORAGE_BUFFER_BINDINGS", 8));
+        if (uniform) {
+            descriptor.shader_defs.push_back(epix::shader::ShaderDefVal::from_bool("SKINS_USE_UNIFORM_BUFFERS"));
+            descriptor.shader_defs.push_back(epix::shader::ShaderDefVal::from_uint("PER_OBJECT_BUFFER_BATCH_SIZE", 2));
+        }
+        // A non-null native pipeline can still be an invalid WebGPU object.
+        // Fail at creation instead of submitting it and triggering a native abort.
+        device.pushErrorScope(wgpu::ErrorFilter::eValidation);
+        const auto id = server.queue_compute_pipeline(std::move(descriptor));
+        for (int attempt = 0; attempt < 10000 && !server.get_compute_pipeline(id); ++attempt) pump();
+        struct Validation {
+            bool completed = false;
+            wgpu::PopErrorScopeStatus status{};
+            wgpu::ErrorType type{};
+            std::string message;
+        };
+        const auto validation = std::make_shared<Validation>();
+        device.popErrorScope(wgpu::PopErrorScopeCallbackInfo().setMode(wgpu::CallbackMode::eAllowProcessEvents)
+            .setCallback(wgpu::PopErrorScopeCallback([validation](wgpu::PopErrorScopeStatus status,
+                                                                 wgpu::ErrorType type, wgpu::StringView message) {
+                validation->status = status;
+                validation->type = type;
+                if (type != wgpu::ErrorType::eNoError) validation->message = std::string(std::string_view(message));
+                validation->completed = true;
+            })));
+        for (int attempt = 0; attempt < 1000 && !validation->completed; ++attempt) device.poll(wgpu::Bool(true));
+        ASSERT_TRUE(validation->completed);
+        ASSERT_EQ(validation->status, wgpu::PopErrorScopeStatus::eSuccess);
+        ASSERT_EQ(validation->type, wgpu::ErrorType::eNoError) << validation->message;
+        const auto pipeline = server.get_compute_pipeline(id);
+        ASSERT_TRUE(pipeline);
+        const auto view_group = device.createBindGroup(wgpu::BindGroupDescriptor()
+            .setLayout(server.get_bind_group_layout(view_layout))
+            .setEntries(std::array{wgpu::BindGroupEntry().setBinding(0).setBuffer(*view_buffer.buffer()).setSize(sizeof(view)),
+                                   wgpu::BindGroupEntry().setBinding(14).setBuffer(visibility_buffer).setSize(sizeof(visibility_ranges))}));
+        const auto output_group = device.createBindGroup(wgpu::BindGroupDescriptor()
+            .setLayout(server.get_bind_group_layout(output_layout))
+            .setEntries(std::array{wgpu::BindGroupEntry().setBinding(8).setBuffer(output).setSize(sizeof(Values)),
+                                   wgpu::BindGroupEntry().setBinding(9).setBuffer(input_buffer).setSize(sizeof(inputs))}));
+        const auto mesh_group = device.createBindGroup(wgpu::BindGroupDescriptor()
+            .setLayout(server.get_bind_group_layout(mesh_layout))
+            .setEntries(std::array{wgpu::BindGroupEntry().setBinding(0).setBuffer(mesh_buffer).setSize(sizeof(meshes)),
+                                   wgpu::BindGroupEntry().setBinding(1).setBuffer(joint_buffer).setOffset(joint_offset)
+                                       .setSize(joint_binding_size),
+                                   wgpu::BindGroupEntry().setBinding(6).setBuffer(previous_joint_buffer).setOffset(joint_offset)
+                                       .setSize(joint_binding_size)}));
+        const auto encoder = device.createCommandEncoder();
+        const auto pass = encoder.beginComputePass();
+        pass.setPipeline(pipeline->get().pipeline());
+        pass.setBindGroup(0, view_group, std::span<const std::uint32_t>{});
+        pass.setBindGroup(1, output_group, std::span<const std::uint32_t>{});
+        pass.setBindGroup(2, mesh_group, std::span<const std::uint32_t>{});
+        pass.dispatchWorkgroups(1, 1, 1);
+        pass.end();
+        queue.submit(encoder.finish());
+
+        const auto normal = [&](const glm::mat4& matrix) {
+            return glm::vec4{glm::normalize(glm::transpose(glm::inverse(glm::mat3{matrix})) * glm::vec3{inputs[0].normal}), 0};
+        };
+        const auto tangent = [&](const glm::mat4& matrix) {
+            return glm::vec4{glm::normalize(glm::mat3{matrix} * glm::vec3{inputs[0].tangent}), inputs[0].tangent.w * sign};
+        };
+        const auto p = inputs[0].position;
+        const Values expected{model * p, previous * p, glm::inverse(model) * p, p,
+                              normal(model), glm::vec4{0.0f}, tangent(model), glm::vec4{0.0f},
+                              view.clip_from_world * model * p, skin * p, previous_skin * p,
+                              normal(skin), normal(previous_skin), tangent(skin),
+                              view.clip_from_world * skin * p, glm::vec4{sign, 13, 17, 2}, glm::vec4{9, -16, 0, 16}};
+        constexpr std::array names{"mesh position", "previous mesh position", "inverse mesh position", "mesh roundtrip",
+                                   "mesh normal", "zero normal", "mesh tangent", "zero tangent", "mesh clip position",
+                                   "skin position", "previous skin position", "skin normal", "previous skin normal",
+                                   "skin tangent", "skin clip position", "instance fields", "visibility dither"};
+        const auto actual = read_gpu_value<Values>(output);
+        for (std::size_t index = 0; index < expected.size(); ++index) {
+            SCOPED_TRACE(names[index]);
+            for (int component = 0; component < 4; ++component)
+                EXPECT_NEAR(actual[index][component], expected[index][component], 2e-4f);
         }
     }
 }

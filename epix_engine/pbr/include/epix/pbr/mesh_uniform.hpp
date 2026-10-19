@@ -22,8 +22,8 @@ namespace epix::pbr {
  *  `bevy_pbr/src/render/mesh.rs:448-453`).
  *
  *  Bevy stores glam `Affine3` values, which are 3x4; Epix's convention is a full
- *  `glm::mat4`, and the uniform below takes its first three columns exactly as
- *  Bevy takes the affine's. The previous transform is kept so motion vectors can
+ *  `glm::mat4`, and the uniform below packs its first three rows, including the
+ *  translation, just as Bevy transposes its affine. The previous transform is kept so motion vectors can
  *  be derived without re-reading the main world. */
 EPIX_EXPORT struct MeshTransforms {
     glm::mat4 world_from_local{1.0f};
@@ -74,8 +74,8 @@ EPIX_EXPORT struct EPIX_API MeshUniform {
                             std::optional<std::uint32_t> tag);
 };
 
-// The shader's uniform requires 16-byte alignment, which glm's vec4 members give
-// the struct - so these are the values the GPU sees, not just the CPU's.
+// The GPU record has a 16-byte-aligned stride. GLM's CPU alignment can be smaller;
+// the explicit tail padding makes the transferred record exactly 176 bytes.
 static_assert(sizeof(glm::vec4) == 16);
 static_assert(sizeof(MeshUniform) == 176, "MeshUniform must be 16-byte aligned in size");
 static_assert(offsetof(MeshUniform, previous_world_from_local) == 48);

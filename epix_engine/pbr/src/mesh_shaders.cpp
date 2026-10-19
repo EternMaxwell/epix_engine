@@ -22,11 +22,10 @@ namespace {
 /**
  * @brief Slang representation of pinned Bevy 0.18 `mesh_types.wgsl`.
  *
- * The one representation change: Bevy's two `mat3x4<f32>` transforms and its
- * `mat2x4<f32>` inverse transpose are declared as the explicit `float4` arrays
- * the C++ `MeshUniform` stores, because a Slang `float3x4` is a matrix whose
- * columns are `vec3`, which this layout is not. The 176-byte element with its
- * three-word tail padding is the same struct `mesh_uniform.hpp` asserts.
+ * Bevy's packed transforms/normal matrix are explicit row-major rectangular
+ * matrices here, preserving the C++ MeshUniform's float4 records. Reconstructing
+ * them yields ordinary mathematical matrices, as for the view and joint buffers.
+ * Scalar tail padding preserves the 176-byte record in storage and uniform arrays.
  */
 constexpr std::string_view kMeshTypesShader = R"slang(
 module epix.mesh_types;
@@ -61,7 +60,11 @@ public struct Mesh {
     public uint pad;
     // The element is 16-byte aligned; glm's members are not, so the CPU struct
     // spells this padding out too.
-    public uint tail_padding[3];
+    // Scalar fields also stay contiguous in std140 uniform batches. An array
+    // would acquire a 16-byte element stride and grow Mesh from 176 to 224 bytes.
+    public uint tail_padding_0;
+    public uint tail_padding_1;
+    public uint tail_padding_2;
 };
 
 #ifdef SKINNED
@@ -779,12 +782,10 @@ public float3 morph(uint vertex_index, uint component_offset, uint weight_index)
 
 /** @brief Slang representation of pinned Bevy 0.18 `skinning.wgsl`.
  *
- * Slang matrices are row-major where WGSL's are column-major, so the port keeps
- * Bevy's matrices *transposed*: WGSL's `M[i]` (a column) is Slang's `M[i]` (a
- * row), a WGSL `mat3x3(c0, c1, c2)` is Slang's `float3x3` whose rows are those
- * columns, and every product flips sides - WGSL's `M * v` is Slang's
- * `mul(v, M)`. With that rule the two functions below are Bevy's bodies
- * unchanged, and the scalar-times-matrix accumulation is orientation-free. */
+ * Joint matrices are ordinary GLM matrices uploaded column-major, matching the
+ * shader compiler's matrix layout. Keep Bevy's matrix-vector operand order.
+ * Slang indexes rows, so the inverse-transpose cofactor construction below uses
+ * rows consistently; it still returns the mathematical inverse transpose. */
 constexpr std::string_view kSkinningShader = R"slang(
 module epix.skinning;
 
@@ -842,9 +843,9 @@ public float3x3 inverse_transpose_3x3m(float3x3 input_matrix) {
 }
 
 public float3 skin_normals(float4x4 world_from_local, float3 normal) {
-    return normalize(mul(normal, inverse_transpose_3x3m(
-                                       float3x3(world_from_local[0].xyz, world_from_local[1].xyz,
-                                                world_from_local[2].xyz))));
+    return normalize(mul(inverse_transpose_3x3m(
+                             float3x3(world_from_local[0].xyz, world_from_local[1].xyz,
+                                      world_from_local[2].xyz)), normal));
 }
 
 #endif
@@ -1057,11 +1058,10 @@ public float2 ndc_to_frag_coord(float2 ndc) {
  * module-scope bindings into scope, so `mesh`, `view` and `visibility_ranges`
  * are spelled bare where Bevy qualifies them.
  *
- * The matrix rule the skinning module states applies throughout: `M * v` is
- * `mul(v, M)`, a matrix product `A * B` is `mul(B, A)`, and `float3x4`/`float2x4`
- * are the transposed spellings of WGSL's `mat3x4`/`mat2x4`. The visibility-range
- * table is the one place the two binding forms read differently, because Slang
- * has no bare uniform array: the uniform form is a one-member block, so its
+ * The packed rectangular fields are reconstructed into mathematical square
+ * matrices by the shared maths library. All full matrices then follow the same
+ * column-vector convention as view and skin matrices. Only constructor/index
+ * syntax differs from WGSL. Uniform arrays live in one-member blocks, so their
  * elements are `values[i]` rather than `[i]`.
  */
 constexpr std::string_view kMeshFunctionsShader = R"slang(
@@ -1096,16 +1096,17 @@ public float4x4 get_local_from_world(uint instance_index) {
                                                    float4(inverse_model_3x3[2], 0.0), float4(0.0, 0.0, 0.0, 1.0));
     // translation^-1 is the model's translation negated.
     float4x4 model = get_world_from_local(instance_index);
-    float4x4 inverse_model_4x4_only_trans = float4x4(float4(1.0, 0.0, 0.0, 0.0), float4(0.0, 1.0, 0.0, 0.0),
-                                                     float4(0.0, 0.0, 1.0, 0.0), float4(-model[3].xyz, 1.0));
+    float4x4 inverse_model_4x4_only_trans =
+        float4x4(float4(1.0, 0.0, 0.0, -model[0][3]), float4(0.0, 1.0, 0.0, -model[1][3]),
+                 float4(0.0, 0.0, 1.0, -model[2][3]), float4(0.0, 0.0, 0.0, 1.0));
 
-    return mul(inverse_model_4x4_only_trans, inverse_model_4x4_no_trans);
+    return mul(inverse_model_4x4_no_trans, inverse_model_4x4_only_trans);
 }
 
 #endif
 
 public float4 mesh_position_local_to_world(float4x4 world_from_local, float4 vertex_position) {
-    return mul(vertex_position, world_from_local);
+    return mul(world_from_local, vertex_position);
 }
 
 // The intermediate world position matters for precision when using the equals
@@ -1146,8 +1147,8 @@ public float4 mesh_tangent_local_to_world(float4x4 world_from_local, float4 vert
     // re-normalized here.
     if (any(vertex_tangent != float4(0.0, 0.0, 0.0, 0.0))) {
         return float4(
-            normalize(mul(vertex_tangent.xyz, float3x3(world_from_local[0].xyz, world_from_local[1].xyz,
-                                                       world_from_local[2].xyz))),
+            normalize(mul(float3x3(world_from_local[0].xyz, world_from_local[1].xyz,
+                                    world_from_local[2].xyz), vertex_tangent.xyz)),
             // The sign accounts for situations such as negative scaling.
             vertex_tangent.w * sign_determinant_model_3x3m(mesh_instance(instance_index).flags));
     } else {
@@ -1185,8 +1186,8 @@ public int get_visibility_range_dither_level(uint instance_index, float4 world_p
 
     // The mapping: dither levels -16, -16, 0, 0, 16, 16 across the camera-distance
     // range, split at lod_range.z.
-    float offset = select(-16.0, 0.0, camera_distance >= lod_range.z);
-    float2 bounds = select(lod_range.xy, lod_range.zw, camera_distance >= lod_range.z);
+    float offset = select(camera_distance >= lod_range.z, 0.0, -16.0);
+    float2 bounds = select(camera_distance >= lod_range.z, lod_range.zw, lod_range.xy);
     int level = int(round((camera_distance - bounds.x) / (bounds.y - bounds.x) * 16.0));
     return int(offset) + clamp(level, 0, 16);
 }
@@ -1307,7 +1308,7 @@ epix::forward_io::VertexOutput vertex(epix::forward_io::Vertex vertex_no_morph) 
 
 #ifdef VISIBILITY_RANGE_DITHER
     out.visibility_range_dither = epix::mesh_functions::get_visibility_range_dither_level(
-        vertex_no_morph.instance_index, mesh_world_from_local[3]);
+        vertex_no_morph.instance_index, transpose(mesh_world_from_local)[3]);
 #endif
 
     return out;

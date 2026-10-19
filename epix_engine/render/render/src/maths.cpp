@@ -13,14 +13,11 @@ namespace {
 /**
  * @brief Slang representation of pinned Bevy 0.18 `bevy_render/src/maths.wgsl`.
  *
- * Slang matrices are row-major where WGSL's are column-major, so the port keeps
- * Bevy's matrices *transposed*: WGSL's `M[i]` (a column) is Slang's `M[i]` (a
- * row), a WGSL `mat3x3(c0, c1, c2)` is Slang's `float3x3` whose rows are those
- * columns, `transpose` stays `transpose` (it is its own inverse), and every
- * product flips sides - WGSL's `M * v` is Slang's `mul(v, M)`. With that rule
- * the functions below are Bevy's bodies; the only other changes are the type
- * spellings (`vec2`/`matCxR` are `float2`/`floatCxR`, `bitcast` is `asfloat`
- * and `asuint`) and declaring locals by their type instead of `let`/`var`.
+ * Full square matrices have the same mathematical values as WGSL/GLM and
+ * multiply column vectors. Slang constructors and indexing use rows, whereas
+ * WGSL uses columns: explicitly transpose constructors made from WGSL columns.
+ * The rectangular affine/normal inputs retain their packed vector records;
+ * their reconstruction helpers perform that representation conversion once.
  */
 constexpr std::string_view kMathsShader = R"slang(
 module epix.maths;
@@ -34,23 +31,24 @@ public static const float FRAC_PI_3 = 1.0471975512;
 public static const float E = 2.718281828459045;
 
 public float3x3 affine2_to_square(float3x2 affine) {
-    return float3x3(float3(affine[0].xy, 0.0), float3(affine[1].xy, 0.0), float3(affine[2].xy, 1.0));
+    return transpose(float3x3(float3(affine[0].xy, 0.0), float3(affine[1].xy, 0.0), float3(affine[2].xy, 1.0)));
 }
 
 public float4x4 affine3_to_square(float3x4 affine) {
-    return transpose(float4x4(affine[0], affine[1], affine[2], float4(0.0, 0.0, 0.0, 1.0)));
+    // The packed vectors are already rows of the original affine transform.
+    return float4x4(affine[0], affine[1], affine[2], float4(0.0, 0.0, 0.0, 1.0));
 }
 
 // The `row_major` modifier matches the `Mesh` members this reads: its two rows
 // are Bevy's two `mat2x4<f32>` columns, so `a[0]`/`a[1]` are the `vec4`s the
 // packed 3x3 is split across.
 public float3x3 mat2x4_f32_to_mat3x3_unpack(row_major float2x4 a, float b) {
-    return float3x3(a[0].xyz, float3(a[0].w, a[1].xy), float3(a[1].zw, b));
+    return transpose(float3x3(a[0].xyz, float3(a[0].w, a[1].xy), float3(a[1].zw, b)));
 }
 
 // Extracts the square portion of an affine matrix: the translation is dropped.
 public float3x3 affine3_to_mat3x3(float4x3 affine) {
-    return float3x3(affine[0].xyz, affine[1].xyz, affine[2].xyz);
+    return transpose(float3x3(affine[0].xyz, affine[1].xyz, affine[2].xyz));
 }
 
 // Returns the inverse of a 3x3 matrix.
@@ -66,7 +64,8 @@ public float3x3 inverse_mat3x3(float3x3 matrix) {
 public float4x3 inverse_affine3(float4x3 affine) {
     float3x3 matrix3 = affine3_to_mat3x3(affine);
     float3x3 inv_matrix3 = inverse_mat3x3(matrix3);
-    return float4x3(inv_matrix3[0], inv_matrix3[1], inv_matrix3[2], -mul(affine[3], inv_matrix3));
+    float3x3 inverse_columns = transpose(inv_matrix3);
+    return float4x3(inverse_columns[0], inverse_columns[1], inverse_columns[2], -mul(inv_matrix3, affine[3]));
 }
 
 // Extracts the upper 3x3 portion of a 4x4 matrix.
@@ -89,7 +88,7 @@ public float3x3 orthonormalize(float3 z_basis) {
     float b = z_basis.x * z_basis.y * a;
     float3 x_basis = float3(1.0 + sign * z_basis.x * z_basis.x * a, sign * b, -sign * z_basis.x);
     float3 y_basis = float3(b, sign + z_basis.y * z_basis.y * a, -z_basis.y);
-    return float3x3(x_basis, y_basis, z_basis);
+    return transpose(float3x3(x_basis, y_basis, z_basis));
 }
 
 // Returns true if any part of a sphere is on the positive side of a plane;
@@ -129,7 +128,7 @@ public float fast_acos(float in_x) {
     float x = abs(in_x);
     float res = -0.156583 * x + HALF_PI;
     res *= sqrt(1.0 - x);
-    return select(PI - res, res, in_x >= 0.0);
+    return select(in_x >= 0.0, res, PI - res);
 }
 
 // Fourth-order polynomial approximation: 7 * 10^-5 radians precision
@@ -145,7 +144,7 @@ public float fast_acos_4(float x) {
     s = sqrt(1.0 - x1) * s;
 
     // acos function mirroring.
-    return select(PI - s, s, x >= 0.0);
+    return select(x >= 0.0, s, PI - s);
 }
 
 public float fast_atan2(float y, float x) {
@@ -159,9 +158,9 @@ public float fast_atan2(float y, float x) {
     t0 = t0 * t4 + 1.0;
     t3 = t0 * t3;
 
-    t3 = select(t3, (0.5 * PI) - t3, abs(y) > abs(x));
-    t3 = select(t3, PI - t3, x < 0);
-    t3 = select(-t3, t3, y > 0);
+    t3 = select(abs(y) > abs(x), (0.5 * PI) - t3, t3);
+    t3 = select(x < 0, PI - t3, t3);
+    t3 = select(y > 0, t3, -t3);
 
     return t3;
 }
