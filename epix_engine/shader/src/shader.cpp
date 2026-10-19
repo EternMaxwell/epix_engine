@@ -1122,7 +1122,7 @@ void ShaderPlugin::attach(epix::app::App& app) {
     assets::app_register_asset<Shader>(app);
     assets::app_register_loader<ShaderLoader>(app);
 
-    // Sync dependency-ready shader assets to ShaderCache (skipped if no ShaderCache resource).
+    // Sync shader asset insertion/modification/removal to ShaderCache (when present).
     app.add_systems(app::Last, ecs::into([](ecs::ResMut<ShaderCache> cache, ecs::ResMut<assets::Assets<Shader>> shaders,
                                             ecs::EventReader<assets::AssetEvent<Shader>> events) {
                                    cache->sync(events.read(), *shaders);

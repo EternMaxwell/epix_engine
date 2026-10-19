@@ -53,6 +53,13 @@ void insert_bytes_asset(EmbeddedAssetRegistry& registry, std::string_view path, 
 
 wgpu::Device null_device() { return wgpu::Device{}; }
 
+void expect_missing_file_import(const ShaderCacheError& error, std::string_view path) {
+    const auto* missing = std::get_if<ShaderCacheError::ShaderImportNotYetAvailable>(&error.data);
+    ASSERT_NE(missing, nullptr) << error.message();
+    ASSERT_EQ(missing->missing_imports.size(), 1u);
+    EXPECT_EQ(missing->missing_imports[0], ShaderImport::asset_path(AssetPath{std::string{path}}));
+}
+
 void flush_and_sync(App& app) {
     static constexpr int LARGE_ITERATION_COUNT = 10000;
     for (int i = 0; i < LARGE_ITERATION_COUNT; ++i) {
@@ -299,7 +306,7 @@ TEST(ShaderLoaderPipelineWgsl, MissingNestedCustomImportReportsLeafImport) {
     EXPECT_EQ(missing->missing_imports[0].as_custom(), "ui/leaf");
 }
 
-TEST(ShaderLoaderPipelineWgsl, MissingFileImportFormsStayOutOfCache) {
+TEST(ShaderLoaderPipelineWgsl, MissingFileImportFormsStayPendingWithoutCompilation) {
     auto env       = make_embedded_pipeline_env();
     auto& registry = embedded_registry(env.app);
     insert_text_asset(registry, "mesh/missing-explicit.wgsl",
@@ -332,9 +339,9 @@ TEST(ShaderLoaderPipelineWgsl, MissingFileImportFormsStayOutOfCache) {
     ASSERT_FALSE(explicit_result.has_value());
     ASSERT_FALSE(root_result.has_value());
     ASSERT_FALSE(relative_result.has_value());
-    EXPECT_TRUE(std::holds_alternative<ShaderCacheError::ShaderNotLoaded>(explicit_result.error().data));
-    EXPECT_TRUE(std::holds_alternative<ShaderCacheError::ShaderNotLoaded>(root_result.error().data));
-    EXPECT_TRUE(std::holds_alternative<ShaderCacheError::ShaderNotLoaded>(relative_result.error().data));
+    expect_missing_file_import(explicit_result.error(), "embedded://explicit/shared/missing.wgsl");
+    expect_missing_file_import(root_result.error(), "embedded://shared/missing.wgsl");
+    expect_missing_file_import(relative_result.error(), "embedded://mesh/common/missing.wgsl");
     EXPECT_EQ(*env.load_count, 0);
 }
 
@@ -412,7 +419,7 @@ TEST(ShaderLoaderPipelineSlang, MissingCustomImportReturnsRecoverableCacheError)
     EXPECT_EQ(*env.load_count, 0);
 }
 
-TEST(ShaderLoaderPipelineSlang, MissingFileImportFormsStayOutOfCache) {
+TEST(ShaderLoaderPipelineSlang, MissingFileImportFormsStayPendingWithoutCompilation) {
     auto env       = make_embedded_pipeline_env();
     auto& registry = embedded_registry(env.app);
     insert_text_asset(registry, "mesh/missing-explicit.slang",
@@ -448,9 +455,9 @@ TEST(ShaderLoaderPipelineSlang, MissingFileImportFormsStayOutOfCache) {
     ASSERT_FALSE(explicit_result.has_value());
     ASSERT_FALSE(root_result.has_value());
     ASSERT_FALSE(relative_result.has_value());
-    EXPECT_TRUE(std::holds_alternative<ShaderCacheError::ShaderNotLoaded>(explicit_result.error().data));
-    EXPECT_TRUE(std::holds_alternative<ShaderCacheError::ShaderNotLoaded>(root_result.error().data));
-    EXPECT_TRUE(std::holds_alternative<ShaderCacheError::ShaderNotLoaded>(relative_result.error().data));
+    expect_missing_file_import(explicit_result.error(), "embedded://explicit/shared/missing.slang");
+    expect_missing_file_import(root_result.error(), "embedded://shared/missing.slang");
+    expect_missing_file_import(relative_result.error(), "embedded://mesh/common/missing.slang");
     EXPECT_EQ(*env.load_count, 0);
 }
 

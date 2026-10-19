@@ -2,6 +2,9 @@
 #include <slang-com-ptr.h>
 #include <slang.h>
 
+#include <algorithm>
+#include <array>
+
 #include <epix/assets.hpp>
 #include <epix/ecs.hpp>
 #include <epix/shader.hpp>
@@ -33,6 +36,13 @@ void insert_bytes_asset(EmbeddedAssetRegistry& registry, std::string_view path, 
 }
 
 wgpu::Device null_device() { return wgpu::Device{}; }
+
+void expect_missing_file_import(const ShaderCacheError& error, std::string_view path) {
+    const auto* missing = std::get_if<ShaderCacheError::ShaderImportNotYetAvailable>(&error.data);
+    ASSERT_NE(missing, nullptr) << error.message();
+    ASSERT_EQ(missing->missing_imports.size(), 1u);
+    EXPECT_EQ(missing->missing_imports[0], ShaderImport::asset_path(AssetPath{std::string{path}}));
+}
 
 void flush_and_sync(App& app) {
     static constexpr int LARGE_ITERATION_COUNT = 10000;
@@ -79,6 +89,85 @@ EmbeddedPipelineEnv make_embedded_pipeline_env() {
         }});
 
     return {std::move(app), std::move(load_count), std::move(last_wgsl_source)};
+}
+
+TEST(ShaderLoaderPipeline, AssetsEmplacePublishesManualWgslAndSlangShaders) {
+    auto env = make_embedded_pipeline_env();
+    auto& shaders = env.app.resource_mut<Assets<Shader>>();
+    const auto wgsl = shaders.emplace(Shader::from_wgsl(
+        "@compute @workgroup_size(1) fn main() {}", AssetPath{"manual/compute.wgsl"}));
+    const auto slang = shaders.emplace(Shader::from_slang(
+        "[shader(\"compute\")] [numthreads(1,1,1)] void main() {}", AssetPath{"manual/compute.slang"}));
+    flush_and_sync(env.app);
+    auto& cache = env.app.resource_mut<ShaderCache>();
+    EXPECT_TRUE(cache.get(CachedPipelineId{1}, wgsl.id(), {}).has_value());
+    EXPECT_TRUE(cache.get(CachedPipelineId{2}, slang.id(), {}).has_value());
+    EXPECT_EQ(*env.load_count, 2);
+}
+
+TEST(ShaderCacheEvents, MatchesBevyAddedModifiedRemovedDispatch) {
+    auto env = make_embedded_pipeline_env();
+    auto& shaders = env.app.resource_mut<Assets<Shader>>();
+    auto& cache = env.app.resource_mut<ShaderCache>();
+    const auto handle = shaders.emplace(Shader::from_wgsl(
+        "@compute @workgroup_size(1) fn main() {}", AssetPath{"manual/events.wgsl"}));
+    const auto sync_event = [&](AssetEvent<Shader> event) {
+        std::array events{event};
+        return cache.sync(events, shaders);
+    };
+    const CachedPipelineId pipeline{17};
+    sync_event(AssetEvent<Shader>::added(handle.id()));
+    EXPECT_TRUE(cache.get(pipeline, handle.id(), {}).has_value());
+    EXPECT_EQ(*env.load_count, 1);
+
+    const auto modified = sync_event(AssetEvent<Shader>::modified(handle.id()));
+    EXPECT_NE(std::ranges::find(modified, pipeline), modified.end());
+    EXPECT_TRUE(cache.get(pipeline, handle.id(), {}).has_value());
+    EXPECT_EQ(*env.load_count, 2);
+
+    EXPECT_TRUE(sync_event(AssetEvent<Shader>::loaded_with_dependencies(handle.id())).empty());
+    EXPECT_TRUE(cache.get(pipeline, handle.id(), {}).has_value());
+    EXPECT_EQ(*env.load_count, 2) << "LoadedWithDependencies must not invalidate an unchanged shader";
+    EXPECT_TRUE(sync_event(AssetEvent<Shader>::unused(handle.id())).empty());
+    EXPECT_TRUE(cache.get(pipeline, handle.id(), {}).has_value());
+    EXPECT_EQ(*env.load_count, 2) << "Unused is not Removed";
+
+    const auto removed = sync_event(AssetEvent<Shader>::removed(handle.id()));
+    EXPECT_NE(std::ranges::find(removed, pipeline), removed.end());
+    const auto missing = cache.get(pipeline, handle.id(), {});
+    ASSERT_FALSE(missing);
+    EXPECT_TRUE(std::holds_alternative<ShaderCacheError::ShaderNotLoaded>(missing.error().data));
+}
+
+TEST(ShaderCacheEvents, AddedDependencyUnblocksAnExistingPipelineAndRemovalInvalidatesIt) {
+    auto env = make_embedded_pipeline_env();
+    auto& shaders = env.app.resource_mut<Assets<Shader>>();
+    auto& cache = env.app.resource_mut<ShaderCache>();
+    const auto sync_event = [&](AssetEvent<Shader> event) {
+        std::array events{event};
+        return cache.sync(events, shaders);
+    };
+    const auto root = shaders.emplace(Shader::from_wgsl(
+        "#import manual::library\n@compute @workgroup_size(1) fn main() { let x = value(); }",
+        AssetPath{"manual/root.wgsl"}));
+    sync_event(AssetEvent<Shader>::added(root.id()));
+    const CachedPipelineId pipeline{19};
+    const auto waiting = cache.get(pipeline, root.id(), {});
+    ASSERT_FALSE(waiting);
+    EXPECT_TRUE(std::holds_alternative<ShaderCacheError::ShaderImportNotYetAvailable>(waiting.error().data));
+    EXPECT_EQ(*env.load_count, 0);
+    const auto dependency = shaders.emplace(Shader::from_wgsl(
+        "#define_import_path manual::library\nfn value() -> i32 { return 7; }", AssetPath{"manual/lib.wgsl"}));
+    const auto added = sync_event(AssetEvent<Shader>::added(dependency.id()));
+    EXPECT_NE(std::ranges::find(added, pipeline), added.end());
+    EXPECT_TRUE(cache.get(pipeline, root.id(), {}).has_value());
+    EXPECT_EQ(*env.load_count, 1);
+    const auto removed = sync_event(AssetEvent<Shader>::removed(dependency.id()));
+    EXPECT_NE(std::ranges::find(removed, pipeline), removed.end());
+    const auto missing_again = cache.get(pipeline, root.id(), {});
+    ASSERT_FALSE(missing_again);
+    EXPECT_TRUE(std::holds_alternative<ShaderCacheError::ShaderImportNotYetAvailable>(missing_again.error().data));
+    EXPECT_EQ(*env.load_count, 1);
 }
 
 void add_wgsl_success_fixture(EmbeddedAssetRegistry& registry) {
@@ -280,7 +369,7 @@ TEST(ShaderLoaderPipelineWgsl, MissingNestedCustomImportReportsLeafImport) {
     EXPECT_EQ(missing->missing_imports[0].as_custom(), "ui/leaf");
 }
 
-TEST(ShaderLoaderPipelineWgsl, MissingFileImportFormsStayOutOfCache) {
+TEST(ShaderLoaderPipelineWgsl, MissingFileImportFormsStayPendingWithoutCompilation) {
     auto env       = make_embedded_pipeline_env();
     auto& registry = embedded_registry(env.app);
     insert_text_asset(registry, "mesh/missing-explicit.wgsl",
@@ -313,9 +402,9 @@ TEST(ShaderLoaderPipelineWgsl, MissingFileImportFormsStayOutOfCache) {
     ASSERT_FALSE(explicit_result.has_value());
     ASSERT_FALSE(root_result.has_value());
     ASSERT_FALSE(relative_result.has_value());
-    EXPECT_TRUE(std::holds_alternative<ShaderCacheError::ShaderNotLoaded>(explicit_result.error().data));
-    EXPECT_TRUE(std::holds_alternative<ShaderCacheError::ShaderNotLoaded>(root_result.error().data));
-    EXPECT_TRUE(std::holds_alternative<ShaderCacheError::ShaderNotLoaded>(relative_result.error().data));
+    expect_missing_file_import(explicit_result.error(), "embedded://explicit/shared/missing.wgsl");
+    expect_missing_file_import(root_result.error(), "embedded://shared/missing.wgsl");
+    expect_missing_file_import(relative_result.error(), "embedded://mesh/common/missing.wgsl");
     EXPECT_EQ(*env.load_count, 0);
 }
 
@@ -393,7 +482,7 @@ TEST(ShaderLoaderPipelineSlang, MissingCustomImportReturnsRecoverableCacheError)
     EXPECT_EQ(*env.load_count, 0);
 }
 
-TEST(ShaderLoaderPipelineSlang, MissingFileImportFormsStayOutOfCache) {
+TEST(ShaderLoaderPipelineSlang, MissingFileImportFormsStayPendingWithoutCompilation) {
     auto env       = make_embedded_pipeline_env();
     auto& registry = embedded_registry(env.app);
     insert_text_asset(registry, "mesh/missing-explicit.slang",
@@ -429,9 +518,9 @@ TEST(ShaderLoaderPipelineSlang, MissingFileImportFormsStayOutOfCache) {
     ASSERT_FALSE(explicit_result.has_value());
     ASSERT_FALSE(root_result.has_value());
     ASSERT_FALSE(relative_result.has_value());
-    EXPECT_TRUE(std::holds_alternative<ShaderCacheError::ShaderNotLoaded>(explicit_result.error().data));
-    EXPECT_TRUE(std::holds_alternative<ShaderCacheError::ShaderNotLoaded>(root_result.error().data));
-    EXPECT_TRUE(std::holds_alternative<ShaderCacheError::ShaderNotLoaded>(relative_result.error().data));
+    expect_missing_file_import(explicit_result.error(), "embedded://explicit/shared/missing.slang");
+    expect_missing_file_import(root_result.error(), "embedded://shared/missing.slang");
+    expect_missing_file_import(relative_result.error(), "embedded://mesh/common/missing.slang");
     EXPECT_EQ(*env.load_count, 0);
 }
 

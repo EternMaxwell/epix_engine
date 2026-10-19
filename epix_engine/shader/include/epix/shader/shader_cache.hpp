@@ -219,8 +219,8 @@ EPIX_EXPORT struct EPIX_API ShaderCache {
 
     /** @brief Apply a batch of shader asset events, and return affected pipelines.
      *
-     * `set_shader` when `LoadedWithDependencies` or `Modified`, this will take the shader from `shaders` to this cache.
-     * `remove` when `Unused` (but not `Removed`, removed asset may still have living handles).
+     * `Added` and `Modified` publish the asset; `Removed` removes it. `Unused`
+     * and `LoadedWithDependencies` are ignored, as in Bevy's pipeline cache.
      *
      * The return value is the full list of pipelines that should rebuild.
      */

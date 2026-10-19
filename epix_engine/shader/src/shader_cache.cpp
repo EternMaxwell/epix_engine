@@ -1015,23 +1015,19 @@ std::vector<CachedPipelineId> ShaderCache::remove(assets::AssetId<Shader> id) {
 
 std::vector<CachedPipelineId> ShaderCache::sync(utils::input_iterable<assets::AssetEvent<Shader>> events,
                                                 const assets::Assets<Shader>& shaders) {
-    // Bevy PipelineCache::extract_shaders (pipeline_cache.rs:776-806) reacts
-    // to Added | Modified, but epix's asset layer inserts shaders with
-    // unresolved FILE imports into Assets<Shader> (firing Added for partial
-    // loads), unlike Bevy where such loads fail and never reach Assets. So
-    // epix must only register shaders whose dependencies are all loaded:
-    // LoadedWithDependencies | Modified -> set_shader, Unused -> remove
-    // (a missing file import therefore stays out of the cache and surfaces as
-    // ShaderNotLoaded instead of retrying forever as ShaderImportNotYetAvailable).
+    // Bevy PipelineCache::extract_shaders (pipeline_cache.rs:776-806): manual
+    // Assets::emplace shaders produce Added, not LoadedWithDependencies. Publish
+    // them immediately too; get() already waits for unavailable imports before
+    // compiling. Unused is not removal from asset storage.
     std::unordered_set<CachedPipelineId> affected;
     for (const auto& event : events) {
-        if (event.is_loaded_with_dependencies() || event.is_modified()) {
+        if (event.is_added() || event.is_modified()) {
             auto val = shaders.get(event.id);
             if (val.has_value()) {
                 auto ids = set_shader(event.id, val.value().get());
                 affected.insert(ids.begin(), ids.end());
             }
-        } else if (event.is_unused()) {
+        } else if (event.is_removed()) {
             auto ids = remove(event.id);
             affected.insert(ids.begin(), ids.end());
         }
