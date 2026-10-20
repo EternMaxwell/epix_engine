@@ -2,7 +2,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <epix/ecs/world/entity_ref.hpp>
 #include <epix/sprite_render/tilemap_chunk.hpp>
 #include <glm/glm.hpp>
@@ -122,8 +121,8 @@ void epix::sprite_render::update_tilemap_chunk_indices(
             spdlog::warn(
                 "[tilemap] Invalid TilemapChunkTileData length for tilemap chunk {:#x} of size ({}, {}). "
                 "Expected {}, got {}",
-                chunk_entity.index, chunk.chunk_size.x, chunk.chunk_size.y, expected_tile_data_length,
-                tile_data.tiles.size());
+                chunk_entity.index, chunk.chunk_size.x, chunk.chunk_size.y, tile_data.tiles.size(),
+                expected_tile_data_length);
             continue;
         }
 
@@ -143,19 +142,18 @@ void epix::sprite_render::update_tilemap_chunk_indices(
                          chunk_entity.index);
             continue;
         }
-        // Bevy clears and re-extends the payload; the packed data always has the
-        // length the image was created with, so writing it in place is the same
-        // write (and reaching a different length would be a bug worth reporting).
-        auto data        = tile_data_image->get().raw_view_mut();
-        const auto bytes = std::as_bytes(std::span{packed_tile_data});
-        if (data.size() != bytes.size()) {
+        auto* data = tile_data_image->get().data_mut();
+        if (!data) {
             spdlog::warn(
-                "[tilemap] TilemapChunkMaterial tile data image is {} bytes but the chunk needs {} for "
-                "tilemap chunk {:#x}",
-                data.size(), bytes.size(), chunk_entity.index);
+                "[tilemap] TilemapChunkMaterial tile data image data not found for tilemap chunk {:#x}",
+                chunk_entity.index);
             continue;
         }
-        std::memcpy(data.data(), bytes.data(), bytes.size());
+        // CPU bytes are independent of the texture descriptor. Match Bevy's
+        // clear/extend for any present payload, including an empty vector.
+        const auto bytes = std::as_bytes(std::span{packed_tile_data});
+        data->clear();
+        data->insert(data->end(), bytes.begin(), bytes.end());
     }
 }
 

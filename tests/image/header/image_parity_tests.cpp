@@ -9,6 +9,8 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <type_traits>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -170,6 +172,85 @@ TEST(Image, TakeDataPreservesMetadataAndPresence) {
     EXPECT_TRUE(extracted_empty.has_data());
     EXPECT_TRUE(extracted_empty.raw_view().empty());
     EXPECT_FALSE(empty.has_data());
+}
+
+// Bevy exposes Image::data as Option<Vec<u8>> independently of the descriptor.
+// The C++ borrows must preserve that full resizable-payload contract, not just
+// allow writes through a fixed-size span.
+TEST(Image, CpuPayloadBorrowsAllowResizingWithoutChangingMetadata) {
+    auto image = epix::image::Image::create2d(4, 2, wgpu::TextureFormat::eRGBA8Unorm);
+    image.set_usage(epix::assets::RenderAssetUsages::MAIN_WORLD);
+    image.set_copy_on_resize(true);
+    image.set_sampler(epix::image::ImageSampler::linear());
+    static_assert(std::is_same_v<decltype(image.data_mut()), std::vector<std::byte>*>);
+    static_assert(std::is_same_v<decltype(std::as_const(image).data_ref()), const std::vector<std::byte>*>);
+    auto* payload = image.data_mut();
+    ASSERT_NE(payload, nullptr);
+    payload->clear();
+    EXPECT_TRUE(image.has_data());
+    EXPECT_NE(image.data_ref(), nullptr);
+    EXPECT_TRUE(image.raw_view().empty());
+    payload->insert(payload->end(), {std::byte{1}, std::byte{2}, std::byte{3}});
+    EXPECT_EQ(image.data_ref(), payload);
+    ASSERT_EQ(image.raw_view().size(), 3u);
+    EXPECT_EQ(image.raw_view()[2], std::byte{3});
+    image.raw_view_mut()[0] = std::byte{9};
+    EXPECT_EQ(image.data_ref()->front(), std::byte{9});
+    EXPECT_EQ(image.size(), (glm::uvec2{4, 2}));
+    EXPECT_EQ(image.texture_format(), wgpu::TextureFormat::eRGBA8Unorm);
+    EXPECT_EQ(image.usage(), epix::assets::RenderAssetUsages::MAIN_WORLD);
+    EXPECT_TRUE(image.copy_on_resize());
+    ASSERT_NE(image.sampler_descriptor(), nullptr);
+    EXPECT_EQ(image.sampler_descriptor()->min_filter, epix::image::ImageFilterMode::Linear);
+}
+
+TEST(Image, CpuPayloadAssignmentDistinguishesAbsentAndEmptyAndRestoresTransferredData) {
+    auto image = epix::image::Image::create2d(2, 2, wgpu::TextureFormat::eRGBA8Unorm);
+    image.set_data(std::nullopt);
+    EXPECT_FALSE(image.has_data());
+    EXPECT_EQ(image.data_ref(), nullptr);
+    EXPECT_EQ(image.data_mut(), nullptr);
+    EXPECT_TRUE(image.raw_view().empty());
+    image.set_data(std::vector<std::byte>{});
+    EXPECT_TRUE(image.has_data());
+    ASSERT_NE(image.data_ref(), nullptr);
+    EXPECT_TRUE(image.data_ref()->empty());
+
+    std::vector<std::byte> replacement{std::byte{7}, std::byte{8}, std::byte{9}};
+    const auto* allocation = replacement.data();
+    image.set_data(std::move(replacement));
+    EXPECT_EQ(image.raw_view().data(), allocation);
+    EXPECT_EQ(image.raw_view().size(), 3u);
+    auto transferred = image.take_data();
+    EXPECT_EQ(image.data_ref(), nullptr);
+    EXPECT_EQ(image.data_mut(), nullptr);
+    ASSERT_NE(transferred.data_ref(), nullptr);
+    EXPECT_EQ(transferred.data_ref()->data(), allocation);
+    EXPECT_EQ(transferred.data_ref()->back(), std::byte{9});
+    image.set_data(std::move(*transferred.data_mut()));
+    EXPECT_TRUE(image.has_data());
+    EXPECT_EQ(image.raw_view().data(), allocation);
+    // Moving a present vector leaves it present, just as Option::as_mut does.
+    EXPECT_TRUE(transferred.has_data());
+    EXPECT_NE(transferred.data_ref(), nullptr);
+    EXPECT_EQ(image.size(), (glm::uvec2{2, 2}));
+    EXPECT_EQ(image.texture_format(), wgpu::TextureFormat::eRGBA8Unorm);
+}
+
+TEST(Image, CpuPayloadCopyOwnsIndependentBytesAndPreservesAbsence) {
+    epix::image::Image source;
+    source.set_data(std::vector<std::byte>{std::byte{1}});
+    auto copy = source;
+    ASSERT_NE(copy.data_mut(), nullptr);
+    copy.data_mut()->front() = std::byte{2};
+    EXPECT_EQ(source.data_ref()->front(), std::byte{1});
+    EXPECT_EQ(copy.data_ref()->front(), std::byte{2});
+    source.set_data(std::nullopt);
+    auto absent_copy = source;
+    EXPECT_EQ(absent_copy.data_ref(), nullptr);
+    EXPECT_EQ(absent_copy.data_mut(), nullptr);
+    EXPECT_FALSE(absent_copy.has_data());
+    EXPECT_TRUE(copy.has_data());
 }
 
 // Image size accessors and the width/height ratio (Bevy Image::size,

@@ -1067,6 +1067,20 @@ EPIX_EXPORT class EPIX_API Image {
     /** @brief Get a read-only byte span of the raw pixel data. */
     std::span<const std::byte> raw_view() const noexcept { return std::as_bytes(std::span(data)); }
     std::span<std::byte> raw_view_mut() noexcept { return std::as_writable_bytes(std::span(data)); }
+    /** @brief Borrow the CPU payload, or nullptr when absent (Bevy
+     * `Image::data.as_ref()`). An empty present vector is not absent. */
+    const std::vector<std::byte>* data_ref() const noexcept { return m_has_data ? &data : nullptr; }
+    /** @brief Borrow the resizable CPU payload, or nullptr when absent (Bevy
+     * `Image::data.as_mut()`). Changing its length does not change metadata;
+     * reallocation may invalidate existing byte spans. */
+    std::vector<std::byte>* data_mut() noexcept { return m_has_data ? &data : nullptr; }
+    /** @brief Replace CPU data independently of the texture metadata (Bevy
+     * assignment to `Image::data`). nullopt removes the payload; an empty vector
+     * supplies an empty present payload. No descriptor-size validation occurs. */
+    void set_data(std::optional<std::vector<std::byte>> payload) noexcept {
+        data = payload ? std::move(*payload) : std::vector<std::byte>{};
+        m_has_data = payload.has_value();
+    }
     /** @brief Whether this image still owns a CPU pixel payload (Bevy
      * `Image::data.is_some()`). An empty-but-present payload is distinct from
      * data transferred by `take_data`. */

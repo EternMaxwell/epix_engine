@@ -17,9 +17,14 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <memory>
+#include <mutex>
 #include <optional>
+#include <spdlog/sinks/base_sink.h>
+#include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -602,4 +607,188 @@ TEST(TilemapChunkHookContract, CachedMeshDoesNotRequireMeshAssets) {
     ASSERT_TRUE(entity);
     ASSERT_TRUE(app.world().entity(*entity).get<mesh::Mesh2d>());
     EXPECT_EQ(app.world().entity(*entity).get<mesh::Mesh2d>()->get().handle.id(), cached.id());
+}
+
+namespace {
+class TilemapWarnings : public spdlog::sinks::base_sink<std::mutex> {
+   public:
+    std::vector<std::string> messages;
+   protected:
+    void sink_it_(const spdlog::details::log_msg& message) override {
+        const std::string text(message.payload.data(), message.payload.size());
+        if (message.level == spdlog::level::warn && text.starts_with("[tilemap]")) messages.push_back(text);
+    }
+    void flush_() override {}
+};
+
+class TilemapUpdateContract : public testing::Test {
+   protected:
+    using Material = sprite_render::TilemapChunkMaterial;
+    App app = make_tilemap_app();
+    ecs::Entity entity;
+    Handle<Material> material{uuids::uuid{}};
+    Handle<image::Image> tile_image{uuids::uuid{}};
+    std::shared_ptr<TilemapWarnings> warnings = std::make_shared<TilemapWarnings>();
+    std::shared_ptr<spdlog::logger> logger;
+
+    void SetUp() override {
+        const auto tileset = make_tileset(app);
+        entity = app.world_mut().spawn(valid_chunk(tileset),
+            sprite_render::TilemapChunkTileData{.tiles = make_tiles()}).id();
+        material = app.world().entity(entity).get<sprite_render::MeshMaterial2d<Material>>()->get().handle;
+        tile_image = app.resource<Assets<Material>>().get(material.id())->get().tile_data;
+        app.run_schedule(Update);
+        clear_events();
+        logger = spdlog::default_logger();
+        logger->sinks().push_back(warnings);
+    }
+    void TearDown() override {
+        if (logger) std::erase(logger->sinks(), warnings);
+    }
+    image::Image& image_mut() { return app.resource_mut<Assets<image::Image>>().get_mut(tile_image.id())->get(); }
+    const image::Image& image_ref() { return app.resource<Assets<image::Image>>().get(tile_image.id())->get(); }
+
+    void clear_events() {
+        app.run_schedule(PostUpdate);
+        app.resource_mut<ecs::Events<AssetEvent<Material>>>().clear();
+        app.resource_mut<ecs::Events<AssetEvent<image::Image>>>().clear();
+    }
+    template<class T>
+    std::size_t modified_events(AssetId<T> id) {
+        const auto& events = app.resource<ecs::Events<AssetEvent<T>>>();
+        std::size_t count = 0;
+        for (auto index = events.head(); index < events.tail(); ++index)
+            if (const auto* event = events.get(index); event && event->is_modified(id)) ++count;
+        return count;
+    }
+    void update() {
+        app.world_mut().flush();
+        app.run_schedule(Update);
+        app.run_schedule(PostUpdate);
+    }
+    void change_tiles() {
+        auto tiles = app.world_mut().entity_mut(entity).get_mut<sprite_render::TilemapChunkTileData>();
+        tiles->get_mut().tiles[0] = sprite_render::TileData::from_tileset_index(9);
+        tiles->get_mut().tiles[1] = sprite_render::TileData::from_tileset_index(7);
+    }
+    void expect_replacement(wgpu::Extent3D old_size) {
+        {
+            auto& image = image_mut();
+            image.resize(old_size);
+            image.set_usage(RenderAssetUsages::MAIN_WORLD);
+            image.set_copy_on_resize(true);
+            image.data_order = image::TextureDataOrder::MipMajor;
+            image.texture_descriptor.label = wgpu::StringView{"tile update metadata"};
+            image.texture_descriptor.mipLevelCount = 3;
+            image.texture_descriptor.sampleCount = 4;
+            image.texture_descriptor.usage = wgpu::TextureUsage::eCopySrc;
+            image.texture_view_descriptor = wgpu::TextureViewDescriptor{};
+            image.texture_view_descriptor->baseMipLevel = 1;
+            image.texture_view_descriptor->mipLevelCount = 2;
+            auto sampler = image::ImageSamplerDescriptor::linear();
+            sampler.label = "preserved sampler";
+            sampler.address_mode_u = image::ImageAddressMode::Repeat;
+            image.set_sampler_descriptor(std::move(sampler));
+        }
+        clear_events();
+        change_tiles();
+        update();
+        const auto& image = image_ref();
+        EXPECT_TRUE(image.has_data());
+        EXPECT_EQ(image.width(), old_size.width);
+        EXPECT_EQ(image.height(), old_size.height);
+        EXPECT_EQ(image.depth_or_layers(), old_size.depthOrArrayLayers);
+        EXPECT_EQ(image.texture_descriptor.dimension, wgpu::TextureDimension::e2D);
+        EXPECT_EQ(image.texture_format(), wgpu::TextureFormat::eRGBA16Uint);
+        EXPECT_EQ(static_cast<std::string_view>(image.texture_descriptor.label), "tile update metadata");
+        EXPECT_EQ(image.texture_descriptor.mipLevelCount, 3u);
+        EXPECT_EQ(image.texture_descriptor.sampleCount, 4u);
+        EXPECT_EQ(image.texture_descriptor.usage, wgpu::TextureUsage::eCopySrc);
+        EXPECT_EQ(image.data_order, image::TextureDataOrder::MipMajor);
+        EXPECT_EQ(image.usage(), RenderAssetUsages::MAIN_WORLD);
+        EXPECT_TRUE(image.copy_on_resize());
+        ASSERT_TRUE(image.texture_view_descriptor);
+        EXPECT_EQ(image.texture_view_descriptor->baseMipLevel, 1u);
+        EXPECT_EQ(image.texture_view_descriptor->mipLevelCount, 2u);
+        ASSERT_NE(image.sampler_descriptor(), nullptr);
+        EXPECT_EQ(image.sampler_descriptor()->label, "preserved sampler");
+        EXPECT_EQ(image.sampler_descriptor()->min_filter, image::ImageFilterMode::Linear);
+        EXPECT_EQ(image.sampler_descriptor()->address_mode_u, image::ImageAddressMode::Repeat);
+        EXPECT_EQ(modified_events(material.id()), 1u);
+        EXPECT_EQ(modified_events(tile_image.id()), 1u);
+        EXPECT_TRUE(warnings->messages.empty());
+
+        auto tiles = make_tiles();
+        tiles[0] = sprite_render::TileData::from_tileset_index(9);
+        tiles[1] = sprite_render::TileData::from_tileset_index(7);
+        std::vector<sprite_render::PackedTileData> packed;
+        for (const auto& tile : tiles) packed.emplace_back(tile);
+        const auto expected = std::as_bytes(std::span{packed});
+        const auto actual = image.raw_view();
+        ASSERT_EQ(actual.size(), expected.size());
+        EXPECT_TRUE(std::ranges::equal(actual, expected));
+    }
+};
+}  // namespace
+
+// Image::data is independent of its descriptor. Bevy clears/extends any Some
+// payload; it does not require the old length to match the chunk's packed data.
+TEST_F(TilemapUpdateContract, ReplacesShortPayloadWithoutChangingMetadata) {
+    expect_replacement(wgpu::Extent3D{1, 1, 1});
+}
+TEST_F(TilemapUpdateContract, ReplacesLongPayloadWithoutChangingMetadata) {
+    expect_replacement(wgpu::Extent3D{4, 3, 1});
+}
+TEST_F(TilemapUpdateContract, ReplacesEmptyPresentPayloadWithoutChangingMetadata) {
+    expect_replacement(wgpu::Extent3D{0, 0, 1});
+}
+TEST_F(TilemapUpdateContract, MissingCpuPayloadWarnsButStillMarksBothAssetsModified) {
+    auto extracted = image_mut().take_data();
+    ASSERT_TRUE(extracted.has_data());
+    clear_events();
+    change_tiles();
+    update();
+    EXPECT_FALSE(image_ref().has_data());
+    EXPECT_TRUE(image_ref().raw_view().empty());
+    EXPECT_EQ(image_ref().size(), (glm::uvec2{2, 2}));
+    ASSERT_EQ(warnings->messages.size(), 1u);
+    EXPECT_NE(warnings->messages[0].find("TilemapChunkMaterial tile data image data not found"), std::string::npos);
+    EXPECT_EQ(modified_events(material.id()), 1u);
+    EXPECT_EQ(modified_events(tile_image.id()), 1u);
+}
+TEST_F(TilemapUpdateContract, UnchangedTileDataDoesNotTouchAssets) {
+    update();
+    EXPECT_EQ(modified_events(material.id()), 0u);
+    EXPECT_EQ(modified_events(tile_image.id()), 0u);
+    EXPECT_TRUE(warnings->messages.empty());
+}
+TEST_F(TilemapUpdateContract, MissingMaterialWarnsWithoutTouchingImage) {
+    (void)app.resource_mut<Assets<Material>>().remove(material.id());
+    clear_events();
+    change_tiles();
+    update();
+    ASSERT_EQ(warnings->messages.size(), 1u);
+    EXPECT_NE(warnings->messages[0].find("TilemapChunkMaterial not found"), std::string::npos);
+    EXPECT_EQ(modified_events(material.id()), 0u);
+    EXPECT_EQ(modified_events(tile_image.id()), 0u);
+}
+TEST_F(TilemapUpdateContract, MissingImageWarnsAfterMarkingOnlyMaterialModified) {
+    (void)app.resource_mut<Assets<image::Image>>().remove(tile_image.id());
+    clear_events();
+    change_tiles();
+    update();
+    ASSERT_EQ(warnings->messages.size(), 1u);
+    EXPECT_NE(warnings->messages[0].find("tile data image not found"), std::string::npos);
+    EXPECT_EQ(modified_events(material.id()), 1u);
+    EXPECT_EQ(modified_events(tile_image.id()), 0u);
+}
+TEST_F(TilemapUpdateContract, InvalidTileCountPreservesPinnedDiagnosticArgumentOrderAndSkipsAssets) {
+    app.world_mut().entity_mut(entity).get_mut<sprite_render::TilemapChunkTileData>()->get_mut().tiles.resize(1);
+    update();
+    ASSERT_EQ(warnings->messages.size(), 1u);
+    // Pinned Bevy passes actual then expected despite the wording of the text.
+    EXPECT_NE(warnings->messages[0].find("Expected 1, got 4"), std::string::npos);
+    EXPECT_EQ(modified_events(material.id()), 0u);
+    EXPECT_EQ(modified_events(tile_image.id()), 0u);
+    EXPECT_EQ(image_ref().raw_view().size(), 4u * sizeof(sprite_render::PackedTileData));
 }

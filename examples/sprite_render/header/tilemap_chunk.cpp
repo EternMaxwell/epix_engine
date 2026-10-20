@@ -25,6 +25,7 @@
 #include <epix/transform.hpp>
 #include <epix/window.hpp>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -32,6 +33,7 @@
 #include <cstdint>
 #include <glm/glm.hpp>
 #include <optional>
+#include <span>
 #include <spdlog/spdlog.h>
 #include <string>
 #include <string_view>
@@ -205,12 +207,45 @@ void log_loaded_tileset(EventReader<assets::AssetEvent<image::Image>> events,
     }
 }
 
+/** @brief Observe a completed CPU upload without altering tiles or scheduling.
+ * The example's producer and consumer are unordered within Update, so wait for
+ * a frame whose packed payload matches the current tile data. */
+void log_tile_data_payload(
+    Query<Item<const sprite_render::TilemapChunk&, const sprite_render::TilemapChunkTileData&,
+               const sprite_render::MeshMaterial2d<sprite_render::TilemapChunkMaterial>&>> chunks,
+    Res<assets::Assets<sprite_render::TilemapChunkMaterial>> materials,
+    Res<assets::Assets<image::Image>> images, Local<bool> logged) {
+    if (*logged) return;
+    for (auto&& [chunk, tiles, material] : chunks.iter()) {
+        const auto stored_material = materials->get(material.id());
+        if (!stored_material) continue;
+        const auto stored_image = images->get(stored_material->get().tile_data.id());
+        if (!stored_image) continue;
+        const auto& image = stored_image->get();
+        const auto* payload = image.data_ref();
+        if (!payload) continue;
+        std::vector<sprite_render::PackedTileData> packed;
+        packed.reserve(tiles.tiles.size());
+        for (const auto& tile : tiles.tiles) packed.emplace_back(tile);
+        const auto bytes = std::as_bytes(std::span{packed});
+        const bool matches = std::ranges::equal(*payload, bytes);
+        if (!matches) continue;
+        const bool dimensions_match = image.size() == chunk.chunk_size &&
+            image.texture_format() == wgpu::TextureFormat::eRGBA16Uint;
+        spdlog::info("[tilemap_chunk] CPU payload verified: bytes={} packed_match={} dimensions_match={}",
+                     payload->size(), matches, dimensions_match);
+        if (!dimensions_match) spdlog::error("[tilemap_chunk] Tile-data metadata changed unexpectedly");
+        *logged = true;
+    }
+}
+
 struct TilemapChunkVisualTestPlugin {
     void attach(app::App& app) {
         app.add_systems(app::Update,
                         ecs::into(update_tilemap, move_player, log_tile)
                             .set_names(std::array{"update tilemap", "move player", "log tile"}));
         app.add_systems(app::Update, ecs::into(log_loaded_tileset).set_name("log loaded tileset"));
+        app.add_systems(app::PostUpdate, ecs::into(log_tile_data_payload).set_name("verify tile-data payload"));
     }
 
     void ready(app::App& app) {
