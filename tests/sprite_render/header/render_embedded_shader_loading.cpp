@@ -73,15 +73,14 @@ TEST(Mesh2dRenderPlugin, RegistersAndLoadsEmbeddedShadersThroughAssetServer) {
     app.add_plugins(sprite_render::Mesh2dRenderPlugin{});
     flush_load_tasks(app);
 
-    // Bevy's `Mesh2dRenderPlugin` owns only the mesh2d shaders (`mesh.rs:79-103`:
-    // the main shader plus the two modules a material fragment imports). The six
-    // `mesh/*` shaders this test previously expected belonged to the pre-generic
-    // hand-rolled mesh2d path, which borrowed the mesh module's vertex/fragment
-    // shaders; the generic `Material2d` pipeline has its own, so the plugin no
-    // longer registers them.
+    // Custom materials import the same types, bindings, transforms and view
+    // interface as the stock shader; none is private to that one entry point.
     expect_embedded_shader_loaded(app, "embedded://sprite/mesh2d.slang");
     expect_embedded_shader_loaded(app, "embedded://sprite/mesh2d_vertex_output.slang");
     expect_embedded_shader_loaded(app, "embedded://sprite/mesh2d_view_bindings.slang");
+    expect_embedded_shader_loaded(app, "embedded://sprite/mesh2d_types.slang");
+    expect_embedded_shader_loaded(app, "embedded://sprite/mesh2d_bindings.slang");
+    expect_embedded_shader_loaded(app, "embedded://sprite/mesh2d_functions.slang");
 }
 
 TEST(SpriteRenderPlugin, RegistersAndLoadsEmbeddedShadersThroughAssetServer) {

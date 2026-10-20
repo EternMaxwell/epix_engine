@@ -27,16 +27,17 @@ constexpr std::string_view kMesh2dVertexOutputShaderPath = "sprite/mesh2d_vertex
 /** @brief Embedded path of the mesh2d view bindings (Bevy
  *  `mesh2d_view_bindings.wgsl`), its own module for the same reason. */
 constexpr std::string_view kMesh2dViewBindingsShaderPath = "sprite/mesh2d_view_bindings.slang";
+constexpr std::string_view kMesh2dTypesShaderPath = "sprite/mesh2d_types.slang";
+constexpr std::string_view kMesh2dBindingsShaderPath = "sprite/mesh2d_bindings.slang";
+constexpr std::string_view kMesh2dFunctionsShaderPath = "sprite/mesh2d_functions.slang";
 
 /**
  * @brief Slang representation of pinned Bevy 0.18 `mesh2d.wgsl`,
  * `mesh2d_functions.wgsl`, `mesh2d_types.wgsl`, `mesh2d_bindings.wgsl` and
  * `mesh2d_view_bindings.wgsl`.
  *
- * Bevy splits these over five naga_oil modules and imports
- * `bevy_render::maths::{affine3_to_square, mat2x4_f32_to_mat3x3_unpack}`. Epix
- * has no `maths` module, so those two helpers are inlined here, and the five
- * modules are one file because every one of them is private to mesh2d.
+ * The same reusable libraries are separate importable Slang modules. Their
+ * matrix reconstruction uses the shared render maths library, as Bevy does.
  *
  * The one representation change: Bevy's `Mesh2d.world_from_local` is a WGSL
  * `mat3x4` (three columns of `vec4`) and its `local_from_world_transpose_a` a
@@ -80,52 +81,93 @@ public struct VertexOutput {
 }
 )slang";
 
-constexpr std::string_view kMesh2dShader = R"slang(import epix.view;
-import epix.globals;
-import epix.mesh2d_view_bindings;
-import epix.mesh2d_vertex_output;
-#ifdef TONEMAP_IN_SHADER
-import epix.tonemapping;
-#endif
-
-// Group 0's view bindings come from `epix.mesh2d_view_bindings`.
-
-struct Mesh2d {
-    // Bevy's `Mesh2dUniform` packs the affine as three `Vec4` rows (the Rust side
-    // is `[Vec4; 3]`, and its WGSL `mat3x4` is three columns of `vec4`). Declared
-    // as an explicit array so the 16-byte stride is unambiguous: a Slang
-    // `float4x3` is a matrix whose columns are `vec3`, which this layout is not.
-    float4 world_from_local[3];
-    // Bevy's `local_from_world_transpose_a`: two `Vec4` holding the packed
-    // inverse transpose of the 3x3.
-    float4 local_from_world_transpose_a[2];
-    float local_from_world_transpose_b;
-    // 'flags' is a bit field; the type is 32 bits, so up to 32 options.
-    uint flags;
-    uint tag;
-    // Bevy's WGSL struct is padded to the 16-byte array stride (92 -> 96).
-    float _padding;
+/** @brief Shared 96-byte mesh record, used by stock and custom vertex shaders. */
+constexpr std::string_view kMesh2dTypesShader = R"slang(
+module epix.mesh2d_types;
+namespace epix::mesh2d_types {
+public struct Mesh2d {
+    public float4 world_from_local[3];
+    public float4 local_from_world_transpose_a[2];
+    public float local_from_world_transpose_b;
+    public uint flags;
+    public uint tag;
+    public float _padding;
 };
+}
+)slang";
 
-// Group 1: the per-instance mesh2d uniforms (mesh2d_bindings.wgsl): a storage
-// buffer where the adapter has them, otherwise Bevy's uniform array read through
-// a dynamic offset.
+constexpr std::string_view kMesh2dBindingsShader = R"slang(
+module epix.mesh2d_bindings;
+import epix.mesh2d_types;
+namespace epix::mesh2d_bindings {
 #ifdef PER_OBJECT_BUFFER_BATCH_SIZE
-struct Mesh2dBatch {
-    Mesh2d values[PER_OBJECT_BUFFER_BATCH_SIZE];
+public struct Mesh2dBatch {
+    public epix::mesh2d_types::Mesh2d values[PER_OBJECT_BUFFER_BATCH_SIZE];
 };
-[[vk::binding(0, 1)]] ConstantBuffer<Mesh2dBatch> mesh;
+public [[vk::binding(0, 1)]] ConstantBuffer<Mesh2dBatch> mesh;
 #else
-[[vk::binding(0, 1)]] StructuredBuffer<Mesh2d> mesh;
+public [[vk::binding(0, 1)]] StructuredBuffer<epix::mesh2d_types::Mesh2d> mesh;
 #endif
 
-Mesh2d mesh2d_instance(uint instance_index) {
+// The accessor unifies Slang's uniform-wrapper and storage-array syntax.
+public epix::mesh2d_types::Mesh2d get_mesh(uint instance_index) {
 #ifdef PER_OBJECT_BUFFER_BATCH_SIZE
     return mesh.values[instance_index];
 #else
     return mesh[instance_index];
 #endif
 }
+}
+)slang";
+
+constexpr std::string_view kMesh2dFunctionsShader = R"slang(
+module epix.mesh2d_functions;
+import epix.maths;
+import epix.mesh2d_types;
+import epix.mesh2d_bindings;
+import epix.mesh2d_view_bindings;
+namespace epix::mesh2d_functions {
+public float4x4 get_world_from_local(uint instance_index) {
+    epix::mesh2d_types::Mesh2d instance = epix::mesh2d_bindings::get_mesh(instance_index);
+    return epix::maths::affine3_to_square(float3x4(
+        instance.world_from_local[0], instance.world_from_local[1], instance.world_from_local[2]));
+}
+public float4 mesh2d_position_local_to_world(float4x4 world_from_local, float4 vertex_position) {
+    return mul(world_from_local, vertex_position);
+}
+public float4 mesh2d_position_world_to_clip(float4 world_position) {
+    return mul(view.clip_from_world, world_position);
+}
+public float4 mesh2d_position_local_to_clip(float4x4 world_from_local, float4 vertex_position) {
+    float4 world_position = mesh2d_position_local_to_world(world_from_local, vertex_position);
+    return mesh2d_position_world_to_clip(world_position);
+}
+public float3 mesh2d_normal_local_to_world(float3 vertex_normal, uint instance_index) {
+    epix::mesh2d_types::Mesh2d instance = epix::mesh2d_bindings::get_mesh(instance_index);
+    return mul(epix::maths::mat2x4_f32_to_mat3x3_unpack(
+        float2x4(instance.local_from_world_transpose_a[0], instance.local_from_world_transpose_a[1]),
+        instance.local_from_world_transpose_b), vertex_normal);
+}
+public float4 mesh2d_tangent_local_to_world(float4x4 world_from_local, float4 vertex_tangent) {
+    return float4(mul(float3x3(world_from_local[0].xyz, world_from_local[1].xyz, world_from_local[2].xyz),
+                      vertex_tangent.xyz), vertex_tangent.w);
+}
+public uint get_tag(uint instance_index) {
+    return epix::mesh2d_bindings::get_mesh(instance_index).tag;
+}
+}
+)slang";
+
+constexpr std::string_view kMesh2dShader = R"slang(
+import epix.view;
+import epix.globals;
+import epix.mesh2d_view_bindings;
+import epix.mesh2d_vertex_output;
+import epix.mesh2d_functions;
+#ifdef TONEMAP_IN_SHADER
+import epix.tonemapping;
+#endif
+using namespace epix::mesh2d_functions;
 
 struct VertexInput {
     // Raw Vulkan `InstanceIndex` (base instance included), matching what the WGSL
@@ -150,56 +192,29 @@ struct VertexInput {
 #endif
 };
 
-// `VertexOutput` comes from `epix.mesh2d_vertex_output`, the module a material's
-// fragment shader also imports.
-
-// mesh2d_functions.wgsl's helpers. The three packed `vec4` are the affine's
-// rows - each row's `w` is that row's translation component - which is what
-// Bevy's `affine3_to_square` reconstructs before multiplying.
-float3 mesh2d_position_local_to_world(float4 rows[3], float3 position) {
-    return float3(dot(rows[0].xyz, position) + rows[0].w, dot(rows[1].xyz, position) + rows[1].w,
-                  dot(rows[2].xyz, position) + rows[2].w);
-}
-
-float3 mesh2d_normal_local_to_world(float4 packed_a[2], float packed_b, float3 normal) {
-    // Bevy's `mat2x4_f32_to_mat3x3_unpack`: the columns of the inverse transpose
-    // are (a[0].xyz), (a[0].w, a[1].xy) and (a[1].zw, b).
-    const float3 c0 = packed_a[0].xyz;
-    const float3 c1 = float3(packed_a[0].w, packed_a[1].xy);
-    const float3 c2 = float3(packed_a[1].zw, packed_b);
-    return c0 * normal.x + c1 * normal.y + c2 * normal.z;
-}
-
-float4 mesh2d_tangent_local_to_world(float4 rows[3], float4 tangent) {
-    return float4(dot(rows[0].xyz, tangent.xyz), dot(rows[1].xyz, tangent.xyz), dot(rows[2].xyz, tangent.xyz),
-                  tangent.w);
-}
-
 [shader("vertex")]
 epix::mesh2d_vertex_output::VertexOutput vertex(VertexInput input) {
     epix::mesh2d_vertex_output::VertexOutput output;
-    Mesh2d instance = mesh2d_instance(input.instance_index);
+    float4x4 world_from_local = get_world_from_local(input.instance_index);
 #ifdef VERTEX_UVS
     output.uv = input.uv;
 #endif
 
 #ifdef VERTEX_POSITIONS
     float4 world_position =
-        float4(mesh2d_position_local_to_world(instance.world_from_local, input.position), 1.0);
+        mesh2d_position_local_to_world(world_from_local, float4(input.position, 1.0));
     output.world_position = world_position;
     // The intermediate world_position assignment matters for precision when the
     // depth comparison uses the 'equals' function.
-    output.position = mul(view.clip_from_world, world_position);
+    output.position = mesh2d_position_world_to_clip(world_position);
 #endif
 
 #ifdef VERTEX_NORMALS
-    output.world_normal = mesh2d_normal_local_to_world(instance.local_from_world_transpose_a,
-                                                       instance.local_from_world_transpose_b,
-                                                       input.normal);
+    output.world_normal = mesh2d_normal_local_to_world(input.normal, input.instance_index);
 #endif
 
 #ifdef VERTEX_TANGENTS
-    output.world_tangent = mesh2d_tangent_local_to_world(instance.world_from_local, input.tangent);
+    output.world_tangent = mesh2d_tangent_local_to_world(world_from_local, input.tangent);
 #endif
 
 #ifdef VERTEX_COLORS
@@ -229,10 +244,10 @@ std::span<const std::byte> shader_bytes(std::string_view source) {
 }  // namespace
 
 namespace {
-/** @brief Handles keeping the two mesh2d shader modules loaded.
+/** @brief Handles keeping the stock shader and reusable mesh2d libraries loaded.
  *
  * The embedded registry only publishes bytes; the shader processor resolves
- * `import epix.mesh2d_vertex_output;` / `import epix.mesh2d_view_bindings;`
+ * custom material imports as well as the stock shader's dependencies
  * through the asset server, so the modules must be *loaded* and the handles held
  * alive. This mirrors `render.cpp`'s `load_sprite_shader`/`SpriteShaderHandle`,
  * which is how this module publishes its own shaders. */
@@ -240,6 +255,9 @@ struct Mesh2dShaderHandles {
     assets::Handle<shader::Shader> shader;
     assets::Handle<shader::Shader> vertex_output;
     assets::Handle<shader::Shader> view_bindings;
+    assets::Handle<shader::Shader> types;
+    assets::Handle<shader::Shader> bindings;
+    assets::Handle<shader::Shader> functions;
 };
 
 void register_mesh2d_shader(ecs::World& world) {
@@ -253,12 +271,18 @@ void register_mesh2d_shader(ecs::World& world) {
     registry->get().insert_asset_static(kMesh2dShaderPath, shader_bytes(kMesh2dShader));
     registry->get().insert_asset_static(kMesh2dVertexOutputShaderPath, shader_bytes(kMesh2dVertexOutputShader));
     registry->get().insert_asset_static(kMesh2dViewBindingsShaderPath, shader_bytes(kMesh2dViewBindingsShader));
+    registry->get().insert_asset_static(kMesh2dTypesShaderPath, shader_bytes(kMesh2dTypesShader));
+    registry->get().insert_asset_static(kMesh2dBindingsShaderPath, shader_bytes(kMesh2dBindingsShader));
+    registry->get().insert_asset_static(kMesh2dFunctionsShaderPath, shader_bytes(kMesh2dFunctionsShader));
     world.insert_resource(Mesh2dShaderHandles{
         .shader = server->get().load<shader::Shader>(std::string("embedded://") + std::string(kMesh2dShaderPath)),
         .vertex_output =
             server->get().load<shader::Shader>(std::string("embedded://") + std::string(kMesh2dVertexOutputShaderPath)),
         .view_bindings =
             server->get().load<shader::Shader>(std::string("embedded://") + std::string(kMesh2dViewBindingsShaderPath)),
+        .types = server->get().load<shader::Shader>(std::string("embedded://") + std::string(kMesh2dTypesShaderPath)),
+        .bindings = server->get().load<shader::Shader>(std::string("embedded://") + std::string(kMesh2dBindingsShaderPath)),
+        .functions = server->get().load<shader::Shader>(std::string("embedded://") + std::string(kMesh2dFunctionsShaderPath)),
     });
 }
 }  // namespace

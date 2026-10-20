@@ -168,8 +168,8 @@ EPIX_EXPORT struct TilemapChunkMaterial : Material2d<TilemapChunkMaterial> {
 
     /** @brief This material's fragment shader (Bevy returns the embedded
      *  `tilemap_chunk_material.wgsl` path). */
-    static std::optional<std::string_view> fragment_shader() {
-        return std::string_view{"embedded://sprite/tilemap_chunk_material.slang"};
+    static shader::ShaderRef fragment_shader() {
+        return shader::ShaderRef::from_str("embedded://sprite/tilemap_chunk_material.slang");
     }
     /** @brief This material's alpha mode (Bevy `Material2d::alpha_mode`). */
     AlphaMode2d alpha_mode() const { return mode; }

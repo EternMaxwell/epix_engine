@@ -2,6 +2,7 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
+#include <concepts>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
 #include <epix/common.hpp>
@@ -9,24 +10,18 @@
 #include <epix/mesh.hpp>
 #include <epix/render.hpp>
 #include <epix/shader.hpp>
+#include <expected>
 #include <optional>
 #include <variant>
 #endif
 #include <epix/sprite_render/mesh2d_pipeline.hpp>
 
 namespace epix::sprite_render {
-/** @brief The uniform-data type a material specializes on (Bevy's
- *  `AsBindGroup::Data`, which Bevy defaults to `()`).  C++ has no
- *  associated-type default, so the type is detected instead: a material that
- *  declares `Data` opts in, and every other material keys on the unit type,
- *  which is Bevy's default behaviour. */
-template <typename M, typename = void>
-struct Material2dData {
-    using type = std::monostate;
-};
+/** @brief The material's AsBindGroup associated specialization data. This is
+ *  independent of its GPU uniform type; empty specializations use monostate. */
 template <typename M>
-struct Material2dData<M, std::void_t<typename M::Data>> {
-    using type = typename M::Data;
+struct Material2dData {
+    using type = typename render::render_resource::AsBindGroup<M>::Data;
 };
 
 /** @brief The material bind group slot of a 2D pipeline (Bevy
@@ -47,20 +42,13 @@ struct Material2dKey {
 
 /** @brief A 2D material (Bevy `Material2d`, `material.rs:131-167`).  A material
  *  type derives from this and overrides only what it needs; the pipeline calls
- *  the derived members through static dispatch.
- *
- *  Bevy's `ShaderRef` (default, handle or path) translates to an optional
- *  source-relative shader path loaded under `embedded://`, the adaptation the
- *  codebase already uses elsewhere: `nullopt` means the default mesh2d shader,
- *  which is Bevy's `ShaderRef::Default`. */
+ *  the derived members through static dispatch. */
 EPIX_EXPORT template <typename M>
 struct Material2d {
-    /** @brief This material's vertex shader path, or nothing for the default
-     *  mesh2d vertex shader. */
-    static std::optional<std::string_view> vertex_shader() { return std::nullopt; }
-    /** @brief This material's fragment shader path, or nothing for the default
-     *  mesh2d fragment shader. */
-    static std::optional<std::string_view> fragment_shader() { return std::nullopt; }
+    /** @brief This material's vertex shader, or Default for the mesh2d shader. */
+    static shader::ShaderRef vertex_shader() { return {}; }
+    /** @brief This material's fragment shader, or Default for the mesh2d shader. */
+    static shader::ShaderRef fragment_shader() { return {}; }
     /** @brief A view-depth bias forcing a specific render order (Bevy
      *  `depth_bias`). */
     float depth_bias() const { return 0.0f; }
@@ -69,9 +57,8 @@ struct Material2d {
     /** @brief Customize the specialized pipeline (Bevy `Material2d::specialize`,
      *  `material.rs:160-166`, which takes no `self` and so is an associated
      *  function rather than a member). */
-    static void specialize(render::RenderPipelineDescriptor&,
-                           const mesh::MeshVertexBufferLayoutRef&,
-                           const Material2dKey<M>&) {}
+    static std::expected<void, render::SpecializedMeshPipelineError> specialize(
+        render::RenderPipelineDescriptor&, const mesh::MeshVertexBufferLayoutRef&, Material2dKey<M>) { return {}; }
 };
 
 /** @brief A 2D mesh's material handle (Bevy `MeshMaterial2d<M>`,
@@ -492,10 +479,8 @@ template <typename M>
 struct std::hash<epix::sprite_render::Material2dKey<M>> {
     std::size_t operator()(const epix::sprite_render::Material2dKey<M>& key) const noexcept {
         std::size_t seed = std::hash<epix::sprite_render::Mesh2dPipelineKey>{}(key.mesh_key);
-        if constexpr (requires { std::hash<typename epix::sprite_render::Material2dData<M>::type>{}; }) {
-            seed ^= std::hash<typename epix::sprite_render::Material2dData<M>::type>{}(key.bind_group_data) +
-                    0x9e3779b97f4a7c15ull + (seed << 6) + (seed >> 2);
-        }
+        seed ^= std::hash<typename epix::sprite_render::Material2dData<M>::type>{}(key.bind_group_data) +
+                0x9e3779b97f4a7c15ull + (seed << 6) + (seed >> 2);
         return seed;
     }
 };
@@ -506,3 +491,6 @@ struct std::hash<epix::sprite_render::Material2dBindGroupId> {
         return id.value ? std::hash<epix::assets::UntypedAssetId>{}(*id.value) : 0;
     }
 };
+
+// User-defined material types need the generic pipeline/plugin/system bodies.
+#include <epix/sprite_render/material2d_impl.hpp>

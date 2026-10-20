@@ -49,11 +49,6 @@ EPIX_EXPORT struct ColorMaterialUniform {
     /** @brief Tail padding to the 16-byte uniform stride (72 -> 80 bytes). */
     float padding[2] = {0.0f, 0.0f};
 
-    /** @brief Compare by value, as Bevy's derive does for `AsBindGroup::Data`,
-     *  which is `PartialEq + Eq + Hash + Clone` (`as_bind_group.rs`). Required
-     *  because `Material2dKey<M>` compares its `bind_group_data` member, so
-     *  without this the key's `operator==` is deleted. */
-    bool operator==(const ColorMaterialUniform&) const noexcept = default;
 };
 
 }  // namespace epix::sprite_render
@@ -83,14 +78,10 @@ EPIX_EXPORT struct ColorMaterial : Material2d<ColorMaterial> {
     /** @brief The image sampled by this material, if any. */
     std::optional<assets::Handle<image::Image>> texture;
 
-    /** @brief The uniform type this material specializes on (Bevy's
-     *  `AsBindGroup::Data`). */
-    using Data = ColorMaterialUniform;
-
     /** @brief This material's fragment shader (Bevy returns the embedded
      *  `color_material.wgsl` path). */
-    static std::optional<std::string_view> fragment_shader() {
-        return std::string_view{"embedded://sprite/color_material.slang"};
+    static shader::ShaderRef fragment_shader() {
+        return shader::ShaderRef::from_str("embedded://sprite/color_material.slang");
     }
     /** @brief This material's alpha mode (Bevy `Material2d::alpha_mode`). */
     AlphaMode2d alpha_mode() const { return mode; }
@@ -161,7 +152,7 @@ struct AsBindGroupShaderType<epix::sprite_render::ColorMaterial, epix::sprite_re
  *  sampler at 2, as Bevy's derive declares (`color_material.rs:38-45`). */
 template <>
 struct AsBindGroup<epix::sprite_render::ColorMaterial> : AsBindGroupBase {
-    using Data = epix::sprite_render::ColorMaterialUniform;
+    using Data = std::monostate;
     /** @brief The images plus the fallback Bevy's derive passes to a textured
      *  material. */
     using Param = std::tuple<epix::ecs::Res<RenderAssets<texture::GpuImage>>, epix::ecs::Res<texture::FallbackImage>>;
@@ -179,11 +170,7 @@ struct AsBindGroup<epix::sprite_render::ColorMaterial> : AsBindGroupBase {
         return {entries.begin(), entries.end()};
     }
 
-    static Data bind_group_data(const epix::sprite_render::ColorMaterial& material) {
-        return AsBindGroupShaderType<epix::sprite_render::ColorMaterial,
-                                     epix::sprite_render::ColorMaterialUniform>::as_bind_group_shader_type(material,
-                                                                                                           {});
-    }
+    static Data bind_group_data(const epix::sprite_render::ColorMaterial&) { return {}; }
 
     /** @brief Own the material's uniform buffer, texture view and sampler
      *  (Bevy's derive, `as_bind_group.rs`): the uniform is created with its
@@ -197,7 +184,9 @@ struct AsBindGroup<epix::sprite_render::ColorMaterial> : AsBindGroupBase {
         (void)layout;
         const auto& [images, fallback_image] = param;
 
-        const auto data = bind_group_data(material);
+        const auto data = AsBindGroupShaderType<epix::sprite_render::ColorMaterial,
+                                               epix::sprite_render::ColorMaterialUniform>::as_bind_group_shader_type(
+            material, images.get());
         std::vector<std::uint8_t> encoded(ShaderTypeInfo<epix::sprite_render::ColorMaterialUniform>::shader_size);
         ShaderTypeInfo<epix::sprite_render::ColorMaterialUniform>::write_into(data, encoded);
         auto uniform = create_buffer_with_data(device, std::as_bytes(std::span{encoded}),

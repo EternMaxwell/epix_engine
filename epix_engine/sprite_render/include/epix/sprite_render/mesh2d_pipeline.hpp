@@ -75,8 +75,8 @@ EPIX_EXPORT struct Mesh2dUniform {
         const glm::mat4& matrix = transforms.world_from_local;
         // Bevy `Affine3::to_transpose` stores the transposed 4x3, i.e. row `i`
         // is (axis_0[i], axis_1[i], axis_2[i], translation[i]) - the `i`-th
-        // component of every column. The shader's `affine3_to_square`
-        // transposes that back, so packing columns here would silently render
+        // component of every column. The Slang maths helper reconstructs the
+        // square matrix from these rows; packing columns here would render
         // the transpose of the intended transform.
         for (std::size_t axis = 0; axis < 3; ++axis) {
             out.world_from_local[axis] = glm::vec4(matrix[0][axis], matrix[1][axis], matrix[2][axis], matrix[3][axis]);
