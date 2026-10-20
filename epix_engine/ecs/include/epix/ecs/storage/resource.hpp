@@ -24,7 +24,7 @@ EPIX_EXPORT struct EPIX_API IsResource {
     TypeId resource_component_id() const noexcept { return resource_component_id_; }
 
     static void on_insert(World& world, HookContext context);
-    static void on_remove(World& world, HookContext context);
+    static void on_replace(World& world, HookContext context);
     static void on_despawn(World& world, HookContext context);
 
    private:

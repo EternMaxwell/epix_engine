@@ -12,6 +12,7 @@
 #include <epix/mesh.hpp>
 #include <epix/pbr/directional_light.hpp>
 #include <epix/pbr/light_meta.hpp>
+#include <epix/pbr/light_plugin.hpp>
 #include <epix/pbr/light_systems.hpp>
 #include <epix/pbr/material.hpp>
 #include <epix/pbr/material_plugin.hpp>
@@ -244,6 +245,40 @@ void probe_render_shadow_map_ticks(Res<pbr::DirectionalLightShadowMap> map, Loca
     observe_shadow_map_ticks("render", map, *state);
 }
 
+struct LightReplacementProbe {
+    unsigned samples = 0;
+    bool logged = false;
+    std::vector<std::pair<Entity, Entity>> identities;
+};
+
+void probe_light_replacement(Commands commands,
+                             Query<Item<Entity, const pbr::DirectionalLight&,
+                                        const render::sync_world::RenderEntity&>> lights,
+                             Local<LightReplacementProbe> state) {
+    if (state->logged) return;
+    if (state->identities.empty()) {
+        if (++state->samples < 16) return;
+        // Reinsert equal values through real deferred Commands, after lighting's
+        // main-world work. The next extraction must retain render identities.
+        std::vector<std::pair<Entity, pbr::DirectionalLight>> replacements;
+        for (auto&& [entity, light, render_entity] : lights.iter()) {
+            state->identities.emplace_back(entity, render_entity.id());
+            replacements.emplace_back(entity, light);
+        }
+        commands.try_insert_batch(std::move(replacements));
+        return;
+    }
+    bool stable = state->identities.size() == 2;
+    for (const auto& [entity, original_render] : state->identities) {
+        const auto current = lights.get(entity);
+        stable = stable && current.has_value() && std::get<2>(*current).id() == original_render;
+    }
+    spdlog::info("[first-mesh] Synced replacement: lights={} render_identity_stable={}",
+                 state->identities.size(), stable);
+    if (!stable) spdlog::error("[first-mesh] Replacing a light value discarded its render identity");
+    state->logged = true;
+}
+
 }  // namespace
 
 int main() {
@@ -288,6 +323,9 @@ int main() {
     app.add_systems(PostUpdate, into(probe_main_shadow_map_ticks)
                                    .after(ecs::SystemSetLabel(pbr::validate_shadow_map_size))
                                    .set_name("probe main shadow resource ticks"));
+    app.add_systems(PostUpdate, into(probe_light_replacement)
+                                   .after(pbr::SimulationLightSystems::CheckLightVisibility)
+                                   .set_name("probe synced light replacement"));
     app.get_sub_app_mut(render::Render)->get().add_systems(
         render::Render, into(probe_shadow_allocation)
                             .in_set(render::RenderSystems::PrepareBindGroups)

@@ -45,6 +45,8 @@ struct C2 {
 
 TEST(ecs, component_hooks) {
     World world(WorldId(1));
+    C1::inserted = C1::removed = C1::replaced = C1::added = C1::despawned = 0;
+    C2::inserted = C2::removed = C2::replaced = C2::added = C2::despawned = 0;
 
     // We'll use the same random engine as existing randomized tests.
     std::mt19937_64 rng(std::chrono::steady_clock::now().time_since_epoch().count());
@@ -102,19 +104,15 @@ TEST(ecs, component_hooks) {
             mut.insert_bundle(make_bundle<C1, C2>(std::make_tuple(3), std::make_tuple(4.0f)));
             expected_replaced_c1 += 1;
             expected_replaced_c2 += 1;
-            expected_removed_c1 += 1;
-            expected_removed_c2 += 1;
             expected_inserted_c1 += 1;
             expected_inserted_c2 += 1;
         } else if (replaced1) {
             mut.insert_bundle(make_bundle<C1>(std::make_tuple(3)));
             expected_replaced_c1 += 1;
-            expected_removed_c1 += 1;
             expected_inserted_c1 += 1;
         } else if (replaced2) {
             mut.insert_bundle(make_bundle<C2>(std::make_tuple(4.0f)));
             expected_replaced_c2 += 1;
-            expected_removed_c2 += 1;
             expected_inserted_c2 += 1;
         }
     }
@@ -128,10 +126,12 @@ TEST(ecs, component_hooks) {
         auto mut = *maybe_mut;
         if (rem1 && mut.contains<C1>()) {
             mut.remove<C1>();
+            expected_replaced_c1 += 1;
             expected_removed_c1 += 1;
         }
         if (rem2 && mut.contains<C2>()) {
             mut.remove<C2>();
+            expected_replaced_c2 += 1;
             expected_removed_c2 += 1;
         }
     }
@@ -145,10 +145,12 @@ TEST(ecs, component_hooks) {
         if (despawn) {
             if (mut.contains<C1>()) {
                 expected_despawned_c1 += 1;
+                expected_replaced_c1 += 1;
                 expected_removed_c1 += 1;  // despawn also triggers remove
             }
             if (mut.contains<C2>()) {
                 expected_despawned_c2 += 1;
+                expected_replaced_c2 += 1;
                 expected_removed_c2 += 1;  // despawn also triggers remove
             }
             mut.despawn();

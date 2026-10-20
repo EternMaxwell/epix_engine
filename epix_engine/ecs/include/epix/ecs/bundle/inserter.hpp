@@ -48,7 +48,6 @@ struct EPIX_API BundleInserter {
         // trigger on_replace if replacing existing components in the bundle
         if (should_replace) {
             world_trigger_on_replace(*world_, *archetype_, entity, archetype_after_insert_->existing());
-            world_trigger_on_remove(*world_, *archetype_, entity, archetype_after_insert_->existing());
         }
         location = world_entities(*world_).unsafe_get(entity);  // in case it may be changed by on_replace
 

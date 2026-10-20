@@ -279,6 +279,7 @@ EntityLocation internal::BundleRemover::remove(Entity entity, EntityLocation loc
     });
 
     // Trigger hooks only for components that are actually leaving the entity.
+    world_trigger_on_replace(*world_, src_archetype, entity, removed_components);
     world_trigger_on_remove(*world_, src_archetype, entity, removed_components);
 
     location = world_entities(*world_).get(entity).value();  // in case it may be changed by on_remove

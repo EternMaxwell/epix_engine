@@ -22,7 +22,7 @@ void IsResource::on_insert(World& world, HookContext context) {
     }
 }
 
-void IsResource::on_remove(World& world, HookContext context) {
+void IsResource::on_replace(World& world, HookContext context) {
     auto marker = world.entity(context.entity).get<IsResource>();
     if (!marker) return;
     TypeId resource_id = marker->get().resource_component_id();

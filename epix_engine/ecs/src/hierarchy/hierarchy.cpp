@@ -5,17 +5,16 @@
 #include <epix/ecs/world/entity_ref.hpp>
 
 namespace epix::ecs {
-void Parent::on_remove(World& world, HookContext ctx) {
-    spdlog::trace("[hierarchy] Parent::on_remove for entity {}.", ctx.entity.index);
+void Parent::on_replace(World& world, HookContext ctx) {
+    spdlog::trace("[hierarchy] Parent::on_replace for entity {}.", ctx.entity.index);
     auto&& this_entity = world.entity_mut(ctx.entity);
     this_entity.get<Parent>().transform([&](const Parent& parent) {
-        return world.entity_mut(parent._entity)
-            .get_mut<Children>()
-            .transform([&](Children& children) {
-                children._entities.erase(ctx.entity);
-                return true;
-            })
-            .value_or(false);
+        auto target = world.get_entity_mut(parent._entity);
+        if (!target) return false;  // The parent may already have been despawned.
+        return target->get_mut<Children>().transform([&](Children& children) {
+            children._entities.erase(ctx.entity);
+            return true;
+        }).value_or(false);
     });
 }
 
@@ -38,17 +37,20 @@ void Parent::on_insert(World& world, HookContext ctx) {
     });
 }
 
-void Children::on_remove(World& world, HookContext ctx) {
-    spdlog::trace("[hierarchy] Children::on_remove for entity {}.", ctx.entity.index);
+void Children::on_replace(World& world, HookContext ctx) {
+    spdlog::trace("[hierarchy] Children::on_replace for entity {}.", ctx.entity.index);
     auto&& this_entity = world.entity_mut(ctx.entity);
     // copy children set cause removing it inside transform or and_then might invalidate the reference
     std::optional children_to_remove =
         this_entity.get<Children>().transform([&](const Children& children) { return children._entities; });
-    children_to_remove.transform([&](std::unordered_set<Entity>& children) {
+    if (!children_to_remove) return;
+    // Bevy's RelationshipTarget::on_replace queues structural changes. Applying
+    // them inside this hook would invalidate the enclosing bundle insertion.
+    world.command_queue().push([children = std::move(*children_to_remove)](World& deferred) {
         for (auto child_entity : children) {
-            world.entity_mut(child_entity).remove<Parent>();
+            if (auto child = deferred.get_entity_mut(child_entity); child && child->contains<Parent>())
+                child->remove<Parent>();
         }
-        return true;
     });
 }
 
@@ -57,11 +59,11 @@ void Children::on_despawn(World& world, HookContext ctx) {
     auto&& this_entity = world.entity_mut(ctx.entity);
     std::optional children_to_remove =
         this_entity.get<Children>().transform([&](const Children& children) { return children._entities; });
-    children_to_remove.transform([&](std::unordered_set<Entity>& children) {
+    if (!children_to_remove) return;
+    world.command_queue().push([children = std::move(*children_to_remove)](World& deferred) {
         for (auto child_entity : children) {
-            world.entity_mut(child_entity).despawn();
+            if (auto child = deferred.get_entity_mut(child_entity)) child->despawn();
         }
-        return true;
     });
 }
 
