@@ -213,8 +213,8 @@ EPIX_EXPORT struct RenderCubemapVisibleEntities {
  *  and the reason the two are shaped differently: a cube has six fixed faces, while a
  *  cascade count is a setting. */
 EPIX_EXPORT struct RenderCascadesVisibleEntities {
-    /** @brief View entity to the visible entities of each of its cascade frusta. */
-    ::epix::render::sync_world::MainEntityHashMap<std::vector<RenderVisibleMeshEntities>> entities;
+    /** @brief Render-world view entity to the visible entities of each cascade frustum. */
+    std::unordered_map<ecs::Entity, std::vector<RenderVisibleMeshEntities>> entities;
 };
 
 /** @brief A point light as extracted for the render world (Bevy
@@ -387,8 +387,8 @@ EPIX_EXPORT EPIX_API void prepare_view_lights(
  *  re-keyed from main-world views to their render entities through the mapper, exactly as
  *  Bevy re-keys them.
  *
- *  `sun_disk_angular_size` and `sun_disk_intensity` are written as zero because this port has
- *  no `SunDisk` component; zero is also what Bevy writes for a light without one. */
+ *  SunDisk is not ported, so its fields are currently zero. Bevy uses its EARTH defaults
+ *  when that component is absent; this remains a separate extraction mismatch. */
 EPIX_EXPORT EPIX_API void extract_lights(
     ecs::Commands commands,
     app::Extract<ecs::Query<ecs::Item<ecs::Entity, const ::epix::render::sync_world::RenderEntity&,

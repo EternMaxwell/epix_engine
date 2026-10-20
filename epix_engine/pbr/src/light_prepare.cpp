@@ -277,8 +277,8 @@ void despawn_entities(ecs::Commands commands, const std::vector<ecs::Entity>& en
 /** @brief Re-key one view's visible meshes into the render world (Bevy
  *  `create_render_visible_mesh_entities`, `render/light.rs:600-614`).
  *
- *  An entity the sync did not map becomes the default entity, which is Bevy's
- *  `Entity::PLACEHOLDER`. */
+ *  An unmapped mesh keeps its main identity and receives the named placeholder,
+ *  not a default-constructed Entity, in its render slot. */
 namespace {
 RenderVisibleMeshEntities create_render_visible_mesh_entities(
     app::Extract<ecs::Query<ecs::Item<const ::epix::render::sync_world::RenderEntity&>>>& mapper,
@@ -287,7 +287,7 @@ RenderVisibleMeshEntities create_render_visible_mesh_entities(
     rendered.entities.reserve(visible_entities.entities.size());
     for (const ecs::Entity visible : visible_entities.entities) {
         const auto row = mapper.get(visible);
-        rendered.entities.emplace_back(row.has_value() ? std::get<0>(*row).id() : ecs::Entity{},
+        rendered.entities.emplace_back(row.has_value() ? std::get<0>(*row).id() : ecs::Entity::PLACEHOLDER,
                                        ::epix::render::sync_world::MainEntity(visible));
     }
     return rendered;
@@ -439,24 +439,23 @@ void extract_lights(
         }
 
         // The main world keys these by view; the render world keys them by the view's render
-        // entity, and a view the sync did not map is skipped - Bevy breaks out of its loop.
+        // entity. Each map stops at its first unsynced view, as Bevy's loops do.
         std::unordered_map<ecs::Entity, std::vector<Cascade>> extracted_cascades;
         for (const auto& [view_entity, view_cascades] : cascades.cascades) {
             const auto row = mapper.get(view_entity);
-            if (!row.has_value()) continue;
+            if (!row.has_value()) break;
             extracted_cascades.emplace(std::get<0>(*row).id(), view_cascades);
         }
         std::unordered_map<ecs::Entity, std::vector<::epix::camera::Frustum>> extracted_frusta;
         for (const auto& [view_entity, view_frusta] : frusta.frusta) {
             const auto row = mapper.get(view_entity);
-            if (!row.has_value()) continue;
+            if (!row.has_value()) break;
             extracted_frusta.emplace(std::get<0>(*row).id(), view_frusta);
         }
-        ::epix::render::sync_world::MainEntityHashMap<std::vector<RenderVisibleMeshEntities>>
-            cascade_visible_entities;
+        std::unordered_map<ecs::Entity, std::vector<RenderVisibleMeshEntities>> cascade_visible_entities;
         for (const auto& [view_entity, per_cascade] : visible_entities.entities) {
             const auto row = mapper.get(view_entity);
-            if (!row.has_value()) continue;
+            if (!row.has_value()) break;
             std::vector<RenderVisibleMeshEntities> rendered;
             rendered.reserve(per_cascade.size());
             for (const ::epix::camera::VisibleMeshEntities& list : per_cascade) {

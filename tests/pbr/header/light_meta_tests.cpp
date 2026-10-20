@@ -13,6 +13,8 @@
 #include <numbers>
 #include <optional>
 #include <span>
+#include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -51,9 +53,11 @@ static_assert(std::is_same_v<WithLight,
  *  site. */
 TEST(LightMeta, CascadesVisibleEntitiesArePerViewAndPerCascade) {
     RenderCascadesVisibleEntities cascades;
+    using Expected = std::unordered_map<ecs::Entity, std::vector<RenderVisibleMeshEntities>>;
+    static_assert(std::is_same_v<decltype(cascades.entities), Expected>);
     EXPECT_TRUE(cascades.entities.empty());
 
-    const auto view = render::sync_world::MainEntity{ecs::Entity::from_index(3)};
+    const auto view = ecs::Entity::from_index(3);
     cascades.entities[view].push_back(RenderVisibleMeshEntities{});
     ASSERT_EQ(cascades.entities.size(), 1u) << "one entry per view, not per cascade";
     ASSERT_EQ(cascades.entities.at(view).size(), 1u) << "and one list per cascade inside it";

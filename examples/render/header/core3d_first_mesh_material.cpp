@@ -120,6 +120,44 @@ void probe_shadow_allocation(Query<Item<const pbr::ViewShadowBindings&>> views, 
     }
 }
 
+// Observe the real extracted maps without changing the unlit scene. This checks
+// render-world view identities and independent cascade payloads, not shadow drawing.
+void probe_directional_extraction(
+    Query<Item<const pbr::ExtractedDirectionalLight&, const pbr::RenderCascadesVisibleEntities&>> lights,
+    Query<const render::view::ExtractedView&> views, Local<unsigned> frames, Local<bool> logged) {
+    if (*logged || ++*frames < 3) return;
+    std::size_t light_count = 0, cascade_views = 0, frustum_views = 0, visible_views = 0;
+    std::size_t cascade_count = 0, frustum_count = 0, list_count = 0;
+    bool valid = true;
+    for (auto&& [light, visible] : lights.iter()) {
+        ++light_count;
+        for (const auto& [view, cascades] : light.cascades) {
+            ++cascade_views;
+            cascade_count += cascades.size();
+            valid = views.contains(view) && valid;
+        }
+        for (const auto& [view, frusta] : light.frusta) {
+            ++frustum_views;
+            frustum_count += frusta.size();
+            valid = views.contains(view) && valid;
+        }
+        for (const auto& [view, lists] : visible.entities) {
+            ++visible_views;
+            list_count += lists.size();
+            valid = views.contains(view) && valid;
+        }
+    }
+    if (light_count == 0 || cascade_views == 0 || frustum_views == 0 || visible_views == 0) return;
+    spdlog::info("[first-mesh] Directional extraction: lights={} cascade_views={} frustum_views={} visible_views={} "
+                 "cascades={} frusta={} visible_lists={} render_keys_valid={}",
+                 light_count, cascade_views, frustum_views, visible_views,
+                 cascade_count, frustum_count, list_count, valid);
+    if (!valid || light_count != 2 || cascade_views != 2 || frustum_views != 2 || visible_views != 2 ||
+        cascade_count != 5 || frustum_count != 5 || list_count != 5)
+        spdlog::error("[first-mesh] Directional extraction lost a view mapping or cascade payload");
+    *logged = true;
+}
+
 }  // namespace
 
 int main() {
@@ -165,5 +203,9 @@ int main() {
         render::Render, into(probe_shadow_allocation)
                             .in_set(render::RenderSystems::PrepareBindGroups)
                             .set_name("probe shared shadow allocation"));
+    app.get_sub_app_mut(render::Render)->get().add_systems(
+        render::Render, into(probe_directional_extraction)
+                            .in_set(render::RenderSystems::PrepareBindGroups)
+                            .set_name("probe extracted directional identities"));
     app.run();
 }
