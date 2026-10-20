@@ -74,6 +74,18 @@ struct SeededRng {
 /** @brief Marks the marker that follows the chunk's bottom row. */
 struct MovePlayer {};
 
+/** @brief Observe the queued-insert boundary without changing the scene. */
+struct ProbeTilemapInsertOrder {
+    static void on_add(World& world, HookContext context) {
+        world.command_queue().push([entity = context.entity](World& deferred) {
+            const auto row = deferred.entity(entity);
+            spdlog::info("[tilemap_chunk] Deferred render bundle: mesh_before={} material_before={}",
+                         row.contains<mesh::Mesh2d>(),
+                         row.contains<sprite_render::MeshMaterial2d<sprite_render::TilemapChunkMaterial>>());
+        });
+    }
+};
+
 /** @brief One tile per tileset image, in the order the fragment shader indexes
  *  them. */
 constexpr std::array<glm::vec3, kTileCount> kTileColors{{
@@ -224,7 +236,8 @@ struct TilemapChunkVisualTestPlugin {
         const sprite_render::TilemapChunk chunk{.chunk_size        = kChunkSize,
                                                 .tile_display_size = kTileDisplaySize,
                                                 .tileset           = tileset};
-        world.spawn(chunk, sprite_render::TilemapChunkTileData{.tiles = make_tile_data(rng)}, UpdateTimer{});
+        world.spawn(chunk, sprite_render::TilemapChunkTileData{.tiles = make_tile_data(rng)},
+                    UpdateTimer{}, ProbeTilemapInsertOrder{});
         world.insert_resource(rng);
 
         // Two markers: the one at tile (0, 0) moves along the chunk's bottom row

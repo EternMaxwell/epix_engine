@@ -47,8 +47,8 @@ epix::sprite_render::TilemapChunkTileData::tile_data_from_tile_pos(glm::uvec2 ti
 
 void epix::sprite_render::TilemapChunk::on_insert(epix::ecs::World& world, epix::ecs::HookContext ctx) {
     // Bevy `on_insert_tilemap_chunk` (`tilemap_chunk/mod.rs:126-183`). The hook
-    // copies everything it needs out of the entity before touching the world
-    // again: the insert below moves the entity between archetypes.
+    // copies the chunk values before accessing resources, then defers the
+    // generated bundle until the enclosing insertion's hooks have finished.
     const auto entity = ctx.entity;
 
     const auto maybe_chunk = world.entity_mut(entity).get<TilemapChunk>();
@@ -84,49 +84,26 @@ void epix::sprite_render::TilemapChunk::on_insert(epix::ecs::World& world, epix:
         for (const auto& tile : tile_data.tiles) packed_tile_data.emplace_back(tile);
     }
 
-    const auto tile_data_image = make_chunk_tile_data_image(chunk.chunk_size, packed_tile_data);
+    auto tile_data_image = make_chunk_tile_data_image(chunk.chunk_size, packed_tile_data);
 
+    const auto& cache = world.resource<TilemapChunkMeshCache>();
     const auto mesh_size = chunk.chunk_size * chunk.tile_display_size;
     // Bevy reads the cache but never fills it, so a chunk of a new size always
     // allocates a mesh here (`tilemap_chunk/mod.rs:162-167`).
-    const auto find_cached_mesh = [&world, &mesh_size]() -> std::optional<assets::Handle<mesh::Mesh>> {
-        const auto cache = world.get_resource<TilemapChunkMeshCache>();
-        if (!cache) return std::nullopt;
-        const auto it = cache->get().meshes.find(mesh_size);
-        if (it == cache->get().meshes.end()) return std::nullopt;
-        return it->second;
-    };
-
-    auto mesh = find_cached_mesh();
-    if (!mesh) {
-        auto meshes = world.get_resource_mut<assets::Assets<mesh::Mesh>>();
-        if (!meshes) {
-            spdlog::error("[tilemap] Assets<Mesh> not found; the tilemap chunk mesh was not created.");
-            return;
-        }
-        mesh = meshes->get().emplace(mesh::Mesh(mesh::Rectangle::from_size(glm::vec2(mesh_size))));
-    }
-
-    auto images = world.get_resource_mut<assets::Assets<image::Image>>();
-    if (!images) {
-        spdlog::error("[tilemap] Assets<Image> not found; the tile data image was not created.");
-        return;
-    }
-    const auto tile_data = images->get().emplace(tile_data_image);
-
-    auto materials = world.get_resource_mut<assets::Assets<TilemapChunkMaterial>>();
-    if (!materials) {
-        spdlog::error("[tilemap] Assets<TilemapChunkMaterial> not found; the tilemap chunk material was not created.");
-        return;
-    }
-    const auto material = materials->get().emplace(
+    const auto mesh_handle = [&]() -> assets::Handle<mesh::Mesh> {
+        const auto it = cache.meshes.find(mesh_size);
+        if (it != cache.meshes.end()) return it->second;
+        return world.resource_mut<assets::Assets<mesh::Mesh>>().emplace(
+            mesh::Mesh(mesh::Rectangle::from_size(glm::vec2(mesh_size))));
+    }();
+    const auto tile_data = world.resource_mut<assets::Assets<image::Image>>().emplace(std::move(tile_data_image));
+    const auto material = world.resource_mut<assets::Assets<TilemapChunkMaterial>>().emplace(
         TilemapChunkMaterial{.mode = chunk.alpha_mode, .tileset = chunk.tileset, .tile_data = tile_data});
 
-    // Bevy defers this through `world.commands()` because it holds a
-    // `DeferredWorld`; Epix's hooks receive the world itself and the archetype
-    // machinery re-reads the entity's location after a hook, so the insert can
-    // run directly, as `Parent::on_insert` does.
-    world.entity_mut(entity).insert(mesh::Mesh2d{*mesh}, MeshMaterial2d<TilemapChunkMaterial>{material});
+    // Preserve command/hook order and keep structural changes out of the active
+    // bundle insertion. EntityCommands owns both handles until application.
+    ecs::Commands commands{ecs::Deferred{world.command_queue()}, world.entities()};
+    commands.entity(entity).insert(mesh::Mesh2d{mesh_handle}, MeshMaterial2d<TilemapChunkMaterial>{material});
 }
 
 void epix::sprite_render::update_tilemap_chunk_indices(

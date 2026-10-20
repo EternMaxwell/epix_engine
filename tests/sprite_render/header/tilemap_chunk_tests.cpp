@@ -18,6 +18,7 @@
 #include <cstring>
 #include <limits>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -446,4 +447,159 @@ TEST(TilemapChunkMeshCacheHash, HashesEqualChunkSizesEqually) {
     const sprite_render::TilemapChunkMeshCacheHash hash;
     EXPECT_EQ(hash(glm::uvec2(64u, 64u)), hash(glm::uvec2(64u, 64u)));
     EXPECT_NE(hash(glm::uvec2(64u, 64u)), hash(glm::uvec2(64u, 32u)));
+}
+
+namespace {
+sprite_render::TilemapChunk valid_chunk(const Handle<image::Image>& tileset) {
+    return {.chunk_size = {2u, 2u}, .tile_display_size = {8u, 8u}, .tileset = tileset};
+}
+
+struct TilemapQueuedObservation {
+    bool ran = false;
+    bool mesh_present = false;
+    bool material_present = false;
+    std::optional<AssetId<mesh::Mesh>> mesh_id;
+    std::optional<AssetId<sprite_render::TilemapChunkMaterial>> material_id;
+};
+
+struct QueueBeforeTilemapInsert {
+    static void on_add(ecs::World& world, ecs::HookContext context) {
+        world.command_queue().push([entity = context.entity](ecs::World& deferred) {
+            auto& observation = deferred.resource_mut<TilemapQueuedObservation>();
+            const auto row = deferred.entity(entity);
+            observation.ran = true;
+            observation.mesh_present = row.contains<mesh::Mesh2d>();
+            observation.material_present =
+                row.contains<sprite_render::MeshMaterial2d<sprite_render::TilemapChunkMaterial>>();
+            if (const auto mesh = row.get<mesh::Mesh2d>()) observation.mesh_id = mesh->get().handle.id();
+            if (const auto material = row.get<
+                    sprite_render::MeshMaterial2d<sprite_render::TilemapChunkMaterial>>())
+                observation.material_id = material->get().id();
+        });
+    }
+};
+
+template<class Missing>
+void expect_required_tilemap_resource_failure() {
+    using Meshes = Assets<mesh::Mesh>;
+    using Images = Assets<image::Image>;
+    using Materials = Assets<sprite_render::TilemapChunkMaterial>;
+    auto app = make_tilemap_app();
+    const auto tileset = make_tileset(app);
+    const auto meshes_before = app.resource<Meshes>().len();
+    const auto images_before = app.resource<Images>().len();
+    const auto materials_before = app.resource<Materials>().len();
+    ASSERT_TRUE(app.world_mut().remove_resource<Missing>());
+
+    bool failed = false;
+    try {
+        app.world_mut().spawn(valid_chunk(tileset), sprite_render::TilemapChunkTileData{.tiles = make_tiles()});
+    } catch (const std::runtime_error& error) {
+        failed = true;
+        EXPECT_NE(std::string(error.what()).find(std::string(epix::meta::type_id<Missing>().name())),
+                  std::string::npos);
+    }
+    EXPECT_TRUE(failed) << "The registered hook must propagate the missing required resource";
+
+    // Bevy performs these lookups in source order, not as an eager all-resource
+    // preflight: a later failure leaves the earlier asset additions intact.
+    if constexpr (!std::same_as<Missing, Meshes>) {
+        constexpr auto added = std::same_as<Missing, Images> || std::same_as<Missing, Materials> ? 1u : 0u;
+        EXPECT_EQ(app.resource<Meshes>().len(), meshes_before + added);
+    }
+    if constexpr (!std::same_as<Missing, Images>) {
+        constexpr auto added = std::same_as<Missing, Materials> ? 1u : 0u;
+        EXPECT_EQ(app.resource<Images>().len(), images_before + added);
+    }
+    if constexpr (!std::same_as<Missing, Materials>) {
+        EXPECT_EQ(app.resource<Materials>().len(), materials_before);
+    }
+}
+}  // namespace
+
+TEST(TilemapChunkHookContract, GeneratedBundleFollowsEarlierQueuedObservation) {
+    auto app = make_tilemap_app();
+    const auto tileset = make_tileset(app);
+    app.world_mut().init_resource<TilemapQueuedObservation>();
+    // Every on_add hook runs before the on_insert phase, independently of
+    // component iteration order. Bevy queues the render bundle in on_insert.
+    const auto entity = app.world_mut().spawn(
+        QueueBeforeTilemapInsert{}, valid_chunk(tileset),
+        sprite_render::TilemapChunkTileData{.tiles = make_tiles()}).id();
+    const auto& observation = app.resource<TilemapQueuedObservation>();
+    ASSERT_TRUE(observation.ran);
+    EXPECT_FALSE(observation.mesh_present);
+    EXPECT_FALSE(observation.material_present);
+    EXPECT_TRUE(app.world().entity(entity).contains<mesh::Mesh2d>());
+    EXPECT_TRUE(app.world().entity(entity).contains<
+                sprite_render::MeshMaterial2d<sprite_render::TilemapChunkMaterial>>());
+}
+
+TEST(TilemapChunkHookContract, MissingMeshCachePropagatesRequiredResourceFailure) {
+    expect_required_tilemap_resource_failure<sprite_render::TilemapChunkMeshCache>();
+}
+
+TEST(TilemapChunkHookContract, ReplacementKeepsOldGeneratedBundleUntilEarlierQueuedObservation) {
+    auto app = make_tilemap_app();
+    const auto tileset = make_tileset(app);
+    const auto entity = app.world_mut().spawn(valid_chunk(tileset),
+        sprite_render::TilemapChunkTileData{.tiles = make_tiles()}).id();
+    const auto mesh_before = app.world().entity(entity).get<mesh::Mesh2d>()->get().handle.id();
+    const auto material_before = app.world().entity(entity).get<
+        sprite_render::MeshMaterial2d<sprite_render::TilemapChunkMaterial>>()->get().id();
+    app.world_mut().init_resource<TilemapQueuedObservation>();
+
+    app.world_mut().entity_mut(entity).insert(QueueBeforeTilemapInsert{}, valid_chunk(tileset));
+    const auto& observation = app.resource<TilemapQueuedObservation>();
+    ASSERT_TRUE(observation.ran);
+    ASSERT_TRUE(observation.mesh_id);
+    ASSERT_TRUE(observation.material_id);
+    EXPECT_EQ(*observation.mesh_id, mesh_before);
+    EXPECT_EQ(*observation.material_id, material_before);
+    EXPECT_NE(app.world().entity(entity).get<mesh::Mesh2d>()->get().handle.id(), mesh_before);
+    EXPECT_NE(app.world().entity(entity).get<
+              sprite_render::MeshMaterial2d<sprite_render::TilemapChunkMaterial>>()->get().id(), material_before);
+    // Match Bevy's deliberately unfilled cache, even for an unchanged chunk size.
+    EXPECT_TRUE(app.resource<sprite_render::TilemapChunkMeshCache>().meshes.empty());
+}
+TEST(TilemapChunkHookContract, MissingMeshAssetsPropagatesRequiredResourceFailure) {
+    expect_required_tilemap_resource_failure<Assets<mesh::Mesh>>();
+}
+TEST(TilemapChunkHookContract, MissingImageAssetsPropagatesRequiredResourceFailure) {
+    expect_required_tilemap_resource_failure<Assets<image::Image>>();
+}
+TEST(TilemapChunkHookContract, MissingMaterialAssetsPropagatesRequiredResourceFailure) {
+    expect_required_tilemap_resource_failure<Assets<sprite_render::TilemapChunkMaterial>>();
+}
+
+TEST(TilemapChunkHookContract, MissingTileDataReturnsBeforeRequiredResourceAccess) {
+    ecs::World world{2};
+    std::optional<ecs::Entity> entity;
+    EXPECT_NO_THROW(entity = world.spawn(sprite_render::TilemapChunk{.chunk_size = {2u, 2u}}).id());
+    ASSERT_TRUE(entity);
+    EXPECT_FALSE(world.entity(*entity).contains<mesh::Mesh2d>());
+}
+
+TEST(TilemapChunkHookContract, InvalidTileDataLengthReturnsBeforeRequiredResourceAccess) {
+    ecs::World world{2};
+    std::optional<ecs::Entity> entity;
+    EXPECT_NO_THROW(entity = world.spawn(sprite_render::TilemapChunk{.chunk_size = {2u, 2u}},
+        sprite_render::TilemapChunkTileData{.tiles = {std::nullopt}}).id());
+    ASSERT_TRUE(entity);
+    EXPECT_FALSE(world.entity(*entity).contains<mesh::Mesh2d>());
+}
+
+TEST(TilemapChunkHookContract, CachedMeshDoesNotRequireMeshAssets) {
+    auto app = make_tilemap_app();
+    const auto tileset = make_tileset(app);
+    const auto cached = app.resource_mut<Assets<mesh::Mesh>>().emplace(
+        mesh::Mesh(mesh::Rectangle::from_size(glm::vec2{16.0f, 16.0f})));
+    app.resource_mut<sprite_render::TilemapChunkMeshCache>().meshes.emplace(glm::uvec2{16u, 16u}, cached);
+    ASSERT_TRUE(app.world_mut().remove_resource<Assets<mesh::Mesh>>());
+    std::optional<ecs::Entity> entity;
+    EXPECT_NO_THROW(entity = app.world_mut().spawn(valid_chunk(tileset),
+        sprite_render::TilemapChunkTileData{.tiles = make_tiles()}).id());
+    ASSERT_TRUE(entity);
+    ASSERT_TRUE(app.world().entity(*entity).get<mesh::Mesh2d>());
+    EXPECT_EQ(app.world().entity(*entity).get<mesh::Mesh2d>()->get().handle.id(), cached.id());
 }
