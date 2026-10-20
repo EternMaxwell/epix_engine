@@ -25,7 +25,9 @@ namespace epix::pbr {
  *
  *  Only a modified resource is inspected, as Bevy's `is_changed()` gate does, and
  *  nothing is written when the size is already a power of two. Bevy's
- *  `next_power_of_two` maps `0` to `1`, which the loop here reproduces. */
+ *  `next_power_of_two` maps `0` to `1`. Overflow throws in the checked (non-NDEBUG)
+ *  profile and wraps to zero in the unchecked profile, matching Rust's default
+ *  debug/release behavior without an unbounded doubling loop. */
 EPIX_EXPORT EPIX_API void validate_shadow_map_size(ecs::ResMut<DirectionalLightShadowMap> shadow_map);
 
 /** @brief Rebuild the cubemap frusta of every point light that needs it (Bevy

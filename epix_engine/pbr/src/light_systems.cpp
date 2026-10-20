@@ -1,9 +1,12 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <bit>
 #include <cstddef>
 #include <epix/pbr/light_systems.hpp>
 #include <glm/glm.hpp>
+#include <limits>
+#include <stdexcept>
 // `compMax` is a gtx extension, and glm guards those behind this define.
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/component_wise.hpp>
@@ -34,14 +37,27 @@ void validate_shadow_map_size(ecs::ResMut<DirectionalLightShadowMap> shadow_map)
     // changed resource is inspected, and a size that is not a power of two is
     // corrected with a warning - unstable cascade positioning is the reason the
     // requirement exists. `0` is not a power of two either, and rounds up to 1.
-    auto& size = (*shadow_map).size;
-    if (!shadow_map.is_modified() || (size != 0 && (size & (size - 1)) == 0)) return;
+    if (!shadow_map.is_modified()) return;
+    const std::size_t size = shadow_map.get().size;
+    if (std::has_single_bit(size)) return;
 
-    std::size_t power_of_two = 1;
-    while (power_of_two < size) power_of_two <<= 1;
+    // Rust next_power_of_two maps zero to one. Overflow panics in its checked
+    // profile and wraps to zero in its unchecked profile; never shift by the
+    // type width or let an unsigned doubling loop wrap and run forever.
+    const int shift = std::bit_width(size == 0 ? std::size_t{0} : size - 1);
+    std::size_t power_of_two;
+    if (shift == std::numeric_limits<std::size_t>::digits) {
+#ifndef NDEBUG
+        throw std::overflow_error("DirectionalLightShadowMap next power of two overflows size_t");
+#else
+        power_of_two = 0;
+#endif
+    } else {
+        power_of_two = std::size_t{1} << shift;
+    }
     spdlog::warn("[pbr] Non-power-of-two DirectionalLightShadowMap sizes are not supported, correcting {} to {}", size,
                  power_of_two);
-    size = power_of_two;
+    shadow_map.get_mut().size = power_of_two;
 }
 
 void update_point_light_frusta(ecs::Res<GlobalVisibleClusterableObjects> global_lights,

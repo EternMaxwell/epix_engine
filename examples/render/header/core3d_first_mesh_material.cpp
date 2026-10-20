@@ -12,6 +12,7 @@
 #include <epix/mesh.hpp>
 #include <epix/pbr/directional_light.hpp>
 #include <epix/pbr/light_meta.hpp>
+#include <epix/pbr/light_systems.hpp>
 #include <epix/pbr/material.hpp>
 #include <epix/pbr/material_plugin.hpp>
 #include <epix/pbr/pbr_plugin.hpp>
@@ -26,6 +27,7 @@
 #include <expected>
 #include <cmath>
 #include <numbers>
+#include <optional>
 #include <spdlog/spdlog.h>
 #include <string_view>
 #include <tuple>
@@ -213,6 +215,35 @@ void probe_clustered_extraction(Query<Item<Entity, const pbr::ExtractedPointLigh
     *logged = true;
 }
 
+struct ShadowMapTickProbe {
+    std::optional<ecs::Tick> last;
+    unsigned samples = 0;
+    unsigned stable = 0;
+    bool logged = false;
+};
+
+void observe_shadow_map_ticks(std::string_view world, const Res<pbr::DirectionalLightShadowMap>& map,
+                             ShadowMapTickProbe& state) {
+    if (state.logged) return;
+    if (state.last && *state.last == map.last_modified()) ++state.stable;
+    else state.stable = 0;
+    state.last = map.last_modified();
+    if (++state.samples < 12) return;
+    spdlog::info("[first-mesh] Shadow resource ticks: world={} samples={} stable_samples={} size={}",
+                 world, state.samples, state.stable, map->size);
+    if (state.stable != 11 || map->size != 64)
+        spdlog::error("[first-mesh] Unchanged shadow-map resource acquired a spurious write in {}", world);
+    state.logged = true;
+}
+
+void probe_main_shadow_map_ticks(Res<pbr::DirectionalLightShadowMap> map, Local<ShadowMapTickProbe> state) {
+    observe_shadow_map_ticks("main", map, *state);
+}
+
+void probe_render_shadow_map_ticks(Res<pbr::DirectionalLightShadowMap> map, Local<ShadowMapTickProbe> state) {
+    observe_shadow_map_ticks("render", map, *state);
+}
+
 }  // namespace
 
 int main() {
@@ -254,6 +285,9 @@ int main() {
     // Only allocation is exercised here; small maps avoid paying for unused shadow passes.
     app.world_mut().insert_resource(pbr::PointLightShadowMap{.size = 64});
     app.world_mut().insert_resource(pbr::DirectionalLightShadowMap{.size = 64});
+    app.add_systems(PostUpdate, into(probe_main_shadow_map_ticks)
+                                   .after(ecs::SystemSetLabel(pbr::validate_shadow_map_size))
+                                   .set_name("probe main shadow resource ticks"));
     app.get_sub_app_mut(render::Render)->get().add_systems(
         render::Render, into(probe_shadow_allocation)
                             .in_set(render::RenderSystems::PrepareBindGroups)
@@ -270,5 +304,9 @@ int main() {
         render::Render, into(probe_clustered_extraction)
                             .in_set(render::RenderSystems::PrepareBindGroups)
                             .set_name("probe point and spot extraction"));
+    app.get_sub_app_mut(render::Render)->get().add_systems(
+        render::Render, into(probe_render_shadow_map_ticks)
+                            .in_set(render::RenderSystems::PrepareBindGroups)
+                            .set_name("probe render shadow resource ticks"));
     app.run();
 }
