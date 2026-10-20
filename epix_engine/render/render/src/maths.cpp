@@ -9,6 +9,10 @@
 namespace epix::render {
 
 namespace {
+struct MathsShaderLibraryHandle {
+    assets::Handle<shader::Shader> shader;
+};
+
 
 /**
  * @brief Slang representation of pinned Bevy 0.18 `bevy_render/src/maths.wgsl`.
@@ -182,11 +186,10 @@ void register_maths_shader(ecs::World& world) {
     registry->get().insert_asset_static(
         MATHS_SHADER_PATH,
         std::span<const std::byte>(reinterpret_cast<const std::byte*>(kMathsShader.data()), kMathsShader.size()));
-    // The handle is held for the process, as `ViewPlugin` holds its own: the
-    // shader processor resolves `import epix.maths;` through the asset server, so
-    // the module has to stay loaded.
-    static auto permanent =
-        server->get().load<epix::shader::Shader>(std::string("embedded://") + std::string(MATHS_SHADER_PATH));
+    // Each app must load and retain its own library, as Bevy's macro does on
+    // every invocation. A process static would only load it for the first app.
+    world.insert_resource(MathsShaderLibraryHandle{
+        server->get().load<epix::shader::Shader>(std::string("embedded://") + std::string(MATHS_SHADER_PATH))});
 }
 
 }  // namespace epix::render

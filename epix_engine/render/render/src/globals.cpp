@@ -11,6 +11,10 @@ using namespace epix::app;
 using namespace epix::render;
 
 namespace {
+struct GlobalsShaderLibraryHandle {
+    epix::assets::Handle<epix::shader::Shader> shader;
+};
+
 /** @brief Slang counterpart of Bevy's `bevy_render::globals` shader library
  * (`globals.wgsl`), which Bevy loads with `load_shader_library!` in
  * `GlobalsPlugin`.
@@ -50,8 +54,8 @@ void register_globals_shader_library(App& app) {
     auto bytes = std::span<const std::byte>(reinterpret_cast<const std::byte*>(kGlobalsShaderSlang.data()),
                                             kGlobalsShaderSlang.size());
     registry->get().insert_asset_static("epix/shaders/globals.slang", bytes);
-    auto handle           = server->get().load<epix::shader::Shader>("embedded://epix/shaders/globals.slang");
-    static auto permanent = std::move(handle);
+    world.insert_resource(GlobalsShaderLibraryHandle{
+        server->get().load<epix::shader::Shader>("embedded://epix/shaders/globals.slang")});
 }
 }  // namespace
 

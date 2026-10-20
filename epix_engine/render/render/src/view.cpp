@@ -14,6 +14,11 @@ using namespace epix::render::view;
 using namespace epix::render::camera;
 
 namespace {
+struct ViewShaderLibraryHandles {
+    epix::assets::Handle<epix::shader::Shader> wgsl;
+    epix::assets::Handle<epix::shader::Shader> slang;
+};
+
 constexpr std::string_view kViewShaderWgsl = R"(
 #define_import_path epix::view
 
@@ -392,17 +397,18 @@ void view::ViewPlugin::attach(App& app) {
                 auto bytes = std::span<const std::byte>(reinterpret_cast<const std::byte*>(kViewShaderWgsl.data()),
                                                         kViewShaderWgsl.size());
                 registry->get().insert_asset_static("epix/shaders/view.wgsl", bytes);
-                auto handle = server->get().load<epix::shader::Shader>("embedded://epix/shaders/view.wgsl");
-                static auto permanent_wgsl = std::move(handle);
             }
             // Slang
             {
                 auto bytes = std::span<const std::byte>(reinterpret_cast<const std::byte*>(kViewShaderSlang.data()),
                                                         kViewShaderSlang.size());
                 registry->get().insert_asset_static("epix/shaders/view.slang", bytes);
-                auto handle = server->get().load<epix::shader::Shader>("embedded://epix/shaders/view.slang");
-                static auto permanent_slang = std::move(handle);
             }
+            // Strong ownership belongs to this app, not the first app created
+            // in the process. Shader consumers need not keep library handles.
+            world.insert_resource(ViewShaderLibraryHandles{
+                server->get().load<epix::shader::Shader>("embedded://epix/shaders/view.wgsl"),
+                server->get().load<epix::shader::Shader>("embedded://epix/shaders/view.slang")});
         } else {
             spdlog::warn(
                 "[render.view] EmbeddedAssetRegistry or AssetServer not available. View shader library not "
