@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 
 #include <epix/core_graph/core3d.hpp>
 #include <epix/ecs.hpp>
@@ -407,6 +408,23 @@ void prepare_view_lights(ecs::Commands commands,
 
 void extract_lights(
     ecs::Commands commands,
+    app::Extract<ecs::Res<PointLightShadowMap>> point_light_shadow_map,
+    app::Extract<ecs::Res<DirectionalLightShadowMap>> directional_light_shadow_map,
+    app::Extract<ecs::Res<GlobalVisibleClusterableObjects>> global_visible_clusterable,
+    ecs::Query<ecs::Entity, ecs::Filter<ecs::With<RenderCubemapVisibleEntities>,
+                                      ecs::With<ExtractedPointLight>>> previous_point_lights,
+    ecs::Query<ecs::Entity, ecs::Filter<ecs::With<RenderVisibleMeshEntities>,
+                                      ecs::With<ExtractedPointLight>>> previous_spot_lights,
+    app::Extract<ecs::Query<ecs::Item<ecs::Entity, const ::epix::render::sync_world::RenderEntity&,
+                                     const PointLight&, const ::epix::camera::CubemapVisibleEntities&,
+                                     const ::epix::transform::GlobalTransform&,
+                                     const ::epix::camera::ViewVisibility&, const ::epix::camera::CubemapFrusta&,
+                                     ecs::Opt<const VolumetricLight&>>>> point_lights,
+    app::Extract<ecs::Query<ecs::Item<ecs::Entity, const ::epix::render::sync_world::RenderEntity&,
+                                     const SpotLight&, const ::epix::camera::VisibleMeshEntities&,
+                                     const ::epix::transform::GlobalTransform&,
+                                     const ::epix::camera::ViewVisibility&, const ::epix::camera::Frustum&,
+                                     ecs::Opt<const VolumetricLight&>>>> spot_lights,
     app::Extract<ecs::Query<ecs::Item<ecs::Entity, const ::epix::render::sync_world::RenderEntity&,
                                      const DirectionalLight&, const ::epix::camera::CascadesVisibleEntities&,
                                      const Cascades&, const CascadeShadowConfig&,
@@ -414,23 +432,87 @@ void extract_lights(
                                      const ::epix::transform::GlobalTransform&,
                                      const ::epix::camera::ViewVisibility&,
                                      ecs::Opt<const ::epix::camera::RenderLayers&>,
+                                     ecs::Opt<const VolumetricLight&>,
                                      ecs::Has<::epix::render::experimental::OcclusionCulling>,
-                                     ecs::Opt<const SunDisk&>>>>
+                                     ecs::Opt<const SunDisk&>>, ecs::Without<SpotLight>>>
         directional_lights,
-    app::Extract<ecs::Res<PointLightShadowMap>> point_light_shadow_map,
-    app::Extract<ecs::Res<DirectionalLightShadowMap>> directional_light_shadow_map,
-    app::Extract<ecs::Query<ecs::Item<const ::epix::render::sync_world::RenderEntity&>>> mapper) {
-    // Bevy extracts the two shadow-map resources here rather than through
-    // `ExtractResourcePlugin`, so the prepare that reads them cannot race the extraction
-    // (`render/light.rs:376-382`). Bevy guards its copy with `is_changed`; this port copies
-    // every frame, which is the same value each time.
-    commands.insert_resource(*point_light_shadow_map);
-    commands.insert_resource(*directional_light_shadow_map);
+    app::Extract<ecs::Query<ecs::Item<const ::epix::render::sync_world::RenderEntity&>>> mapper,
+    ecs::Local<std::size_t> previous_point_lights_len,
+    ecs::Local<std::size_t> previous_spot_lights_len) {
+    // Keep extraction and resource change detection together (Bevy light.rs:346-353).
+    if (point_light_shadow_map.is_modified()) commands.insert_resource(*point_light_shadow_map);
+    if (directional_light_shadow_map.is_modified()) commands.insert_resource(*directional_light_shadow_map);
 
-    // Bevy `extract_lights`' directional arm (`render/light.rs:505-599`). The point and spot
-    // arms share one `ExtractedPointLight` and are the next slice.
+    std::vector<std::pair<ecs::Entity, RenderCubemapVisibleEntities>> clear_points;
+    for (const auto entity : previous_point_lights.iter()) clear_points.emplace_back(entity, RenderCubemapVisibleEntities{});
+    commands.try_insert_batch(std::move(clear_points));
+    std::vector<std::pair<ecs::Entity, RenderVisibleMeshEntities>> clear_spots;
+    for (const auto entity : previous_spot_lights.iter()) clear_spots.emplace_back(entity, RenderVisibleMeshEntities{});
+    commands.try_insert_batch(std::move(clear_spots));
+
+    // Every bundle argument is an owned rvalue: deferred insertion must not retain
+    // references to loop-local records or source-world query rows.
+    using PointBundle = decltype(ecs::make_bundle(ExtractedPointLight{}, RenderCubemapVisibleEntities{},
+        ::epix::camera::CubemapFrusta{}, ::epix::render::sync_world::MainEntity(ecs::Entity::PLACEHOLDER)));
+    using SpotBundle = decltype(ecs::make_bundle(ExtractedPointLight{}, RenderVisibleMeshEntities{},
+        ::epix::camera::Frustum{}, ::epix::render::sync_world::MainEntity(ecs::Entity::PLACEHOLDER)));
+    const float point_texel_size = 2.0f / static_cast<float>(point_light_shadow_map->size);
+    std::vector<std::pair<ecs::Entity, PointBundle>> point_values;
+    point_values.reserve(*previous_point_lights_len);
+    for (const auto entity : global_visible_clusterable->entities) {
+        const auto row = point_lights.get(entity);
+        if (!row) continue;
+        const auto& [main_entity, render_entity, light, visible, transform, visibility, frusta, volumetric] = *row;
+        if (!visibility.get()) continue;
+        RenderCubemapVisibleEntities rendered;
+        for (std::size_t face = 0; face < 6; ++face)
+            rendered.get_mut(face) = create_render_visible_mesh_entities(mapper, visible.get(face));
+        point_values.emplace_back(render_entity.id(), ecs::make_bundle(
+            ExtractedPointLight{
+                .color = light.color.linear().vec4(),
+                .intensity = light.intensity / (4.0f * std::numbers::pi_v<float>),
+                .range = light.range, .radius = light.radius, .transform = transform.matrix,
+                .shadows_enabled = light.shadows_enabled,
+                .shadow_depth_bias = light.shadow_depth_bias,
+                .shadow_normal_bias = light.shadow_normal_bias * point_texel_size * std::numbers::sqrt2_v<float>,
+                .shadow_map_near_z = light.shadow_map_near_z, .spot_light_angles = std::nullopt,
+                .volumetric = volumetric.has_value(), .soft_shadows_enabled = false,
+                .affects_lightmapped_mesh_diffuse = light.affects_lightmapped_mesh_diffuse},
+            std::move(rendered), ::epix::camera::CubemapFrusta(frusta),
+            ::epix::render::sync_world::MainEntity(main_entity)));
+    }
+    *previous_point_lights_len = point_values.size();
+    commands.try_insert_batch(std::move(point_values));
+
+    std::vector<std::pair<ecs::Entity, SpotBundle>> spot_values;
+    spot_values.reserve(*previous_spot_lights_len);
+    for (const auto entity : global_visible_clusterable->entities) {
+        const auto row = spot_lights.get(entity);
+        if (!row) continue;
+        const auto& [main_entity, render_entity, light, visible, transform, visibility, frustum, volumetric] = *row;
+        if (!visibility.get()) continue;
+        const float texel_size = 2.0f * std::tan(light.outer_angle) /
+                                 static_cast<float>(directional_light_shadow_map->size);
+        spot_values.emplace_back(render_entity.id(), ecs::make_bundle(
+            ExtractedPointLight{
+                .color = light.color.linear().vec4(),
+                .intensity = light.intensity / (4.0f * std::numbers::pi_v<float>),
+                .range = light.range, .radius = light.radius, .transform = transform.matrix,
+                .shadows_enabled = light.shadows_enabled,
+                .shadow_depth_bias = light.shadow_depth_bias,
+                .shadow_normal_bias = light.shadow_normal_bias * texel_size * std::numbers::sqrt2_v<float>,
+                .shadow_map_near_z = light.shadow_map_near_z,
+                .spot_light_angles = std::pair{light.inner_angle, light.outer_angle},
+                .volumetric = volumetric.has_value(), .soft_shadows_enabled = false,
+                .affects_lightmapped_mesh_diffuse = light.affects_lightmapped_mesh_diffuse},
+            create_render_visible_mesh_entities(mapper, visible), ::epix::camera::Frustum(frustum),
+            ::epix::render::sync_world::MainEntity(main_entity)));
+    }
+    *previous_spot_lights_len = spot_values.size();
+    commands.try_insert_batch(std::move(spot_values));
+
     for (auto&& [main_entity, render_entity, light, visible_entities, cascades, cascade_config, frusta, transform,
-                 view_visibility, layers, occlusion_culling, sun_disk] : directional_lights.iter()) {
+                 view_visibility, layers, volumetric, occlusion_culling, sun_disk] : directional_lights.iter()) {
         const ecs::Entity render_light = render_entity.id();
         if (!view_visibility.get()) {
             // Bevy removes the pair rather than leaving a stale light on an invisible one.
@@ -472,7 +554,7 @@ void extract_lights(
                         .illuminance                      = light.illuminance,
                         .transform                        = transform.matrix,
                         .shadows_enabled                  = light.shadows_enabled,
-                        .volumetric                       = false,
+                        .volumetric                       = volumetric.has_value(),
                         .affects_lightmapped_mesh_diffuse = light.affects_lightmapped_mesh_diffuse,
                         .shadow_depth_bias                = light.shadow_depth_bias,
                         // Bevy scales the normal bias by sqrt(2), for the worst-case

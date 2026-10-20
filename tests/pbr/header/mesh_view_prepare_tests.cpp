@@ -20,6 +20,7 @@
 #include <epix/time.hpp>
 #include <epix/window.hpp>
 #include <exception>
+#include <cmath>
 #include <memory>
 #include <numbers>
 #include <thread>
@@ -239,6 +240,63 @@ TEST_F(MeshViewPrepare, ClusterUploadSortsPointAndSpotLightsAndRebuildsIndices) 
     EXPECT_EQ(meta.entity_to_index.size(), 1u);
     EXPECT_FALSE(meta.entity_to_index.contains(point_entity));
     EXPECT_EQ(meta.entity_to_index.at(spot_entity), 0u);
+}
+
+TEST_F(MeshViewPrepare, MainWorldPointAndSpotExtractionReachesUploadedGpuRecords) {
+    auto& main = app.world_mut();
+    world->insert_resource(epix::app::ExtractedWorld{main});
+    main.insert_resource(pbr::PointLightShadowMap{.size = 32});
+    main.insert_resource(pbr::DirectionalLightShadowMap{.size = 64});
+    const auto point_render = world->spawn().id();
+    const auto spot_render = world->spawn().id();
+    epix::camera::ViewVisibility visible;
+    visible.set_visible();
+    glm::mat4 point_transform{1.0f}, spot_transform{1.0f};
+    point_transform[3] = {-2, 1, 3, 1};
+    spot_transform[3] = {2, 2, 4, 1};
+    const auto point = main.spawn(
+        pbr::PointLight{.intensity = 80.0f * std::numbers::pi_v<float>, .range = 2.0f,
+            .radius = 0.25f, .shadow_normal_bias = 0.7f},
+        render::sync_world::RenderEntity{point_render}, epix::transform::GlobalTransform{point_transform},
+        visible, epix::camera::CubemapFrusta{}, epix::camera::CubemapVisibleEntities{}).id();
+    const auto spot = main.spawn(
+        pbr::SpotLight{.intensity = 120.0f * std::numbers::pi_v<float>, .range = 4.0f,
+            .radius = 0.5f, .shadow_normal_bias = 1.3f, .outer_angle = 0.6f, .inner_angle = 0.2f},
+        render::sync_world::RenderEntity{spot_render}, epix::transform::GlobalTransform{spot_transform},
+        visible, epix::camera::Frustum{}, epix::camera::VisibleMeshEntities{}, pbr::VolumetricLight{}).id();
+    main.insert_resource(pbr::GlobalVisibleClusterableObjects{.entities = {point, spot}});
+    run(pbr::extract_lights);
+    auto& meta = world->resource_mut<pbr::GlobalClusterableObjectMeta>();
+    auto& storage = std::get<pbr::GpuClusterableObjects::Storage>(meta.gpu_clusterable_objects.buffer);
+    storage.add_usages(wgpu::BufferUsage::eCopySrc);
+    run(pbr::prepare_clusterable_objects);
+    ASSERT_EQ(meta.entity_to_index.size(), 2u);
+    ASSERT_EQ(meta.entity_to_index.at(point_render), 0u);
+    ASSERT_EQ(meta.entity_to_index.at(spot_render), 1u);
+    ASSERT_TRUE(meta.gpu_clusterable_objects.binding());
+    const auto& buffer = meta.gpu_clusterable_objects.binding()->get();
+    const auto point_gpu = read_gpu_value<pbr::GpuClusterableObject>(buffer);
+    const auto spot_gpu = read_gpu_value<pbr::GpuClusterableObject>(buffer, sizeof(pbr::GpuClusterableObject));
+    EXPECT_EQ(point_gpu.color_inverse_square_range, (glm::vec4{20, 20, 20, 0.25f}));
+    EXPECT_EQ(spot_gpu.color_inverse_square_range, (glm::vec4{30, 30, 30, 0.0625f}));
+    EXPECT_EQ(point_gpu.position_radius, (glm::vec4{-2, 1, 3, 0.25f}));
+    EXPECT_EQ(spot_gpu.position_radius, (glm::vec4{2, 2, 4, 0.5f}));
+    EXPECT_FLOAT_EQ(point_gpu.shadow_normal_bias, 0.7f * (2.0f / 32.0f) * std::numbers::sqrt2_v<float>);
+    EXPECT_FLOAT_EQ(spot_gpu.shadow_normal_bias,
+        1.3f * (2.0f * std::tan(0.6f) / 64.0f) * std::numbers::sqrt2_v<float>);
+    EXPECT_NEAR(spot_gpu.spot_light_tan_angle, std::tan(0.6f), 1e-6f);
+    EXPECT_EQ(point_gpu.flags & pbr::PointLightFlags::VOLUMETRIC, 0u);
+    // Bevy preserves marker presence at extraction, but the GPU volumetric
+    // flag additionally requires shadows. Check both states through real upload.
+    EXPECT_TRUE(world->entity(spot_render).get<pbr::ExtractedPointLight>()->get().volumetric);
+    EXPECT_EQ(spot_gpu.flags & pbr::PointLightFlags::VOLUMETRIC, 0u);
+    main.entity_mut(spot).get_mut<pbr::SpotLight>()->get_mut().shadows_enabled = true;
+    run(pbr::extract_lights);
+    run(pbr::prepare_clusterable_objects);
+    const auto shadowed_spot = read_gpu_value<pbr::GpuClusterableObject>(
+        meta.gpu_clusterable_objects.binding()->get(), sizeof(pbr::GpuClusterableObject));
+    EXPECT_NE(shadowed_spot.flags & pbr::PointLightFlags::VOLUMETRIC, 0u);
+    EXPECT_NE(shadowed_spot.flags & pbr::PointLightFlags::SHADOWS_ENABLED, 0u);
 }
 
 TEST_F(MeshViewPrepare, BuildsAllThreeGroupsForViewsWithoutProbes) {

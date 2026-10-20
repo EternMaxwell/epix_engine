@@ -15,6 +15,8 @@
 #include <epix/pbr/material.hpp>
 #include <epix/pbr/material_plugin.hpp>
 #include <epix/pbr/pbr_plugin.hpp>
+#include <epix/pbr/point_light.hpp>
+#include <epix/pbr/spot_light.hpp>
 #include <epix/render.hpp>
 #include <epix/sdl3/core.hpp>
 #include <epix/sdl3/render.hpp>
@@ -22,6 +24,8 @@
 #include <epix/transform.hpp>
 #include <epix/window.hpp>
 #include <expected>
+#include <cmath>
+#include <numbers>
 #include <spdlog/spdlog.h>
 #include <string_view>
 #include <tuple>
@@ -88,6 +92,12 @@ void spawn_scene(Commands cmd, ResMut<Assets<mesh::Mesh>> meshes, ResMut<Assets<
               pbr::CascadeShadowConfig{.bounds = {5.0f, 20.0f, 100.0f}},
               pbr::SunDisk{.angular_size = 0.0235f, .intensity = 4.25f},
               transform::Transform::from_xyz(0.0f, 3.0f, 0.0f));
+    // Exercise real cluster membership and point/spot extraction. These lights
+    // do not cast shadows or change the default magenta, unlit mesh shader.
+    cmd.spawn(pbr::PointLight{.intensity = 80.0f * std::numbers::pi_v<float>},
+              transform::Transform::from_xyz(-1.0f, 1.0f, 1.0f));
+    cmd.spawn(pbr::SpotLight{.intensity = 120.0f * std::numbers::pi_v<float>},
+              transform::Transform::from_xyz(2.0f, 1.0f, 2.0f));
     cmd.spawn(mesh::Mesh3d{mesh_handle}, pbr::MeshMaterial3d<FlatMaterial>{material_handle}, transform::Transform{});
 }
 
@@ -178,6 +188,31 @@ void probe_sun_disks(Query<const pbr::ExtractedDirectionalLight&> lights,
     *logged = true;
 }
 
+void probe_clustered_extraction(Query<Item<Entity, const pbr::ExtractedPointLight&>> lights,
+                                Res<pbr::GlobalClusterableObjectMeta> meta,
+                                Local<unsigned> frames, Local<bool> logged) {
+    if (*logged || ++*frames < 3) return;
+    std::size_t points = 0, spots = 0;
+    bool mapped = true, units = true;
+    for (auto&& [entity, light] : lights.iter()) {
+        mapped = meta->entity_to_index.contains(entity) && mapped;
+        if (light.spot_light_angles) {
+            ++spots;
+            units = std::abs(light.intensity - 30.0f) < 1e-5f && units;
+        } else {
+            ++points;
+            units = std::abs(light.intensity - 20.0f) < 1e-5f && units;
+        }
+    }
+    if (points == 0 && spots == 0) return;
+    const bool uploaded = meta->gpu_clusterable_objects.binding().has_value();
+    spdlog::info("[first-mesh] Clustered extraction: points={} spots={} render_indices_valid={} "
+                 "power_units_valid={} gpu_buffer_ready={}", points, spots, mapped, units, uploaded);
+    if (points != 1 || spots != 1 || !mapped || !units || !uploaded)
+        spdlog::error("[first-mesh] Point/spot extraction did not reach the global GPU upload");
+    *logged = true;
+}
+
 }  // namespace
 
 int main() {
@@ -231,5 +266,9 @@ int main() {
         render::Render, into(probe_sun_disks)
                             .in_set(render::RenderSystems::PrepareBindGroups)
                             .set_name("probe extracted sun disk parameters"));
+    app.get_sub_app_mut(render::Render)->get().add_systems(
+        render::Render, into(probe_clustered_extraction)
+                            .in_set(render::RenderSystems::PrepareBindGroups)
+                            .set_name("probe point and spot extraction"));
     app.run();
 }

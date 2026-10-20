@@ -70,6 +70,7 @@ class SunDiskExtraction : public testing::Test {
         render_world.insert_resource(epix::app::ExtractedWorld{main_world});
         main_world.init_resource<pbr::PointLightShadowMap>();
         main_world.init_resource<pbr::DirectionalLightShadowMap>();
+        main_world.init_resource<pbr::GlobalVisibleClusterableObjects>();
         render_light = render_world.spawn().id();
         camera::ViewVisibility visibility;
         visibility.set_visible();

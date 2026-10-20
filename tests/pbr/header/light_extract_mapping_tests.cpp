@@ -34,6 +34,7 @@ class DirectionalExtraction : public testing::Test {
         render_world.insert_resource(epix::app::ExtractedWorld{main_world});
         main_world.init_resource<pbr::PointLightShadowMap>();
         main_world.init_resource<pbr::DirectionalLightShadowMap>();
+        main_world.init_resource<pbr::GlobalVisibleClusterableObjects>();
         // Main and render IDs must differ: otherwise an unrekeyed map can pass.
         for (int index = 0; index < 16; ++index) render_world.spawn();
         render_light = render_world.spawn().id();

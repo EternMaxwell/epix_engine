@@ -29,6 +29,8 @@
 #include <epix/pbr/gpu_lights.hpp>
 #include <epix/pbr/light_cluster.hpp>
 #include <epix/pbr/point_light.hpp>
+#include <epix/pbr/spot_light.hpp>
+#include <epix/pbr/volumetric.hpp>
 
 namespace epix::pbr {
 
@@ -380,17 +382,33 @@ EPIX_EXPORT EPIX_API void prepare_view_lights(
 /** @brief Copy each visible light into the render world for the lighting prepare (Bevy
  *  `extract_lights`, `render/light.rs:280-599`).
  *
- *  Bevy extracts point, spot and directional lights in one system; this port has the
- *  directional half so far - the two light types that share `ExtractedPointLight` are the
- *  next slice of PBR-81. A light whose view visibility is false is removed from the render
- *  world rather than skipped, and the per-view cascade, frustum and visible-entity maps are
- *  re-keyed from main-world views to their render entities through the mapper, exactly as
- *  Bevy re-keys them.
+ *  Point/spot lights are gathered from GlobalVisibleClusterableObjects and require
+ *  view visibility. Their previous visible lists are cleared even when they leave
+ *  that set, without deleting their extracted light records. Directional lights
+ *  instead remove their extracted pair when invisible. View maps and visible meshes
+ *  are re-keyed through render identities, retaining placeholder mesh slots.
  *
  *  SunDisk is optional; an absent component uses SunDisk::EARTH. Its parameters
  *  are extracted unchanged and do not alter the light's illuminance or shadows. */
 EPIX_EXPORT EPIX_API void extract_lights(
     ecs::Commands commands,
+    app::Extract<ecs::Res<PointLightShadowMap>> point_light_shadow_map,
+    app::Extract<ecs::Res<DirectionalLightShadowMap>> directional_light_shadow_map,
+    app::Extract<ecs::Res<GlobalVisibleClusterableObjects>> global_visible_clusterable,
+    ecs::Query<ecs::Entity, ecs::Filter<ecs::With<RenderCubemapVisibleEntities>,
+                                      ecs::With<ExtractedPointLight>>> previous_point_lights,
+    ecs::Query<ecs::Entity, ecs::Filter<ecs::With<RenderVisibleMeshEntities>,
+                                      ecs::With<ExtractedPointLight>>> previous_spot_lights,
+    app::Extract<ecs::Query<ecs::Item<ecs::Entity, const ::epix::render::sync_world::RenderEntity&,
+                                     const PointLight&, const ::epix::camera::CubemapVisibleEntities&,
+                                     const ::epix::transform::GlobalTransform&,
+                                     const ::epix::camera::ViewVisibility&, const ::epix::camera::CubemapFrusta&,
+                                     ecs::Opt<const VolumetricLight&>>>> point_lights,
+    app::Extract<ecs::Query<ecs::Item<ecs::Entity, const ::epix::render::sync_world::RenderEntity&,
+                                     const SpotLight&, const ::epix::camera::VisibleMeshEntities&,
+                                     const ::epix::transform::GlobalTransform&,
+                                     const ::epix::camera::ViewVisibility&, const ::epix::camera::Frustum&,
+                                     ecs::Opt<const VolumetricLight&>>>> spot_lights,
     app::Extract<ecs::Query<ecs::Item<ecs::Entity, const ::epix::render::sync_world::RenderEntity&,
                                      const DirectionalLight&, const ::epix::camera::CascadesVisibleEntities&,
                                      const Cascades&, const CascadeShadowConfig&,
@@ -398,12 +416,13 @@ EPIX_EXPORT EPIX_API void extract_lights(
                                      const ::epix::transform::GlobalTransform&,
                                      const ::epix::camera::ViewVisibility&,
                                      ecs::Opt<const ::epix::camera::RenderLayers&>,
+                                     ecs::Opt<const VolumetricLight&>,
                                      ecs::Has<::epix::render::experimental::OcclusionCulling>,
-                                     ecs::Opt<const SunDisk&>>>>
+                                     ecs::Opt<const SunDisk&>>, ecs::Without<SpotLight>>>
         directional_lights,
-    app::Extract<ecs::Res<PointLightShadowMap>> point_light_shadow_map,
-    app::Extract<ecs::Res<DirectionalLightShadowMap>> directional_light_shadow_map,
-    app::Extract<ecs::Query<ecs::Item<const ::epix::render::sync_world::RenderEntity&>>> mapper);
+    app::Extract<ecs::Query<ecs::Item<const ::epix::render::sync_world::RenderEntity&>>> mapper,
+    ecs::Local<std::size_t> previous_point_lights_len,
+    ecs::Local<std::size_t> previous_spot_lights_len);
 
 /** @brief The clusterable form of an extracted point light (Bevy
  *  `point_or_spot_light_to_clusterable`, `light.rs:2362-2375`): a point light
