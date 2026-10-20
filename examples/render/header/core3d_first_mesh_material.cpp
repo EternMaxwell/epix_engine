@@ -86,6 +86,7 @@ void spawn_scene(Commands cmd, ResMut<Assets<mesh::Mesh>> meshes, ResMut<Assets<
               transform::Transform::from_xyz(0.0f, 4.0f, 0.0f));
     cmd.spawn(pbr::DirectionalLight{.shadows_enabled = true},
               pbr::CascadeShadowConfig{.bounds = {5.0f, 20.0f, 100.0f}},
+              pbr::SunDisk{.angular_size = 0.0235f, .intensity = 4.25f},
               transform::Transform::from_xyz(0.0f, 3.0f, 0.0f));
     cmd.spawn(mesh::Mesh3d{mesh_handle}, pbr::MeshMaterial3d<FlatMaterial>{material_handle}, transform::Transform{});
 }
@@ -158,6 +159,25 @@ void probe_directional_extraction(
     *logged = true;
 }
 
+// The unlit scene has no atmosphere. Observe the extracted parameters only;
+// this is not evidence of visible sun-disk or atmospheric rendering.
+void probe_sun_disks(Query<const pbr::ExtractedDirectionalLight&> lights,
+                     Local<unsigned> frames, Local<bool> logged) {
+    if (*logged || ++*frames < 3) return;
+    std::size_t count = 0, earth = 0, custom = 0;
+    for (const auto& light : lights.iter()) {
+        ++count;
+        if (light.sun_disk_angular_size == pbr::SunDisk::EARTH.angular_size &&
+            light.sun_disk_intensity == pbr::SunDisk::EARTH.intensity) ++earth;
+        if (light.sun_disk_angular_size == 0.0235f && light.sun_disk_intensity == 4.25f) ++custom;
+    }
+    if (count == 0) return;
+    spdlog::info("[first-mesh] Sun disk extraction: lights={} earth_defaults={} custom={}", count, earth, custom);
+    if (count != 2 || earth != 1 || custom != 1)
+        spdlog::error("[first-mesh] Sun disk extraction lost default or custom parameters");
+    *logged = true;
+}
+
 }  // namespace
 
 int main() {
@@ -207,5 +227,9 @@ int main() {
         render::Render, into(probe_directional_extraction)
                             .in_set(render::RenderSystems::PrepareBindGroups)
                             .set_name("probe extracted directional identities"));
+    app.get_sub_app_mut(render::Render)->get().add_systems(
+        render::Render, into(probe_sun_disks)
+                            .in_set(render::RenderSystems::PrepareBindGroups)
+                            .set_name("probe extracted sun disk parameters"));
     app.run();
 }

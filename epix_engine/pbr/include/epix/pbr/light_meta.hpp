@@ -387,8 +387,8 @@ EPIX_EXPORT EPIX_API void prepare_view_lights(
  *  re-keyed from main-world views to their render entities through the mapper, exactly as
  *  Bevy re-keys them.
  *
- *  SunDisk is not ported, so its fields are currently zero. Bevy uses its EARTH defaults
- *  when that component is absent; this remains a separate extraction mismatch. */
+ *  SunDisk is optional; an absent component uses SunDisk::EARTH. Its parameters
+ *  are extracted unchanged and do not alter the light's illuminance or shadows. */
 EPIX_EXPORT EPIX_API void extract_lights(
     ecs::Commands commands,
     app::Extract<ecs::Query<ecs::Item<ecs::Entity, const ::epix::render::sync_world::RenderEntity&,
@@ -398,7 +398,8 @@ EPIX_EXPORT EPIX_API void extract_lights(
                                      const ::epix::transform::GlobalTransform&,
                                      const ::epix::camera::ViewVisibility&,
                                      ecs::Opt<const ::epix::camera::RenderLayers&>,
-                                     ecs::Has<::epix::render::experimental::OcclusionCulling>>>>
+                                     ecs::Has<::epix::render::experimental::OcclusionCulling>,
+                                     ecs::Opt<const SunDisk&>>>>
         directional_lights,
     app::Extract<ecs::Res<PointLightShadowMap>> point_light_shadow_map,
     app::Extract<ecs::Res<DirectionalLightShadowMap>> directional_light_shadow_map,

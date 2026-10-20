@@ -105,4 +105,27 @@ EPIX_EXPORT struct DirectionalLightTexture {
     }
 };
 
+/** @brief Parameters of the visible solar disk (Bevy `SunDisk`,
+ *  `bevy_light/src/directional_light.rs:256-293`). Requires a directional light,
+ *  but changes neither its illuminance nor its shadows. Bevy displays the disk
+ *  through an atmosphere on a 3D camera; that renderer is not yet ported here. */
+EPIX_EXPORT struct SunDisk {
+    /** @brief Apparent angular diameter in radians. */
+    float angular_size = 0.00930842f;
+    /** @brief Disk brightness multiplier; zero hides only the visible disk. */
+    float intensity = 1.0f;
+
+    /** @brief Mean apparent solar diameter at 1 AU, with physical intensity. */
+    EPIX_EXPORT static const SunDisk EARTH;
+    /** @brief Hide the disk without disabling scattering or illumination. */
+    EPIX_EXPORT static const SunDisk OFF;
+
+    static void register_required_components(ecs::RequiredComponentsRegistrator& registrator) {
+        registrator.template register_required<DirectionalLight>([] { return DirectionalLight{}; });
+    }
+};
+
+inline constexpr SunDisk SunDisk::EARTH{0.00930842f, 1.0f};
+inline constexpr SunDisk SunDisk::OFF{0.0f, 0.0f};
+
 }  // namespace epix::pbr

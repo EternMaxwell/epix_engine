@@ -423,10 +423,14 @@ TEST_F(MeshViewPrepare, UploadedViewLightsUseBackDirectionAndOrthographicCluster
     volumetric.volumetric      = true;
     volumetric.shadows_enabled = true;
     volumetric.illuminance     = 10.0f;
+    volumetric.sun_disk_angular_size = 0.0235f;
+    volumetric.sun_disk_intensity = 4.25f;
     world->spawn(volumetric);
     pbr::ExtractedDirectionalLight ordinary;
     ordinary.illuminance  = 2.0f;
     ordinary.transform[2] = {0, 0, 2, 0};
+    ordinary.sun_disk_angular_size = pbr::SunDisk::EARTH.angular_size;
+    ordinary.sun_disk_intensity = pbr::SunDisk::EARTH.intensity;
     world->spawn(ordinary);
     run(pbr::prepare_view_lights);
     const auto offset = world->entity(view).get<pbr::ViewLightsUniformOffset>();
@@ -436,6 +440,10 @@ TEST_F(MeshViewPrepare, UploadedViewLightsUseBackDirectionAndOrthographicCluster
     EXPECT_EQ(uploaded.directional_lights[0].color, glm::vec4{2.0f});
     EXPECT_EQ(uploaded.directional_lights[0].dir_to_light, (glm::vec3{0, 0, 1}));
     EXPECT_EQ(uploaded.directional_lights[1].color, glm::vec4{10.0f});
+    EXPECT_FLOAT_EQ(uploaded.directional_lights[0].sun_disk_angular_size, 0.00930842f);
+    EXPECT_FLOAT_EQ(uploaded.directional_lights[0].sun_disk_intensity, 1.0f);
+    EXPECT_FLOAT_EQ(uploaded.directional_lights[1].sun_disk_angular_size, 0.0235f);
+    EXPECT_FLOAT_EQ(uploaded.directional_lights[1].sun_disk_intensity, 4.25f);
     EXPECT_EQ(uploaded.cluster_factors, (glm::vec4{0.0625f, 0.0625f, -1.0f, -0.5f}));
 }
 

@@ -414,7 +414,8 @@ void extract_lights(
                                      const ::epix::transform::GlobalTransform&,
                                      const ::epix::camera::ViewVisibility&,
                                      ecs::Opt<const ::epix::camera::RenderLayers&>,
-                                     ecs::Has<::epix::render::experimental::OcclusionCulling>>>>
+                                     ecs::Has<::epix::render::experimental::OcclusionCulling>,
+                                     ecs::Opt<const SunDisk&>>>>
         directional_lights,
     app::Extract<ecs::Res<PointLightShadowMap>> point_light_shadow_map,
     app::Extract<ecs::Res<DirectionalLightShadowMap>> directional_light_shadow_map,
@@ -429,7 +430,7 @@ void extract_lights(
     // Bevy `extract_lights`' directional arm (`render/light.rs:505-599`). The point and spot
     // arms share one `ExtractedPointLight` and are the next slice.
     for (auto&& [main_entity, render_entity, light, visible_entities, cascades, cascade_config, frusta, transform,
-                 view_visibility, layers, occlusion_culling] : directional_lights.iter()) {
+                 view_visibility, layers, occlusion_culling, sun_disk] : directional_lights.iter()) {
         const ecs::Entity render_light = render_entity.id();
         if (!view_visibility.get()) {
             // Bevy removes the pair rather than leaving a stale light on an invisible one.
@@ -464,6 +465,7 @@ void extract_lights(
             cascade_visible_entities.emplace(std::get<0>(*row).id(), std::move(rendered));
         }
 
+        const SunDisk& disk = sun_disk.has_value() ? sun_disk->get() : SunDisk::EARTH;
         commands.entity(render_light)
             .insert(ExtractedDirectionalLight{
                         .color                            = light.color.linear().vec4(),
@@ -483,8 +485,8 @@ void extract_lights(
                                                                    : ::epix::camera::RenderLayers::layer(0),
                         .soft_shadow_size      = std::nullopt,
                         .occlusion_culling     = occlusion_culling,
-                        .sun_disk_angular_size = 0.0f,
-                        .sun_disk_intensity    = 0.0f},
+                        .sun_disk_angular_size = disk.angular_size,
+                        .sun_disk_intensity    = disk.intensity},
                     RenderCascadesVisibleEntities{.entities = std::move(cascade_visible_entities)},
                     ::epix::render::sync_world::MainEntity(main_entity));
     }
