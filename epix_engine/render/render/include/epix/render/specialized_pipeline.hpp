@@ -120,14 +120,14 @@ struct SpecializedMeshPipelines {
         ::epix::mesh::MeshVertexBufferLayoutRef layout;
         typename S::Key key;
 
-        bool operator==(const MeshLayoutKey& other) const noexcept {
-            return layout == other.layout && key == other.key;
-        }
+        // Infer the guarantee from the key: user comparisons may throw.
+        bool operator==(const MeshLayoutKey&) const = default;
     };
 
     /** @brief Hasher for `MeshLayoutKey`. */
     struct MeshLayoutKeyHash {
-        std::size_t operator()(const MeshLayoutKey& value) const noexcept {
+        std::size_t operator()(const MeshLayoutKey& value) const
+            noexcept(noexcept(std::hash<typename S::Key>{}(value.key))) {
             std::size_t hash = std::hash<::epix::mesh::MeshVertexBufferLayoutRef>{}(value.layout);
             hash ^= std::hash<typename S::Key>{}(value.key) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
             return hash;

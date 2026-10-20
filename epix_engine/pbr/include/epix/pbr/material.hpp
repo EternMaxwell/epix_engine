@@ -227,7 +227,7 @@ struct MaterialPipelineKey {
     /** @brief The material's own bind-group data (Bevy `M::Data`). */
     typename MaterialData<M>::type bind_group_data{};
 
-    bool operator==(const MaterialPipelineKey&) const noexcept = default;
+    bool operator==(const MaterialPipelineKey&) const = default;
 };
 
 namespace detail {
@@ -250,7 +250,7 @@ struct ErasedMaterialKeyModel final : ErasedMaterialKeyConcept {
     }
     bool equals(const ErasedMaterialKeyConcept& other) const override {
         const auto* typed = dynamic_cast<const ErasedMaterialKeyModel*>(&other);
-        return typed != nullptr && typed->value == value;
+        return typed != nullptr && value == typed->value;
     }
 };
 }  // namespace detail
@@ -302,8 +302,8 @@ EPIX_EXPORT class ErasedMaterialKey {
         return typed->value;
     }
 
-    /** @brief Bevy derives `PartialEq`, comparing the type and then the value. */
-    bool operator==(const ErasedMaterialKey& other) const noexcept {
+    /** @brief Bevy's PartialEq implementation compares type, then left and right payloads. */
+    bool operator==(const ErasedMaterialKey& other) const {
         return m_type_id == other.m_type_id && m_value->equals(*other.m_value);
     }
 
@@ -335,7 +335,7 @@ EPIX_EXPORT struct ErasedMaterialPipelineKey {
     /** @brief The material type this key belongs to (Bevy's `type_id`). */
     meta::type_index type_id{};
 
-    bool operator==(const ErasedMaterialPipelineKey&) const noexcept = default;
+    bool operator==(const ErasedMaterialPipelineKey&) const = default;
 };
 
 EPIX_EXPORT struct MaterialPipeline;

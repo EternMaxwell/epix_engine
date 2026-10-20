@@ -37,7 +37,7 @@ struct Material2dKey {
     /** @brief The material's own bind-group data (Bevy `M::Data`). */
     typename Material2dData<M>::type bind_group_data{};
 
-    bool operator==(const Material2dKey&) const noexcept = default;
+    bool operator==(const Material2dKey&) const = default;
 };
 
 /** @brief A 2D material (Bevy `Material2d`, `material.rs:131-167`).  A material
@@ -477,7 +477,8 @@ struct epix::render::RenderAsset<epix::sprite_render::PreparedMaterial2d<M>> {
 
 template <typename M>
 struct std::hash<epix::sprite_render::Material2dKey<M>> {
-    std::size_t operator()(const epix::sprite_render::Material2dKey<M>& key) const noexcept {
+    std::size_t operator()(const epix::sprite_render::Material2dKey<M>& key) const
+        noexcept(noexcept(std::hash<typename epix::sprite_render::Material2dData<M>::type>{}(key.bind_group_data))) {
         std::size_t seed = std::hash<epix::sprite_render::Mesh2dPipelineKey>{}(key.mesh_key);
         seed ^= std::hash<typename epix::sprite_render::Material2dData<M>::type>{}(key.bind_group_data) +
                 0x9e3779b97f4a7c15ull + (seed << 6) + (seed >> 2);
