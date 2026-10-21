@@ -58,6 +58,11 @@ EPIX_EXPORT struct EPIX_API Commands {
     EntityCommands spawn_empty() noexcept;
     /** @brief Get an EntityCommands handle for an existing entity. */
     EntityCommands entity(Entity entity) noexcept;
+    /** @brief Resolve a living or reserved entity without queuing a failing command. */
+    std::optional<EntityCommands> get_entity(Entity entity) noexcept;
+    /** @brief Reserve and queue a World-owned observer entity. */
+    template<valid_observer_system F>
+    EntityCommands add_observer(F&& callback);
     /** @brief Spawn a new entity with the given components. */
     template <typename... Ts>
     EntityCommands spawn(Ts&&... components)
@@ -285,6 +290,16 @@ EPIX_EXPORT struct EntityCommands {
     Entity entity;
     Commands commands;
 };
+inline std::optional<EntityCommands> Commands::get_entity(Entity entity) noexcept {
+    if (!entities->contains(entity)) return std::nullopt;
+    return EntityCommands{entity, *this};
+}
+
+template<valid_observer_system F>
+inline EntityCommands Commands::add_observer(F&& callback) {
+    return spawn(Observer::create(std::forward<F>(callback)));
+}
+
 template <typename... Ts>
 inline EntityCommands Commands::spawn(Ts&&... components)
     requires(std::movable<std::decay_t<Ts>> && ...)

@@ -109,6 +109,16 @@ concept system_param = requires(World& world, SystemMeta& meta, FilteredAccessSe
 EPIX_EXPORT template <typename T>
 concept readonly_system_param = system_param<T> && SystemParam<T>::readonly;
 
+namespace internal {
+// Optional metadata keeps existing user-defined SystemParam specializations
+// compatible. Wrappers inherit/compose this property before initialization.
+template <system_param T>
+inline constexpr bool system_param_is_exclusive = [] {
+    if constexpr (requires { SystemParam<T>::exclusive; }) return bool(SystemParam<T>::exclusive);
+    else return false;
+}();
+}  // namespace internal
+
 /** @brief SystemParam adapter for read-only parameters, accepting const World&. */
 EPIX_EXPORT template <readonly_system_param T>
 struct ROSystemParam : SystemParam<T> {
@@ -127,6 +137,7 @@ struct ROSystemParam : SystemParam<T> {
 
 /** @brief Base struct providing default no-op implementations for SystemParam static methods. */
 EPIX_EXPORT struct ParamBase {
+    static constexpr bool exclusive = false;
     static void init_access(const auto&, SystemMeta&, FilteredAccessSet&, const World&) noexcept {}
     static void new_archetype(auto&, const Archetype&, SystemMeta&) noexcept {}
     static void apply(auto&, const SystemMeta&, World&) noexcept {}
@@ -172,8 +183,10 @@ struct SystemParam<World&> : ParamBase {
     using State                    = std::tuple<>;
     using Item                     = World&;
     static constexpr bool readonly = false;
+    static constexpr bool exclusive = true;
     static State init_state(World&) { return {}; }
     static void init_access(const State&, SystemMeta& meta, FilteredAccessSet& access, const World&) {
+        meta.flags = (SystemFlagBits)(meta.flags | SystemFlagBits::EXCLUSIVE);
         FilteredAccess world_access = FilteredAccess::matches_everything();
         world_access.access_mut().write_all();
         //? Are we going to disallow any access to the world when this param is used?
@@ -234,6 +247,7 @@ struct SystemParam<std::tuple<T...>> {
     using State                    = std::tuple<typename SystemParam<T>::State...>;
     using Item                     = std::tuple<typename SystemParam<T>::Item...>;
     static constexpr bool readonly = (SystemParam<T>::readonly && ...);
+    static constexpr bool exclusive = (internal::system_param_is_exclusive<T> || ...);
     static State init_state(World& world) { return State(SystemParam<T>::init_state(world)...); }
     static void init_access(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World& world) {
         []<std::size_t... I>(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World& world,

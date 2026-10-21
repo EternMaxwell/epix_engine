@@ -651,12 +651,10 @@ EPIX_EXPORT EPIX_API std::vector<DirectionalShadowSlice> directional_shadow_slic
  *  `bevy_pbr/src/render/light.rs:610-613`): per light, a map from a view entity to the
  *  light-view entities that view renders this light through.
  *
- *  **The attach hook is owed, not forgotten.** Bevy attaches it with an `On<Add>` hook over
- *  both light types, and the comment on that hook in Bevy reads "TODO: using required
- *  component" - so this type is the `PBR-892` family appearing in Bevy itself. This port
- *  follows Bevy's *current* shape rather than the TODO's, and registers the hook together
- *  with the per-view spawning that is the only thing that reads this map, so a light never
- *  carries an empty map that nothing fills. */
+ *  PbrPlugin installs Bevy's Add/Remove observers in its render world. Adding
+ *  either extracted light type inserts an empty map; replacing that type does
+ *  not. Removing either type removes the map, whose Remove observer retires
+ *  the stored view entities. Per-view population belongs to light preparation. */
 EPIX_EXPORT struct EPIX_API LightViewEntities {
     /** @brief The light-view entities spawned for each view of this light. */
     std::unordered_map<ecs::Entity, std::vector<ecs::Entity>> entities;

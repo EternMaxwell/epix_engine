@@ -27,6 +27,7 @@
 #include <epix/ecs/component.hpp>
 #include <epix/ecs/core/type_id.hpp>
 #include <epix/ecs/entity/entities.hpp>
+#include <epix/ecs/observer.hpp>
 #include <epix/ecs/query.hpp>
 #include <epix/ecs/storage.hpp>
 #include <epix/ecs/world/commands.hpp>
@@ -54,6 +55,11 @@ EPIX_EXPORT struct EPIX_API World {
     World(World&&)                 = default;
     World& operator=(const World&) = delete;
     World& operator=(World&&)      = default;
+
+    /** @brief Register a lifecycle observer system whose first parameter is On.
+     * Registration is deferred through the observer entity's Add hook. */
+    template<valid_observer_system F>
+    EntityWorldMut add_observer(F&& callback);
 
     /** @brief Get the world's unique identifier. */
     WorldId id() const noexcept { return _id; }
@@ -410,54 +416,19 @@ EPIX_EXPORT struct EPIX_API World {
     }
 
     void trigger_on_add(const Archetype& archetype, Entity entity, internal::type_id_view auto&& targets) {
-        for (auto&& target : targets) {
-            _components.get_info(target).and_then([&](const internal::ComponentInfo& info) -> std::optional<bool> {
-                if (info.hooks().on_add) {
-                    info.hooks().on_add(*this, HookContext{.entity = entity, .component_id = target});
-                }
-                return true;
-            });
-        }
+        internal::world_trigger_on_add(*this, archetype, entity, targets);
     }
     void trigger_on_insert(const Archetype& archetype, Entity entity, internal::type_id_view auto&& targets) {
-        for (auto&& target : targets) {
-            _components.get_info(target).and_then([&](const internal::ComponentInfo& info) -> std::optional<bool> {
-                if (info.hooks().on_insert) {
-                    info.hooks().on_insert(*this, HookContext{.entity = entity, .component_id = target});
-                }
-                return true;
-            });
-        }
+        internal::world_trigger_on_insert(*this, archetype, entity, targets);
     }
     void trigger_on_replace(const Archetype& archetype, Entity entity, internal::type_id_view auto&& targets) {
-        for (auto&& target : targets) {
-            _components.get_info(target).and_then([&](const internal::ComponentInfo& info) -> std::optional<bool> {
-                if (info.hooks().on_replace) {
-                    info.hooks().on_replace(*this, HookContext{.entity = entity, .component_id = target});
-                }
-                return true;
-            });
-        }
+        internal::world_trigger_on_replace(*this, archetype, entity, targets);
     }
     void trigger_on_remove(const Archetype& archetype, Entity entity, internal::type_id_view auto&& targets) {
-        for (auto&& target : targets) {
-            _components.get_info(target).and_then([&](const internal::ComponentInfo& info) -> std::optional<bool> {
-                if (info.hooks().on_remove) {
-                    info.hooks().on_remove(*this, HookContext{.entity = entity, .component_id = target});
-                }
-                return true;
-            });
-        }
+        internal::world_trigger_on_remove(*this, archetype, entity, targets);
     }
     void trigger_on_despawn(const Archetype& archetype, Entity entity, internal::type_id_view auto&& targets) {
-        for (auto&& target : targets) {
-            _components.get_info(target).and_then([&](const internal::ComponentInfo& info) -> std::optional<bool> {
-                if (info.hooks().on_despawn) {
-                    info.hooks().on_despawn(*this, HookContext{.entity = entity, .component_id = target});
-                }
-                return true;
-            });
-        }
+        internal::world_trigger_on_despawn(*this, archetype, entity, targets);
     }
 
     /** @brief Create a query over entities matching the given query data.
@@ -509,6 +480,9 @@ EPIX_EXPORT struct EPIX_API World {
     void reconcile_resource_entity(Entity entity);
 
    protected:
+    friend class Observer;
+    friend bool internal::world_has_lifecycle_observers(const World&, const Archetype&, LifecycleEventKind);
+    friend void internal::world_invoke_lifecycle_observers(World&, LifecycleEventKind, Entity, std::span<const TypeId>);
     friend struct IsResource;
     friend RemovedComponentEvents& internal::world_removed_components_mut(World& world) noexcept;
 
@@ -525,6 +499,7 @@ EPIX_EXPORT struct EPIX_API World {
     std::unique_ptr<std::atomic<std::uint32_t>> _change_tick;
     Tick _last_change_tick;
     Tick _last_check_tick;
+    internal::LifecycleObserverCache _lifecycle_observers;
 };
 /** @brief A deferred view of a World that provides read-only data access
  *  and deferred command submission. Does not
@@ -597,3 +572,5 @@ struct DeferredWorld {
 };
 static_assert(std::movable<World>);
 }  // namespace epix::ecs
+
+#include <epix/ecs/system.hpp>

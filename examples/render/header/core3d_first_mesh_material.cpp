@@ -216,6 +216,20 @@ void probe_clustered_extraction(Query<Item<Entity, const pbr::ExtractedPointLigh
     *logged = true;
 }
 
+// Read-only lifecycle probe, not proof of populated shadow views or depth draws.
+void probe_light_view_lifecycle(Query<Item<const pbr::ExtractedDirectionalLight&, const pbr::LightViewEntities&>> suns,
+                                Query<Item<const pbr::ExtractedPointLight&, const pbr::LightViewEntities&>> clustered,
+                                Local<unsigned> frames, Local<bool> logged) {
+    if (*logged || ++*frames < 3) return;
+    const auto directional = std::ranges::distance(suns.iter());
+    const auto point_spot = std::ranges::distance(clustered.iter());
+    if (directional == 0 && point_spot == 0) return;
+    spdlog::info("[first-mesh] Light view lifecycle: directional_maps={} point_spot_maps={}", directional, point_spot);
+    if (directional != 2 || point_spot != 2)
+        spdlog::error("[first-mesh] Extracted light is missing its observer-created view map");
+    *logged = true;
+}
+
 struct ShadowMapTickProbe {
     std::optional<ecs::Tick> last;
     unsigned samples = 0;
@@ -346,5 +360,9 @@ int main() {
         render::Render, into(probe_render_shadow_map_ticks)
                             .in_set(render::RenderSystems::PrepareBindGroups)
                             .set_name("probe render shadow resource ticks"));
+    app.get_sub_app_mut(render::Render)->get().add_systems(
+        render::Render, into(probe_light_view_lifecycle)
+                            .in_set(render::RenderSystems::PrepareBindGroups)
+                            .set_name("probe observer-created light view maps"));
     app.run();
 }

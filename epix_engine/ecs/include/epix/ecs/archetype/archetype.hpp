@@ -23,6 +23,7 @@
 #include <epix/ecs/component.hpp>
 #include <epix/ecs/core/type_id.hpp>
 #include <epix/ecs/entity/entities.hpp>
+#include <epix/ecs/observer/types.hpp>
 #include <epix/ecs/world/detail/access.hpp>
 
 namespace epix::ecs {
@@ -321,55 +322,48 @@ EPIX_EXPORT struct EPIX_API Archetypes {
 namespace internal {
 template <typename R>
 concept type_id_view = std::same_as<std::ranges::range_value_t<R>, TypeId> && std::ranges::viewable_range<R>;
-void world_trigger_on_add(World& world, const Archetype& archetype, Entity entity, type_id_view auto&& targets) {
-    for (auto&& target : targets) {
-        world_components(world).get_info(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
-            if (info.hooks().on_add) {
-                info.hooks().on_add(world, HookContext{.entity = entity, .component_id = target});
-            }
-            return true;
-        });
+EPIX_API bool world_has_lifecycle_observers(const World&, const Archetype&, LifecycleEventKind);
+EPIX_API void world_invoke_lifecycle_observers(World&, LifecycleEventKind, Entity, std::span<const TypeId>);
+
+template<LifecycleEventKind Kind>
+void world_trigger_lifecycle(World& world, const Archetype& archetype, Entity entity, type_id_view auto&& targets,
+                             ComponentHooks::HookFunc ComponentHooks::* member) {
+    const auto hooks = [&](auto&& ids) {
+        for (auto component : ids)
+            world_components(world).get_info(component).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
+                if (auto callback = info.hooks().*member)
+                    callback(world, HookContext{.entity = entity, .component_id = component});
+                return true;
+            });
+    };
+    if (!world_has_lifecycle_observers(world, archetype, Kind)) {
+        hooks(targets);
+        return;
     }
+    std::vector<TypeId> components;
+    for (auto component : targets) components.push_back(component);
+    if constexpr (Kind == LifecycleEventKind::Add || Kind == LifecycleEventKind::Insert) {
+        hooks(components);
+        world_invoke_lifecycle_observers(world, Kind, entity, components);
+    } else {
+        world_invoke_lifecycle_observers(world, Kind, entity, components);
+        hooks(components);
+    }
+}
+void world_trigger_on_add(World& world, const Archetype& archetype, Entity entity, type_id_view auto&& targets) {
+    world_trigger_lifecycle<LifecycleEventKind::Add>(world, archetype, entity, targets, &ComponentHooks::on_add);
 }
 void world_trigger_on_insert(World& world, const Archetype& archetype, Entity entity, type_id_view auto&& targets) {
-    for (auto&& target : targets) {
-        world_components(world).get_info(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
-            if (info.hooks().on_insert) {
-                info.hooks().on_insert(world, HookContext{.entity = entity, .component_id = target});
-            }
-            return true;
-        });
-    }
+    world_trigger_lifecycle<LifecycleEventKind::Insert>(world, archetype, entity, targets, &ComponentHooks::on_insert);
 }
 void world_trigger_on_replace(World& world, const Archetype& archetype, Entity entity, type_id_view auto&& targets) {
-    for (auto&& target : targets) {
-        world_components(world).get_info(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
-            if (info.hooks().on_replace) {
-                info.hooks().on_replace(world, HookContext{.entity = entity, .component_id = target});
-            }
-            return true;
-        });
-    }
+    world_trigger_lifecycle<LifecycleEventKind::Replace>(world, archetype, entity, targets, &ComponentHooks::on_replace);
 }
 void world_trigger_on_remove(World& world, const Archetype& archetype, Entity entity, type_id_view auto&& targets) {
-    for (auto&& target : targets) {
-        world_components(world).get_info(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
-            if (info.hooks().on_remove) {
-                info.hooks().on_remove(world, HookContext{.entity = entity, .component_id = target});
-            }
-            return true;
-        });
-    }
+    world_trigger_lifecycle<LifecycleEventKind::Remove>(world, archetype, entity, targets, &ComponentHooks::on_remove);
 }
 void world_trigger_on_despawn(World& world, const Archetype& archetype, Entity entity, type_id_view auto&& targets) {
-    for (auto&& target : targets) {
-        world_components(world).get_info(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
-            if (info.hooks().on_despawn) {
-                info.hooks().on_despawn(world, HookContext{.entity = entity, .component_id = target});
-            }
-            return true;
-        });
-    }
+    world_trigger_lifecycle<LifecycleEventKind::Despawn>(world, archetype, entity, targets, &ComponentHooks::on_despawn);
 }
 }  // namespace internal
 }  // namespace epix::ecs

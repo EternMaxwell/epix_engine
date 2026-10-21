@@ -18,6 +18,29 @@
 
 namespace epix::pbr {
 
+namespace {
+using ExtractedLights = std::tuple<ExtractedDirectionalLight, ExtractedPointLight>;
+
+void add_light_view_entities(ecs::On<ecs::Add, ExtractedLights> event, ecs::Commands commands) {
+    if (auto entity = commands.get_entity(event->entity)) entity->insert(LightViewEntities{});
+}
+
+void extracted_light_removed(ecs::On<ecs::Remove, ExtractedLights> event, ecs::Commands commands) {
+    // Epix EntityCommands::remove is already fallible for missing entities.
+    if (auto entity = commands.get_entity(event->entity)) entity->remove<LightViewEntities>();
+}
+
+void remove_light_view_entities(ecs::On<ecs::Remove, LightViewEntities> event,
+                                ecs::Query<ecs::Item<const LightViewEntities&>> maps, ecs::Commands commands) {
+    const auto map = maps.get(event->entity);
+    if (!map) return;
+    const auto& [entities] = *map;
+    for (const auto& [camera, views] : entities.entities)
+        for (auto view : views)
+            if (auto entity = commands.get_entity(view)) entity->despawn();
+}
+}  // namespace
+
 void PbrPlugin::attach(epix::app::App& app) {
     // Bevy initialises the resource on the main app before it aggregates the plugin
     // tuple (`bevy_pbr/src/lib.rs:220`), and extracts it with the tuple at `:224`.
@@ -57,6 +80,12 @@ void PbrPlugin::attach(epix::app::App& app) {
     // registered, so no view carried its extracted clusters and `prepare_lights` - once it
     // exists - would have had nothing to fill.
     if (auto render_app = app.get_sub_app_mut(render::Render)) {
+        // Bevy render/light.rs:617-649: observers are installed in this render
+        // world only, not innate hooks on the extracted component types.
+        auto& world = render_app->get().world_mut();
+        world.add_observer(add_light_view_entities);
+        world.add_observer(extracted_light_removed);
+        world.add_observer(remove_light_view_entities);
         render_app->get().world_mut().init_resource<LightMeta>();
         render_app->get().add_systems(render::RenderStartup,
                                       ecs::into(init_global_clusterable_object_meta)

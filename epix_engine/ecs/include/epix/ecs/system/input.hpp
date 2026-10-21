@@ -10,6 +10,8 @@
 #include <variant>
 #endif
 
+#include <epix/ecs/observer/types.hpp>
+
 namespace epix::ecs {
 
 /** @brief System input wrapper for movable/copyable values.
@@ -176,6 +178,12 @@ struct SystemInput<std::tuple<Ts...>> {
             return Param(SystemInput<Ts>::wrap_input(std::get<Is>(input))...);
         }(std::index_sequence_for<Ts...>{}, std::move(input));
     }
+};
+template<lifecycle_event E, observer_filter Bundle>
+struct SystemInput<On<E, Bundle>> {
+    using Param = On<E, Bundle>;
+    using Input = Param;
+    static Param wrap_input(Input input) noexcept { return input; }
 };
 }  // namespace internal
 }  // namespace epix::ecs

@@ -20,6 +20,7 @@
 #include <epix/ecs/core/labels.hpp>
 #include <epix/ecs/system/commands.hpp>
 #include <epix/ecs/system/from_param.hpp>
+#include <epix/ecs/system/function_traits.hpp>
 #include <epix/ecs/system/input.hpp>
 #include <epix/ecs/system/param.hpp>
 #include <epix/ecs/system/removed_components.hpp>
@@ -103,7 +104,8 @@ struct System {
     virtual Tick get_last_run() const = 0;
     /** @brief Get the default system sets this system belongs to. */
     virtual std::vector<SystemSetLabel> default_sets() const { return {}; }
-    /** @brief Clone this system (deep copy). */
+    /** @brief Copy the callable into a fresh, uninitialized system.
+     *  Throws std::logic_error if the callable is not copy-constructible. */
     virtual System* clone() const = 0;
     virtual ~System()             = default;
 };
@@ -111,58 +113,6 @@ EPIX_EXPORT template <typename In = std::tuple<>, typename Out = void>
 using SystemUnique = std::unique_ptr<System<In, Out>>;
 
 namespace internal {
-template <typename T>
-struct system_output {
-    using type                                 = T;
-    static constexpr bool is_fallible_expected = false;
-};
-
-template <typename T, typename E>
-struct system_output<std::expected<T, E>> {
-    using type                                 = T;
-    using error_type                           = E;
-    static constexpr bool is_fallible_expected = true;
-};
-
-template <typename T>
-using system_output_t = typename system_output<T>::type;
-
-template <typename F>
-    requires requires {
-        typename traits::function_traits<F>;
-        typename traits::function_traits<F>::return_type;
-        typename traits::function_traits<F>::args_tuple;
-    }
-struct function_system_traits {
-    using Traits                       = traits::function_traits<F>;
-    static constexpr std::size_t arity = Traits::arity;
-    using Output                       = typename Traits::return_type;
-    using ArgsTuple                    = typename Traits::args_tuple;
-    using PaddedArgsTuple =
-        decltype(std::tuple_cat(std::declval<ArgsTuple>(), std::declval<std::tuple<std::tuple<>>>()));
-    using FirstArg = std::tuple_element_t<0, PaddedArgsTuple>;
-    // Input is the first argument of the function if it models system_input, otherwise it's std::tuple<>.
-    static constexpr bool has_input = arity != 0 && internal::system_input<FirstArg>;
-    using Input                     = std::conditional_t<has_input, FirstArg, std::tuple<>>;
-    using ParamTuple                = std::remove_pointer_t<decltype([]<std::size_t... I>(std::index_sequence<I...>) {
-        return static_cast<std::tuple<std::tuple_element_t<I + (has_input ? 1 : 0), ArgsTuple>...>*>(nullptr);
-    }(std::make_index_sequence<arity - (has_input ? 1 : 0)>{}))>;
-    // The storage type to store the function. function will be stored in pointers,
-    // lambdas or other callables will be stored in their own type.
-    using Storage = std::decay_t<F>;
-};
-
-template <typename F>
-concept valid_function_system = requires {
-    typename traits::function_traits<F>;
-    typename function_system_traits<F>::Storage;
-    typename function_system_traits<F>::Input;
-    typename function_system_traits<F>::Output;
-    // no input will have Input = std::tuple<>, which is a valid_system_input.
-    requires internal::system_input<typename function_system_traits<F>::Input>;
-    requires system_param<typename function_system_traits<F>::ParamTuple>;
-    { function_system_traits<F>::has_input } -> std::convertible_to<bool>;
-};
 
 template <valid_function_system F>
 struct FunctionSystem : public System<typename function_system_traits<F>::Input,
@@ -259,12 +209,20 @@ struct FunctionSystem : public System<typename function_system_traits<F>::Input,
         }
     }
 
-    Base* clone() const override { return new FunctionSystem<F>(func_); }
+    Base* clone() const override {
+        if constexpr (std::is_copy_constructible_v<Storage>) {
+            return new FunctionSystem<F>(func_);
+        } else {
+            throw std::logic_error("Cannot clone a system with a noncopyable callable");
+        }
+    }
 
     template <typename U>
         requires std::constructible_from<Storage, U>
     explicit FunctionSystem(U&& func) : func_(std::forward<U>(func)), type_index_(meta::type_id<Storage>()) {
         meta_.name = type_index_.short_name();
+        if constexpr (internal::system_param_is_exclusive<typename function_system_traits<F>::ParamTuple>)
+            meta_.flags = (SystemFlagBits)(meta_.flags | SystemFlagBits::EXCLUSIVE);
     }
 
    private:
@@ -301,3 +259,5 @@ make_system_shared(F&& func) {
         internal::make_system(std::forward<F>(func)));
 }
 }  // namespace epix::ecs
+
+#include <epix/ecs/observer/system.hpp>
