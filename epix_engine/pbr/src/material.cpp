@@ -335,6 +335,7 @@ void queue_material_meshes(
 
 void MaterialsPlugin::attach(epix::app::App& app) {
     // Bevy `MaterialsPlugin::build` (`material.rs:281-335`), as far as the port has it.
+    app.add_plugins(PrepassPipelinePlugin{}, PrepassPlugin{});
     auto render_app = app.get_sub_app_mut(render::Render);
     if (!render_app) return;
     auto& render = render_app->get();

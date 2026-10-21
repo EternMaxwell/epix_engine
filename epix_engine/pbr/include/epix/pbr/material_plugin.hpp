@@ -261,11 +261,6 @@ EPIX_EXPORT template <typename M>
 struct MaterialPlugin {
     void attach(app::App& app) {
         assets::app_register_asset<M>(app);
-        // Bevy's `build` installs the prepass pipeline plugin beside the material plugin
-        // (`material.rs:283`), which is what registers the prepass draw sequence. Like Bevy's,
-        // that plugin returns early when no render sub-app exists yet, so a material plugin
-        // must follow `RenderPlugin`.
-        app.add_plugins(PrepassPipelinePlugin{});
         // Bevy registers the material through the erased render-asset pipeline in the same
         // plugin build: that is what prepares a material's bind group and records it in the
         // untyped bindings map. Guarded for the same reason the allocator registration is -

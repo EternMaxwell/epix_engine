@@ -264,6 +264,27 @@ void probe_shadow_views(
     *logged = true;
 }
 
+void probe_temporal_views(
+    Query<Item<const render::view::ExtractedView&, Has<camera::Camera3d>, Has<pbr::ShadowView>,
+               Opt<const core_graph::PreviousViewUniformOffset&>>,
+          Or<With<camera::Camera3d>, With<pbr::ShadowView>>> views,
+    Res<core_graph::PreviousViewUniforms> uniforms, Local<unsigned> frames, Local<bool> logged) {
+    if (*logged || ++*frames < 8) return;
+    std::size_t cameras = 0, shadows = 0;
+    bool ready = true;
+    const auto* buffer = uniforms->uniforms.buffer();
+    for (auto&& [view, camera, shadow, offset] : views.iter()) {
+        cameras += camera;
+        shadows += shadow;
+        ready = ready && buffer && offset &&
+            static_cast<std::uint64_t>(offset->get().offset) + sizeof(core_graph::PreviousViewData) <= buffer->getSize();
+    }
+    spdlog::info("[first-mesh] Temporal view uniforms: cameras={} shadows={} offsets_ready={}", cameras, shadows, ready);
+    if (cameras != 1 || shadows != 5 || !ready)
+        spdlog::error("[first-mesh] Camera/shadow temporal uniforms are not ready after PrepareResources");
+    *logged = true;
+}
+
 void probe_light_writer(
     Query<Item<const render::view::ExtractedView&, const pbr::ExtractedClusterConfig&,
                const render::sync_world::MainEntity&>, With<camera::Camera3d>> cameras,
@@ -416,5 +437,9 @@ int main() {
         render::Render, into(probe_light_writer)
                             .in_set(render::RenderSystems::PrepareBindGroups)
                             .set_name("probe native light writer"));
+    app.get_sub_app_mut(render::Render)->get().add_systems(
+        render::Render, into(probe_temporal_views)
+                            .in_set(render::RenderSystems::PrepareBindGroups)
+                            .set_name("probe scheduled temporal uniforms"));
     app.run();
 }

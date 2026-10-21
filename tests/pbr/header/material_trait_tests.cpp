@@ -1314,6 +1314,9 @@ TEST(MaterialBindGroupAllocator, ThePrepareSystemsDriveEveryRegisteredAllocator)
     } catch (const std::exception& error) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
     }
+    // MaterialsPlugin installs the shared prepass plugin too. As in Bevy's
+    // AddRenderCommand, its phase registries must already exist (Core3dPlugin).
+    app.add_plugins(epix::core_graph::CoreGraphPlugin{});
     // The registry and the pair are this plugin's, as they are in Bevy (`material.rs:276-335`).
     app.add_plugins(pbr::MaterialsPlugin{});
 

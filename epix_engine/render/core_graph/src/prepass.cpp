@@ -37,45 +37,4 @@ std::vector<wgpu::ColorTargetState> prepass_pipeline_targets(bool normal_prepass
     return targets;
 }
 
-void update_previous_view_data(
-    ecs::Commands commands,
-    ecs::Query<ecs::Item<ecs::Entity, const camera::Camera&, const transform::GlobalTransform&>,
-               ecs::With<camera::Camera3d>> cameras) {
-    // Bevy `update_previous_view_data` (`bevy_pbr/src/prepass/mod.rs:189-206`):
-    // the camera's global transform is the world-from-view matrix, and every other
-    // matrix is derived from it and the projection.
-    for (auto&& [entity, camera, camera_transform] : cameras.iter()) {
-        const glm::mat4 world_from_view = camera_transform.matrix;
-        const glm::mat4 view_from_world = glm::inverse(world_from_view);
-        const glm::mat4 clip_from_view  = camera.clip_from_view();
-        const glm::mat4 view_from_clip  = glm::inverse(clip_from_view);
-
-        commands.entity(entity).insert(PreviousViewData{
-            .view_from_world = view_from_world,
-            .clip_from_world = clip_from_view * view_from_world,
-            .clip_from_view  = clip_from_view,
-            .world_from_clip = world_from_view * view_from_clip,
-            .view_from_clip  = view_from_clip,
-        });
-    }
-}
-
-void prepare_previous_view_uniforms(ecs::Commands commands,
-                                    ecs::Res<wgpu::Device> device,
-                                    ecs::Res<wgpu::Queue> queue,
-                                    ecs::ResMut<PreviousViewUniforms> previous_view_uniforms,
-                                    ecs::Query<ecs::Item<ecs::Entity, const PreviousViewData&>> views) {
-    // Bevy `prepare_previous_view_uniforms`: one entry per view, the byte offset
-    // recorded on the view so a prepass bind group can pass it as the dynamic
-    // offset, and a single upload for the frame (Bevy writes through
-    // `DynamicUniformBuffer::write_buffer`).
-    auto& uniforms = previous_view_uniforms->uniforms;
-    uniforms.clear();
-    for (auto&& [entity, previous_view_data] : views.iter()) {
-        const std::size_t offset = uniforms.push(previous_view_data);
-        commands.entity(entity).insert(PreviousViewUniformOffset{static_cast<std::uint32_t>(offset)});
-    }
-    uniforms.write_buffer(device.get(), queue.get());
-}
-
 }  // namespace epix::core_graph

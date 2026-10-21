@@ -18,6 +18,7 @@
 
 #include <epix/pbr/mesh_bindings.hpp>
 #include <epix/pbr/mesh_pipeline_resource.hpp>
+#include <epix/pbr/light_meta.hpp>
 
 namespace epix::pbr {
 
@@ -35,6 +36,39 @@ namespace epix::pbr {
 EPIX_EXPORT struct PreviousGlobalTransform {
     glm::mat4 matrix{1.0f};
 };
+
+/** @brief Snapshot the last frame's camera matrices at the start of PreUpdate. */
+EPIX_EXPORT EPIX_API void update_previous_view_data(
+    ecs::Commands commands,
+    ecs::Query<ecs::Item<ecs::Entity, const camera::Camera&, const transform::GlobalTransform&>,
+               ecs::Or<ecs::With<camera::Camera3d>, ecs::With<ShadowView>>> views);
+
+/** @brief Retain mesh history only when a 3D or shadow camera is active, without
+ *  marking an unchanged previous transform modified. */
+EPIX_EXPORT EPIX_API void update_mesh_previous_global_transforms(
+    ecs::Commands commands,
+    ecs::Query<const camera::Camera&, ecs::Or<ecs::With<camera::Camera3d>, ecs::With<ShadowView>>> views,
+    ecs::Query<ecs::Item<ecs::Entity, const transform::GlobalTransform&>,
+               ecs::Filter<ecs::With<mesh::Mesh3d>, ecs::Without<PreviousGlobalTransform>>> new_meshes,
+    ecs::Query<ecs::Item<const transform::GlobalTransform&, ecs::Mut<PreviousGlobalTransform>>,
+               ecs::With<mesh::Mesh3d>> meshes);
+
+/** @brief Copy active camera history, remove inactive history and leave an
+ *  active camera with no main-world history alone. */
+EPIX_EXPORT EPIX_API void extract_camera_previous_view_data(
+    ecs::Commands commands,
+    app::Extract<ecs::Query<ecs::Item<const render::sync_world::RenderEntity&, const camera::Camera&,
+                                    ecs::Opt<const core_graph::PreviousViewData&>>,
+                            ecs::With<camera::Camera3d>>> cameras);
+
+/** @brief Upload camera/shadow history in PrepareResources, falling back to
+ *  the current extracted matrices when there is no saved history. */
+EPIX_EXPORT EPIX_API void prepare_previous_view_uniforms(
+    ecs::Commands commands, ecs::Res<wgpu::Device> device, ecs::Res<wgpu::Queue> queue,
+    ecs::ResMut<core_graph::PreviousViewUniforms> previous_view_uniforms,
+    ecs::Query<ecs::Item<ecs::Entity, const render::view::ExtractedView&,
+                         ecs::Opt<const core_graph::PreviousViewData&>>,
+               ecs::Or<ecs::With<camera::Camera3d>, ecs::With<ShadowView>>> views);
 
 /** @brief The prepass pipeline's view layouts and the device facts the prepass
  *  needs (Bevy `PrepassPipeline`, `prepass/mod.rs:239-256`).
@@ -100,14 +134,20 @@ EPIX_EXPORT EPIX_API void prepare_prepass_view_bind_group(
     ecs::ResMut<PrepassViewBindGroup> prepass_view_bind_group);
 
 /** @brief Bevy `PrepassPipelinePlugin` (`prepass/mod.rs:69-99`), which
- *  `MaterialPlugin` installs (Bevy `material.rs:283`).
+ *  the shared `MaterialsPlugin` installs (Bevy `material.rs:283`).
  *
- *  What it installs here is the pipeline resource, its two view bind groups and
- *  the four `DrawPrepass` registrations. Bevy's other two pieces - the
+ *  What it installs here is the pipeline resource and its two view bind groups.
+ *  Bevy's other two pieces - the
  *  `prepass_io.wgsl` shader library and
  *  `SpecializedMeshPipelines<PrepassPipelineSpecializer>` - arrive with the
  *  prepass specializer, which the port has not written (PBR-19). */
 EPIX_EXPORT struct EPIX_API PrepassPipelinePlugin {
+    void attach(epix::app::App& app);
+};
+
+/** @brief Shared prepass history systems and draw registrations, installed once
+ *  per app by MaterialsPlugin. Specialization/queueing remains PBR-19 work. */
+EPIX_EXPORT struct EPIX_API PrepassPlugin {
     void attach(epix::app::App& app);
 };
 
