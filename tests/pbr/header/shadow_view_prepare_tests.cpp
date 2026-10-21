@@ -20,6 +20,8 @@
 #include <cmath>
 #include <cstring>
 #include <memory>
+#include <sstream>
+#include <spdlog/sinks/ostream_sink.h>
 #include <vector>
 
 namespace {
@@ -40,6 +42,7 @@ class ShadowViewPrepare : public testing::Test {
    protected:
     epix::app::App app = epix::app::App::create();
     ecs::World* world = nullptr;
+    decltype(ecs::make_system_unique(pbr::prepare_lights)) preparation;
 
     void SetUp() override {
         app.add_events<epix::window::WindowClosed>();
@@ -68,9 +71,12 @@ class ShadowViewPrepare : public testing::Test {
 
     void prepare() {
         world->flush();
-        run(pbr::prepare_lights_shadow_bindings);
-        run(pbr::prepare_clusterable_objects);
-        run(pbr::prepare_view_lights);
+        if (!preparation) {
+            preparation = ecs::make_system_unique(pbr::prepare_lights);
+            preparation->initialize(*world);
+        }
+        ASSERT_TRUE(preparation->run({}, *world).has_value());
+        preparation->apply_deferred(*world);
         world->flush();
     }
 
@@ -371,5 +377,136 @@ TEST_F(ShadowViewPrepare, CascadeCountIsCappedAndUnqualifiedExtractedLightsAreIg
     EXPECT_TRUE(world->resource<pbr::GlobalClusterableObjectMeta>().entity_to_index.empty());
     EXPECT_EQ(get<pbr::ViewShadowBindings>(view).point_light_depth_texture.getDepthOrArrayLayers(), 6u);
     EXPECT_EQ(get<pbr::ViewShadowBindings>(view).directional_light_depth_texture.getDepthOrArrayLayers(), 4u);
+}
+
+TEST_F(ShadowViewPrepare, InitialZeroCameraWriterReturnPreservesExistingMetadataViewsAndPhases) {
+    const auto light = add_point(5000, 0.2f);
+    const auto stale_camera = world->spawn().id();
+    const auto stale_shadow = world->spawn().id();
+    world->flush();
+    world->entity_mut(light).get_mut<pbr::LightViewEntities>()->get_mut().entities[stale_camera] = {stale_shadow};
+    world->resource_mut<pbr::GlobalClusterableObjectMeta>().entity_to_index.emplace(light, 17u);
+    const render::view::RetainedViewEntity retained{get<MainEntity>(light),
+        MainEntity{ecs::Entity::from_index(4000)}, 0};
+    world->resource_mut<Phases>().prepare_for_new_frame(retained, render::batching::GpuPreprocessingMode::None);
+    ASSERT_EQ(world->resource<pbr::LightMeta>().view_gpu_lights.buffer(), nullptr);
+    prepare();
+    EXPECT_EQ(world->resource<pbr::LightMeta>().view_gpu_lights.buffer(), nullptr);
+    const auto& indices = world->resource<pbr::GlobalClusterableObjectMeta>().entity_to_index;
+    ASSERT_TRUE(indices.contains(light));
+    EXPECT_EQ(indices.at(light), 17u);
+    EXPECT_TRUE(world->get_entity(stale_shadow));
+    EXPECT_TRUE(get<pbr::LightViewEntities>(light).entities.contains(stale_camera));
+    EXPECT_TRUE(world->resource<Phases>().phases.contains(retained));
+}
+
+TEST_F(ShadowViewPrepare, ZeroCamerasAfterAnExistingWriterStillPackAndRetire) {
+    const auto view = add_camera(4000);
+    const auto light = add_point(5000, 0.2f);
+    prepare();
+    ASSERT_TRUE(world->resource<pbr::LightMeta>().view_gpu_lights.buffer());
+    const auto shadows = light_views(light, view);
+    world->resource_mut<pbr::GlobalClusterableObjectMeta>().entity_to_index.at(light) = 17u;
+    world->entity_mut(view).despawn();
+    world->resource_mut<render::camera::SortedCameras>().cameras.clear();
+    prepare();
+    EXPECT_EQ(world->resource<pbr::GlobalClusterableObjectMeta>().entity_to_index.at(light), 0u);
+    EXPECT_TRUE(get<pbr::LightViewEntities>(light).entities.empty());
+    EXPECT_TRUE(world->resource<Phases>().phases.empty());
+    for (const auto shadow : shadows) EXPECT_FALSE(world->get_entity(shadow));
+}
+
+TEST_F(ShadowViewPrepare, UnsortedEligibleCameraAllocatesWriterWithoutReceivingSortedViewOutputs) {
+    const auto view = add_camera(4000);
+    const auto light = add_point(5000, 0.2f);
+    world->resource_mut<render::camera::SortedCameras>().cameras.clear();
+    prepare();
+    EXPECT_NE(world->resource<pbr::LightMeta>().view_gpu_lights.buffer(), nullptr);
+    EXPECT_EQ(world->resource<pbr::GlobalClusterableObjectMeta>().entity_to_index.at(light), 0u);
+    EXPECT_FALSE(world->entity(view).contains<pbr::ViewLightEntities>());
+    EXPECT_FALSE(world->entity(view).contains<pbr::ViewLightsUniformOffset>());
+    EXPECT_FALSE(world->entity(view).contains<pbr::ViewShadowBindings>());
+}
+
+TEST_F(ShadowViewPrepare, WriterCapacityUsesRawEligibleCameraCountNotSortedOutputCount) {
+    const auto first = add_camera(4000);
+    const auto unsorted = add_camera(4001);
+    world->resource_mut<render::camera::SortedCameras>().cameras.pop_back();
+    prepare();
+    const auto* buffer = world->resource<pbr::LightMeta>().view_gpu_lights.buffer();
+    ASSERT_TRUE(buffer);
+    wgpu::Limits limits{};
+    ASSERT_EQ(world->resource<wgpu::Device>().getLimits(&limits), wgpu::Status::eSuccess);
+    const auto stride = render::render_resource::align_up(
+        render::render_resource::ShaderTypeInfo<pbr::GpuLights>::shader_size, limits.minUniformBufferOffsetAlignment);
+    EXPECT_EQ(buffer->getSize(), 2u * stride);
+    EXPECT_TRUE(world->entity(first).contains<pbr::ViewLightsUniformOffset>());
+    EXPECT_FALSE(world->entity(unsorted).contains<pbr::ViewLightsUniformOffset>());
+}
+
+TEST_F(ShadowViewPrepare, ExistingGeneralWriterDistinguishesInitialAndBufferedZeroCounts) {
+    auto& buffer = world->resource_mut<pbr::LightMeta>().view_gpu_lights;
+    const auto& device = world->resource<wgpu::Device>();
+    const auto& queue = world->resource<wgpu::Queue>();
+    EXPECT_FALSE(buffer.get_writer(0, device, queue));
+    {
+        auto writer = buffer.get_writer(1, device, queue);
+        ASSERT_TRUE(writer);
+        EXPECT_EQ(writer->write(pbr::GpuLights{}), 0u);
+    }
+    EXPECT_TRUE(buffer.get_writer(0, device, queue));
+}
+
+TEST_F(ShadowViewPrepare, DirectionalLimitCountsUseQueryOrderBeforeSorting) {
+    const auto view = add_camera(4000);
+    for (std::size_t i = 0; i < pbr::MAX_DIRECTIONAL_LIGHTS; ++i) {
+        const auto light = add_directional(static_cast<std::uint32_t>(5000 + i), {view}, 1);
+        world->entity_mut(light).get_mut<pbr::ExtractedDirectionalLight>()->get_mut().volumetric = true;
+    }
+    add_directional(6000, {view}, 1);  // Non-volumetric sorts BEFORE the raw first ten.
+    world->flush();
+    auto query = world->query<ecs::Item<const MainEntity&, const pbr::ExtractedDirectionalLight&>>();
+    std::vector<bool> original;
+    for (auto&& [main, light] : query.iter(*world)) original.push_back(light.volumetric);
+    ASSERT_EQ(original.size(), pbr::MAX_DIRECTIONAL_LIGHTS + 1);
+    for (std::size_t i = 0; i < pbr::MAX_DIRECTIONAL_LIGHTS; ++i) ASSERT_TRUE(original[i]);
+    ASSERT_FALSE(original.back());
+    prepare();
+    const auto gpu = uploaded_lights(view);
+    ASSERT_EQ(gpu.n_directional_lights, pbr::MAX_DIRECTIONAL_LIGHTS);
+    EXPECT_EQ(gpu.directional_lights[0].flags & pbr::DirectionalLightFlags::VOLUMETRIC, 0u);
+    EXPECT_NE(gpu.directional_lights.back().flags & pbr::DirectionalLightFlags::VOLUMETRIC, 0u);
+}
+
+TEST_F(ShadowViewPrepare, LimitWarningsAreGuardedByTheWriterAndEmittedOncePerSystem) {
+    struct Capture {
+        std::shared_ptr<spdlog::logger> previous = spdlog::default_logger();
+        std::ostringstream stream;
+        Capture() {
+            auto logger = std::make_shared<spdlog::logger>("light-flow-warning-test",
+                std::make_shared<spdlog::sinks::ostream_sink_mt>(stream));
+            logger->set_level(spdlog::level::warn);
+            spdlog::set_default_logger(std::move(logger));
+        }
+        ~Capture() { spdlog::set_default_logger(previous); }
+    } capture;
+    for (std::size_t i = 0; i <= pbr::MAX_DIRECTIONAL_LIGHTS; ++i) {
+        const auto light = add_directional(static_cast<std::uint32_t>(5000 + i), {}, pbr::MAX_CASCADES_PER_LIGHT + 1);
+        world->entity_mut(light).get_mut<pbr::ExtractedDirectionalLight>()->get_mut().shadows_enabled = false;
+    }
+    prepare();
+    EXPECT_TRUE(capture.stream.str().empty());
+    add_camera(4000);
+    prepare();
+    prepare();
+    const auto messages = capture.stream.str();
+    const auto occurrences = [&](std::string_view needle) {
+        std::size_t count = 0;
+        for (std::size_t position = 0; (position = messages.find(needle, position)) != std::string::npos;
+             position += needle.size()) ++count;
+        return count;
+    };
+    EXPECT_EQ(occurrences("The amount of directional lights"), 1u);
+    EXPECT_EQ(occurrences("The number of cascades configured"), 1u);
 }
 }  // namespace

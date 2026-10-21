@@ -264,6 +264,23 @@ void probe_shadow_views(
     *logged = true;
 }
 
+void probe_light_writer(
+    Query<Item<const render::view::ExtractedView&, const pbr::ExtractedClusterConfig&,
+               const render::sync_world::MainEntity&>, With<camera::Camera3d>> cameras,
+    Res<pbr::LightMeta> lights, Res<wgpu::Device> device, Local<unsigned> frames, Local<bool> logged) {
+    if (*logged || ++*frames < 8) return;
+    const auto count = static_cast<std::size_t>(std::ranges::distance(cameras.iter()));
+    wgpu::Limits limits{};
+    device->getLimits(&limits);
+    const auto stride = render::render_resource::align_up(
+        render::render_resource::ShaderTypeInfo<pbr::GpuLights>::shader_size, limits.minUniformBufferOffsetAlignment);
+    const auto* buffer = lights->view_gpu_lights.buffer();
+    const bool sufficient = buffer && buffer->getSize() >= count * stride;
+    spdlog::info("[first-mesh] Light writer: raw_cameras={} capacity_sufficient={}", count, sufficient);
+    if (count != 1 || !sufficient) spdlog::error("[first-mesh] Native light writer was not prepared for the raw camera query");
+    *logged = true;
+}
+
 void observe_shadow_map_ticks(std::string_view world, const Res<pbr::DirectionalLightShadowMap>& map,
                              ShadowMapTickProbe& state) {
     if (state.logged) return;
@@ -395,5 +412,9 @@ int main() {
         render::Render, into(probe_shadow_views)
                             .in_set(render::RenderSystems::PrepareBindGroups)
                             .set_name("probe prepared shadow views"));
+    app.get_sub_app_mut(render::Render)->get().add_systems(
+        render::Render, into(probe_light_writer)
+                            .in_set(render::RenderSystems::PrepareBindGroups)
+                            .set_name("probe native light writer"));
     app.run();
 }

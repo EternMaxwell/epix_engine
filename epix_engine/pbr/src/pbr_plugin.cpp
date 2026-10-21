@@ -101,16 +101,13 @@ void PbrPlugin::attach(epix::app::App& app) {
         render_app->get().add_systems(app::ScheduleInfo(render::ExtractSchedule),
                                       ecs::into(extract_ambient_light_resource)
                                           .set_name("extract ambient light resource"));
-        // Bevy prepares lights after camera sorting (lib.rs:334-337). Shadow
-        // allocation must see this frame's eligible cameras, not the previous list.
+        // One native preparation flow owns the initial writer guard, packing,
+        // shadow allocation and view retirement (Bevy lib.rs:334-337).
         render_app->get().add_systems(render::Render,
-                                      ecs::into(prepare_lights_shadow_bindings)
+                                      ecs::into(prepare_lights)
                                           .in_set(render::RenderSystems::ManageViews)
                                           .after(render::camera::sort_cameras)
-                                          .set_name("prepare lights shadow bindings"));
-        render_app->get().add_systems(render::Render, ecs::into(prepare_clusterable_objects)
-                                                          .in_set(render::RenderSystems::ManageViews)
-                                                          .set_name("prepare clusterable objects"));
+                                          .set_name("prepare lights"));
         // Bevy's `ScreenSpaceReflectionsPlugin` initialises this buffer and writes one entry per
         // view in `PrepareResources` (`ssr/mod.rs:197,206`). Binding 15 of the view layout is a
         // dynamic uniform, so the mesh view bind group cannot exist without it - the port's SSR
@@ -125,13 +122,6 @@ void PbrPlugin::attach(epix::app::App& app) {
         render_app->get().add_systems(render::Render, ecs::into(prepare_mesh_view_bind_groups)
                                                           .in_set(render::RenderSystems::PrepareBindGroups)
                                                           .set_name("prepare mesh view bind groups"));
-        render_app->get().add_systems(render::Render,
-                                      ecs::into(prepare_view_lights)
-                                          .in_set(render::RenderSystems::ManageViews)
-                                          .after(prepare_lights_shadow_bindings)
-                                          .after(prepare_clusterable_objects)
-                                          .after(render::camera::sort_cameras)
-                                          .set_name("prepare view lights"));
         render_app->get().add_systems(render::Render,
                                       ecs::into(prepare_clusters)
                                           .in_set(render::RenderSystems::PrepareResources)

@@ -44,6 +44,7 @@ class MeshViewPrepare : public testing::Test {
     epix::app::App app = epix::app::App::create();
     ecs::World* world  = nullptr;
     std::uint32_t next_light_main_index = 10000;
+    decltype(ecs::make_system_unique(pbr::prepare_lights)) light_preparation;
 
     void SetUp() override {
         app.add_events<epix::window::WindowClosed>();
@@ -59,6 +60,12 @@ class MeshViewPrepare : public testing::Test {
         }
         world = &app.get_sub_app_mut(render::Render)->get().world_mut();
         world->insert_resource(pbr::GlobalClusterableObjectMeta{wgpu::BufferBindingType::eStorage});
+        resource<pbr::LightMeta>();
+        resource<pbr::GlobalAmbientLight>();
+        resource<pbr::PointLightShadowMap>().size = 16;
+        resource<pbr::DirectionalLightShadowMap>().size = 32;
+        resource<render::batching::GpuPreprocessingSupport>();
+        resource<render::phase::ViewBinnedRenderPhases<pbr::Shadow>>();
     }
 
     template <class F>
@@ -67,6 +74,19 @@ class MeshViewPrepare : public testing::Test {
         system->initialize(*world);
         ASSERT_TRUE(system->run({}, *world).has_value());
         system->apply_deferred(*world);
+    }
+
+    void prepare_lights() {
+        // Packing/allocation tests still use the real native preparation flow.
+        // A raw eligible camera is required before its initial writer can exist.
+        if (world->resource<render::camera::SortedCameras>().cameras.empty())
+            spawn_shadow_view(next_light_main_index++);
+        if (!light_preparation) {
+            light_preparation = ecs::make_system_unique(pbr::prepare_lights);
+            light_preparation->initialize(*world);
+        }
+        ASSERT_TRUE(light_preparation->run({}, *world).has_value());
+        light_preparation->apply_deferred(*world);
     }
 
     template <class T>
@@ -104,7 +124,7 @@ class MeshViewPrepare : public testing::Test {
     }
 
     void prepare_view_resources(bool binding_arrays = false) {
-        run(pbr::prepare_clusterable_objects);
+        prepare_lights();
         const auto& device = world->resource<wgpu::Device>();
         const auto& queue  = world->resource<wgpu::Queue>();
         world->insert_resource(pbr::MeshPipeline{
@@ -217,7 +237,7 @@ class MeshViewPrepare : public testing::Test {
 };
 
 TEST_F(MeshViewPrepare, EmptyClusterBuffersStillSatisfyTheLayoutMinimum) {
-    run(pbr::prepare_clusterable_objects);
+    prepare_lights();
     const auto& meta = world->resource<pbr::GlobalClusterableObjectMeta>();
     ASSERT_TRUE(meta.gpu_clusterable_objects.binding());
     EXPECT_GE(meta.gpu_clusterable_objects.binding()->get().getSize(), sizeof(pbr::GpuClusterableObject));
@@ -237,7 +257,7 @@ TEST_F(MeshViewPrepare, ClusterUploadSortsPointAndSpotLightsAndRebuildsIndices) 
     point.spot_light_angles.reset();
     point.color             = {0.25f, 0.5f, 1.0f, 1.0f};
     const auto point_entity = spawn_extracted_light(point);
-    run(pbr::prepare_clusterable_objects);
+    prepare_lights();
     const auto& meta = world->resource<pbr::GlobalClusterableObjectMeta>();
     ASSERT_EQ(meta.entity_to_index.size(), 2u);
     EXPECT_EQ(meta.entity_to_index.at(point_entity), 0u);
@@ -250,7 +270,7 @@ TEST_F(MeshViewPrepare, ClusterUploadSortsPointAndSpotLightsAndRebuildsIndices) 
     EXPECT_NEAR(data[1].spot_light_tan_angle, std::tan(0.4f), 1e-6f);
     EXPECT_EQ(data[1].decal_index, 0xFFFFFFFFu);
     world->entity_mut(point_entity).remove<pbr::ExtractedPointLight>();
-    run(pbr::prepare_clusterable_objects);
+    prepare_lights();
     EXPECT_EQ(meta.entity_to_index.size(), 1u);
     EXPECT_FALSE(meta.entity_to_index.contains(point_entity));
     EXPECT_EQ(meta.entity_to_index.at(spot_entity), 0u);
@@ -283,7 +303,7 @@ TEST_F(MeshViewPrepare, MainWorldPointAndSpotExtractionReachesUploadedGpuRecords
     auto& meta = world->resource_mut<pbr::GlobalClusterableObjectMeta>();
     auto& storage = std::get<pbr::GpuClusterableObjects::Storage>(meta.gpu_clusterable_objects.buffer);
     storage.add_usages(wgpu::BufferUsage::eCopySrc);
-    run(pbr::prepare_clusterable_objects);
+    prepare_lights();
     ASSERT_EQ(meta.entity_to_index.size(), 2u);
     ASSERT_EQ(meta.entity_to_index.at(point_render), 0u);
     ASSERT_EQ(meta.entity_to_index.at(spot_render), 1u);
@@ -306,7 +326,7 @@ TEST_F(MeshViewPrepare, MainWorldPointAndSpotExtractionReachesUploadedGpuRecords
     EXPECT_EQ(spot_gpu.flags & pbr::PointLightFlags::VOLUMETRIC, 0u);
     main.entity_mut(spot).get_mut<pbr::SpotLight>()->get_mut().shadows_enabled = true;
     run(pbr::extract_lights);
-    run(pbr::prepare_clusterable_objects);
+    prepare_lights();
     const auto shadowed_spot = read_gpu_value<pbr::GpuClusterableObject>(
         meta.gpu_clusterable_objects.binding()->get(), sizeof(pbr::GpuClusterableObject));
     EXPECT_NE(shadowed_spot.flags & pbr::PointLightFlags::VOLUMETRIC, 0u);
@@ -352,7 +372,7 @@ TEST_F(MeshViewPrepare, ShadowArraysSumMatchingLightsThenTakeTheLargestView) {
         EXPECT_EQ(bindings->get().point_light_depth_texture.getDepthOrArrayLayers(), 6u);
         EXPECT_EQ(bindings->get().point_light_depth_texture.getWidth(), 4u);
     };
-    run(pbr::prepare_lights_shadow_bindings);
+    prepare_lights();
     expect_layers(default_view, 6);  // max(2 + 3, 4) + one spot.
     expect_layers(layer1_view, 6);
     for (const auto& [entity, count] : std::array{std::pair{first, 2u}, std::pair{second, 3u}}) {
@@ -360,17 +380,17 @@ TEST_F(MeshViewPrepare, ShadowArraysSumMatchingLightsThenTakeTheLargestView) {
         light.cascades[default_view].resize(count);
         world->entity_mut(entity).insert(std::move(light));
     }
-    run(pbr::prepare_lights_shadow_bindings);
+    prepare_lights();
     expect_layers(default_view, 6);  // Populating cascade maps must not change the allocation.
     world->entity_mut(second).remove<pbr::ExtractedDirectionalLight>();
-    run(pbr::prepare_lights_shadow_bindings);
+    prepare_lights();
     expect_layers(default_view, 5);  // max(2, 4) + one spot, not 2 + 4 + 1.
     world->entity_mut(layer1_view).despawn();
-    run(pbr::prepare_lights_shadow_bindings);
+    prepare_lights();
     expect_layers(default_view, 3);
     world->entity_mut(first).remove<pbr::ExtractedDirectionalLight>();
     world->entity_mut(spot_entity).remove<pbr::ExtractedPointLight>();
-    run(pbr::prepare_lights_shadow_bindings);
+    prepare_lights();
     expect_layers(default_view, 1);  // Unmatched/disabled lights need no layers.
 }
 
@@ -380,7 +400,7 @@ TEST_F(MeshViewPrepare, PointShadowArrayKeepsOneCubeAndResizesWithShadowCasters)
     world->insert_resource(pbr::DirectionalLightShadowMap{.size = 4});
     const auto view = spawn_shadow_view(0);
     const auto expect_layers = [&](std::uint32_t layers) {
-        run(pbr::prepare_lights_shadow_bindings);
+        prepare_lights();
         const auto bindings = world->entity(view).get<pbr::ViewShadowBindings>();
         ASSERT_TRUE(bindings);
         EXPECT_EQ(bindings->get().point_light_depth_texture.getDepthOrArrayLayers(), layers);
@@ -423,7 +443,7 @@ TEST_F(MeshViewPrepare, ShadowArraysOnlyConsiderSortedClustered3dCameraViews) {
     light.render_layers = layer1;
     light.cascade_shadow_config.bounds.resize(4);
     spawn_extracted_light(light);
-    run(pbr::prepare_lights_shadow_bindings);
+    prepare_lights();
     const auto bindings = world->entity(view).get<pbr::ViewShadowBindings>();
     ASSERT_TRUE(bindings);
     EXPECT_EQ(bindings->get().directional_light_depth_texture.getDepthOrArrayLayers(), 2u);
@@ -510,8 +530,7 @@ TEST_F(MeshViewPrepare, UploadedViewLightsUseBackDirectionAndOrthographicCluster
     ordinary.sun_disk_angular_size = pbr::SunDisk::EARTH.angular_size;
     ordinary.sun_disk_intensity = pbr::SunDisk::EARTH.intensity;
     world->spawn(ordinary, render::sync_world::MainEntity{ecs::Entity::from_index(9)});
-    run(pbr::prepare_lights_shadow_bindings);
-    run(pbr::prepare_view_lights);
+    prepare_lights();
     const auto offset = world->entity(view).get<pbr::ViewLightsUniformOffset>();
     ASSERT_TRUE(offset);
     const auto uploaded = read_gpu_value<pbr::GpuLights>(*lights.view_gpu_lights.buffer(), offset->get().offset);
