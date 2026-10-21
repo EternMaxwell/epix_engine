@@ -14,6 +14,7 @@
 #include <epix/pbr/mesh_shaders.hpp>
 #include <epix/pbr/mesh_uniform.hpp>
 #include <epix/pbr/skin.hpp>
+#include <epix/pbr/shadow_phase.hpp>
 #include <epix/render.hpp>
 #include <epix/shader.hpp>
 #include <epix/task.hpp>
@@ -42,6 +43,7 @@ class MeshViewPrepare : public testing::Test {
    protected:
     epix::app::App app = epix::app::App::create();
     ecs::World* world  = nullptr;
+    std::uint32_t next_light_main_index = 10000;
 
     void SetUp() override {
         app.add_events<epix::window::WindowClosed>();
@@ -77,6 +79,18 @@ class MeshViewPrepare : public testing::Test {
     T& resource() {
         world->init_resource<T>();
         return world->resource_mut<T>();
+    }
+
+    template <class L>
+    ecs::Entity spawn_extracted_light(L light) {
+        const auto entity = world->spawn(std::move(light),
+            render::sync_world::MainEntity{ecs::Entity::from_index(next_light_main_index++)}).id();
+        if constexpr (std::same_as<L, pbr::ExtractedPointLight>) {
+            if (world->entity(entity).get<L>()->get().spot_light_angles)
+                world->entity_mut(entity).insert(epix::camera::Frustum{});
+            else world->entity_mut(entity).insert(epix::camera::CubemapFrusta{});
+        }
+        return entity;
     }
 
     wgpu::Texture texture(wgpu::TextureFormat format, std::uint32_t layers = 1, std::uint32_t samples = 1) {
@@ -218,11 +232,11 @@ TEST_F(MeshViewPrepare, ClusterUploadSortsPointAndSpotLightsAndRebuildsIndices) 
     spot.shadow_map_near_z = 0.1f;
     spot.spot_light_angles = std::pair{0.2f, 0.4f};
     spot.transform[3]      = glm::vec4{1, 2, 3, 1};
-    const auto spot_entity = world->spawn(spot).id();
+    const auto spot_entity = spawn_extracted_light(spot);
     auto point             = spot;
     point.spot_light_angles.reset();
     point.color             = {0.25f, 0.5f, 1.0f, 1.0f};
-    const auto point_entity = world->spawn(point).id();
+    const auto point_entity = spawn_extracted_light(point);
     run(pbr::prepare_clusterable_objects);
     const auto& meta = world->resource<pbr::GlobalClusterableObjectMeta>();
     ASSERT_EQ(meta.entity_to_index.size(), 2u);
@@ -318,7 +332,7 @@ TEST_F(MeshViewPrepare, ShadowArraysSumMatchingLightsThenTakeTheLargestView) {
         light.render_layers = epix::camera::RenderLayers::layer(layer);
         light.cascade_shadow_config.bounds.resize(cascades);
         // Allocation uses configuration, not the not-yet-built per-view cascade maps.
-        return world->spawn(std::move(light)).id();
+        return spawn_extracted_light(std::move(light));
     };
     const auto first = add_light(2, 0);
     const auto second = add_light(3, 0);
@@ -328,7 +342,7 @@ TEST_F(MeshViewPrepare, ShadowArraysSumMatchingLightsThenTakeTheLargestView) {
     pbr::ExtractedPointLight spot;
     spot.shadows_enabled = true;
     spot.spot_light_angles = std::pair{0.2f, 0.4f};
-    const auto spot_entity = world->spawn(spot).id();
+    const auto spot_entity = spawn_extracted_light(spot);
 
     const auto expect_layers = [&](ecs::Entity view, std::uint32_t layers) {
         const auto bindings = world->entity(view).get<pbr::ViewShadowBindings>();
@@ -379,9 +393,9 @@ TEST_F(MeshViewPrepare, PointShadowArrayKeepsOneCubeAndResizesWithShadowCasters)
     expect_layers(6);
     pbr::ExtractedPointLight point;
     point.shadows_enabled = true;
-    world->spawn(point);
-    const auto second = world->spawn(point).id();
-    world->spawn(pbr::ExtractedPointLight{});
+    spawn_extracted_light(point);
+    const auto second = spawn_extracted_light(point);
+    spawn_extracted_light(pbr::ExtractedPointLight{});
     expect_layers(12);
     world->entity_mut(second).remove<pbr::ExtractedPointLight>();
     expect_layers(6);
@@ -405,10 +419,10 @@ TEST_F(MeshViewPrepare, ShadowArraysOnlyConsiderSortedClustered3dCameraViews) {
     pbr::ExtractedDirectionalLight light;
     light.shadows_enabled = true;
     light.cascade_shadow_config.bounds.resize(2);
-    world->spawn(light);
+    spawn_extracted_light(light);
     light.render_layers = layer1;
     light.cascade_shadow_config.bounds.resize(4);
-    world->spawn(light);
+    spawn_extracted_light(light);
     run(pbr::prepare_lights_shadow_bindings);
     const auto bindings = world->entity(view).get<pbr::ViewShadowBindings>();
     ASSERT_TRUE(bindings);
@@ -463,6 +477,10 @@ TEST_F(MeshViewPrepare, UsesTheUnsignedDeferredPrepassTexture) {
 
 TEST_F(MeshViewPrepare, UploadedViewLightsUseBackDirectionAndOrthographicClusters) {
     world->insert_resource(pbr::GlobalAmbientLight{});
+    world->insert_resource(pbr::PointLightShadowMap{.size = 16});
+    world->insert_resource(pbr::DirectionalLightShadowMap{.size = 32});
+    resource<render::batching::GpuPreprocessingSupport>();
+    resource<render::phase::ViewBinnedRenderPhases<pbr::Shadow>>();
     auto& lights = resource<pbr::LightMeta>();
     lights.view_gpu_lights.add_usages(wgpu::BufferUsage::eCopySrc);
     const auto view =
@@ -475,21 +493,24 @@ TEST_F(MeshViewPrepare, UploadedViewLightsUseBackDirectionAndOrthographicCluster
                     .world_from_view = {},
                     .viewport        = {0, 0, 64, 32},
                 },
-                pbr::ExtractedClusterConfig{.near_plane = 1.0f, .far_plane = 17.0f, .dimensions = {4, 2, 8}})
+                pbr::ExtractedClusterConfig{.near_plane = 1.0f, .far_plane = 17.0f, .dimensions = {4, 2, 8}},
+                epix::camera::Camera3d{}, render::sync_world::MainEntity{ecs::Entity::from_index(7)})
             .id();
+    resource<render::camera::SortedCameras>().cameras.push_back({.entity = view});
     pbr::ExtractedDirectionalLight volumetric;
     volumetric.volumetric      = true;
     volumetric.shadows_enabled = true;
     volumetric.illuminance     = 10.0f;
     volumetric.sun_disk_angular_size = 0.0235f;
     volumetric.sun_disk_intensity = 4.25f;
-    world->spawn(volumetric);
+    world->spawn(volumetric, render::sync_world::MainEntity{ecs::Entity::from_index(8)});
     pbr::ExtractedDirectionalLight ordinary;
     ordinary.illuminance  = 2.0f;
     ordinary.transform[2] = {0, 0, 2, 0};
     ordinary.sun_disk_angular_size = pbr::SunDisk::EARTH.angular_size;
     ordinary.sun_disk_intensity = pbr::SunDisk::EARTH.intensity;
-    world->spawn(ordinary);
+    world->spawn(ordinary, render::sync_world::MainEntity{ecs::Entity::from_index(9)});
+    run(pbr::prepare_lights_shadow_bindings);
     run(pbr::prepare_view_lights);
     const auto offset = world->entity(view).get<pbr::ViewLightsUniformOffset>();
     ASSERT_TRUE(offset);

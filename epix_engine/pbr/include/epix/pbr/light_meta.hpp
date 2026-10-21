@@ -29,6 +29,7 @@
 #include <epix/pbr/gpu_lights.hpp>
 #include <epix/pbr/light_cluster.hpp>
 #include <epix/pbr/point_light.hpp>
+#include <epix/pbr/shadow_phase_item.hpp>
 #include <epix/pbr/spot_light.hpp>
 #include <epix/pbr/volumetric.hpp>
 
@@ -63,6 +64,13 @@ EPIX_EXPORT struct ViewLightsUniformOffset {
  *  cascade views, not the lights. */
 EPIX_EXPORT struct ViewLightEntities {
     std::vector<ecs::Entity> lights;
+};
+
+/** @brief Per-light map from camera render entities to their shadow views
+ * (Bevy LightViewEntities). PbrPlugin's Add/Remove observers initialize and
+ * retire this map; ordinary component replacement retains its contents. */
+EPIX_EXPORT struct EPIX_API LightViewEntities {
+    std::unordered_map<ecs::Entity, std::vector<ecs::Entity>> entities;
 };
 
 /** @brief The depth textures a view's shadow maps render into (Bevy
@@ -329,15 +337,17 @@ EPIX_EXPORT EPIX_API void extract_ambient_light_resource(
  *  The point lights' cubemap array is bound at 2 and the directional lights' cascade array at
  *  5, and both entries are unconditional in this port's view layout exactly as they are in
  *  Bevy's - so a mesh view bind group cannot be built until these textures exist, which is why
- *  `prepare_mesh_view_bind_groups` (PBR-83) waits on this. Nothing is cast into them yet: the
- *  `DepthAttachment`s and the per-view light-view spawning are the rest of PBR-81. */
+ *  `prepare_mesh_view_bind_groups` (PBR-83) waits on this. prepare_view_lights
+ *  then constructs depth attachments and shadow views. Depth draws remain unported. */
 EPIX_EXPORT EPIX_API void prepare_lights_shadow_bindings(
     ecs::Commands commands, ecs::Res<wgpu::Device> render_device,
     ecs::ResMut<::epix::render::render_resource::TextureCache> texture_cache,
     ecs::Res<PointLightShadowMap> point_light_shadow_map,
     ecs::Res<DirectionalLightShadowMap> directional_light_shadow_map,
-    ecs::Query<ecs::Item<const ExtractedPointLight&>> point_lights,
-    ecs::Query<ecs::Item<const ExtractedDirectionalLight&>> directional_lights,
+    ecs::Query<ecs::Item<const ExtractedPointLight&>,
+               ecs::Filter<ecs::With<render::sync_world::MainEntity>,
+                           ecs::Or<ecs::With<camera::CubemapFrusta>, ecs::With<camera::Frustum>>>> point_lights,
+    ecs::Query<ecs::Item<const ExtractedDirectionalLight&>, ecs::With<render::sync_world::MainEntity>> directional_lights,
     ecs::Res<::epix::render::camera::SortedCameras> sorted_cameras,
     ecs::Query<ecs::Item<ecs::Entity, const ::epix::render::view::ExtractedView&,
                          ecs::Opt<const camera::RenderLayers&>>,
@@ -349,35 +359,40 @@ EPIX_EXPORT EPIX_API void prepare_clusterable_objects(
     ecs::Res<wgpu::Device> render_device,
     ecs::Res<wgpu::Queue> render_queue,
     ecs::ResMut<GlobalClusterableObjectMeta> global_light_meta,
-    ecs::Query<ecs::Item<ecs::Entity, const ExtractedPointLight&>> point_lights,
-    ecs::Query<ecs::Item<const ExtractedDirectionalLight&>> directional_lights);
+    ecs::Query<ecs::Item<ecs::Entity, const ExtractedPointLight&>,
+               ecs::Filter<ecs::With<render::sync_world::MainEntity>,
+                           ecs::Or<ecs::With<camera::CubemapFrusta>, ecs::With<camera::Frustum>>>> point_lights,
+    ecs::Query<ecs::Item<const ExtractedDirectionalLight&>, ecs::With<render::sync_world::MainEntity>> directional_lights);
 
-/** @brief Write one `GpuLights` per view and stamp each view with its offset (Bevy
- *  `prepare_lights`' tail, `render/light.rs:1113-1250` and `:1630-1650`).
- *
- *  This is the half of Bevy's `prepare_lights` the lighting prepare needs: for each view it
- *  assembles the directional lights that view can see (through `directional_light_gpu_flags`,
- *  which is what decides whether a light's cascades fit the shadow-array layers the earlier
- *  lights left), the resolved ambient colour, the cluster dimensions and factors, and the two
- *  indices the shader uses, then writes the uniform and stamps `ViewLightsUniformOffset` -
- *  the component `SetMeshViewBindGroup<I>` reads at binding 1. Bevy writes this together with
- *  shadow-texture preparation; this port registers that preparation and the uniform upload
- *  as separate systems in `ManageViews`. Shadow-view spawning and rendering remain unported.
- *
- *  The projection matrix selects orthographic clustering in the same way as Bevy. */
+/** @brief Prepare shadow views, phases and per-camera light uniforms (Bevy
+ * prepare_lights, render/light.rs:1113-1670), after shadow texture allocation
+ * and clusterable-object indexing. This produces views, not shadow depth draws. */
 EPIX_EXPORT EPIX_API void prepare_view_lights(
     ecs::Commands commands,
     ecs::Res<wgpu::Device> render_device,
     ecs::Res<wgpu::Queue> render_queue,
     ecs::Res<GlobalAmbientLight> ambient_light,
     ecs::ResMut<LightMeta> light_meta,
+    ecs::Res<GlobalClusterableObjectMeta> global_light_meta,
+    ecs::Res<PointLightShadowMap> point_light_shadow_map,
+    ecs::Res<DirectionalLightShadowMap> directional_light_shadow_map,
+    ecs::Res<render::camera::SortedCameras> sorted_cameras,
+    ecs::Res<render::batching::GpuPreprocessingSupport> gpu_preprocessing_support,
+    ecs::ResMut<render::phase::ViewBinnedRenderPhases<Shadow>> shadow_render_phases,
     ecs::Query<ecs::Item<ecs::Entity,
+                         const render::sync_world::MainEntity&,
                          const ::epix::render::view::ExtractedView&,
                          const ExtractedClusterConfig&,
+                         const ViewShadowBindings&,
                          ecs::Opt<const ::epix::camera::RenderLayers&>,
-                         ecs::Opt<const AmbientLight&>>> views,
-    ecs::Query<ecs::Item<const ExtractedPointLight&>> point_lights,
-    ecs::Query<ecs::Item<ecs::Entity, const ExtractedDirectionalLight&>> directional_lights);
+                         ecs::Has<render::view::NoIndirectDrawing>,
+                         ecs::Opt<const AmbientLight&>>, ecs::With<camera::Camera3d>> views,
+    ecs::Query<ecs::Item<ecs::Entity, const render::sync_world::MainEntity&, const ExtractedPointLight&,
+                         ecs::Opt<const camera::CubemapFrusta&>, ecs::Opt<const camera::Frustum&>>,
+               ecs::Or<ecs::With<camera::CubemapFrusta>, ecs::With<camera::Frustum>>> point_lights,
+    ecs::Query<ecs::Item<ecs::Entity, const render::sync_world::MainEntity&,
+                         const ExtractedDirectionalLight&>> directional_lights,
+    ecs::Query<ecs::Item<ecs::Mut<LightViewEntities>>> light_view_entities);
 
 /** @brief Copy each visible light into the render world for the lighting prepare (Bevy
  *  `extract_lights`, `render/light.rs:280-599`).
@@ -646,18 +661,5 @@ EPIX_EXPORT EPIX_API std::vector<DirectionalShadowSlice> directional_shadow_slic
     std::size_t directional_volumetric_enabled_count,
     std::size_t max_texture_array_layers,
     std::size_t* out_total_cascades = nullptr);
-
-/** @brief Tracks the light-view entities spawned for each view (Bevy `LightViewEntities`,
- *  `bevy_pbr/src/render/light.rs:610-613`): per light, a map from a view entity to the
- *  light-view entities that view renders this light through.
- *
- *  PbrPlugin installs Bevy's Add/Remove observers in its render world. Adding
- *  either extracted light type inserts an empty map; replacing that type does
- *  not. Removing either type removes the map, whose Remove observer retires
- *  the stored view entities. Per-view population belongs to light preparation. */
-EPIX_EXPORT struct EPIX_API LightViewEntities {
-    /** @brief The light-view entities spawned for each view of this light. */
-    std::unordered_map<ecs::Entity, std::vector<ecs::Entity>> entities;
-};
 
 }  // namespace epix::pbr

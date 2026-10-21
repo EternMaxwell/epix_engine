@@ -8,15 +8,20 @@
 #include <epix/pbr/gpu_lights.hpp>
 #include <epix/pbr/light_meta.hpp>
 #include <epix/pbr/point_light.hpp>
+#include <epix/pbr/shadow_phase.hpp>
 #include <epix/render/render_resource.hpp>
+#include <unordered_set>
 
 namespace epix::pbr {
 
 void prepare_clusterable_objects(ecs::Res<wgpu::Device> render_device,
                                  ecs::Res<wgpu::Queue> render_queue,
                                  ecs::ResMut<GlobalClusterableObjectMeta> global_light_meta,
-                                 ecs::Query<ecs::Item<ecs::Entity, const ExtractedPointLight&>> point_lights,
-                                 ecs::Query<ecs::Item<const ExtractedDirectionalLight&>> directional_lights) {
+                                 ecs::Query<ecs::Item<ecs::Entity, const ExtractedPointLight&>,
+                                     ecs::Filter<ecs::With<render::sync_world::MainEntity>,
+                                         ecs::Or<ecs::With<camera::CubemapFrusta>, ecs::With<camera::Frustum>>>> point_lights,
+                                 ecs::Query<ecs::Item<const ExtractedDirectionalLight&>,
+                                     ecs::With<render::sync_world::MainEntity>> directional_lights) {
     std::vector<std::pair<ecs::Entity, ExtractedPointLight>> sorted_lights;
     std::vector<ExtractedPointLight> point_values;
     std::vector<ExtractedDirectionalLight> directional_values;
@@ -76,9 +81,9 @@ void prepare_clusterable_objects(ecs::Res<wgpu::Device> render_device,
  *  each with its view - returned as a `ViewShadowBindings` for `prepare_lights_shadow_bindings`
  *  below to stamp onto every view. That is what `prepare_mesh_view_bind_groups` (PBR-83) reads
  *  and binds at 2 and 5, so the port needs these textures bound before it can build a mesh view
- *  bind group at all. Still owed, and `PBR-81`: the two `DepthAttachment` maps and the
- *  per-view light-view spawning, so nothing is cast into these textures yet - they are sized
- *  and bound, which is what the bind group needs and all it needs.
+ *  bind group at all. prepare_view_lights subsequently builds the per-layer
+ *  depth attachments, shadow entities and phases from these textures. Actual
+ *  shadow queuing/depth drawing remains the separate unfinished part of PBR-81.
  *
  *  Two substitutions, both recorded elsewhere and both forced by this port's shape: the
  *  device limit Bevy reads as `max_texture_cubes` arrives as a parameter, as every other
@@ -91,8 +96,11 @@ ViewShadowBindings prepare_lights(const wgpu::Device& device,
                                   std::size_t max_texture_cubes, std::size_t max_texture_array_layers,
                                   std::size_t max_texture_dimension_2d,
                                   const DirectionalLightShadowMap& directional_light_shadow_map,
-                                  ecs::Query<ecs::Item<const ExtractedPointLight&>> point_lights,
-                                  ecs::Query<ecs::Item<const ExtractedDirectionalLight&>> directional_lights,
+                                  ecs::Query<ecs::Item<const ExtractedPointLight&>,
+                                      ecs::Filter<ecs::With<render::sync_world::MainEntity>,
+                                          ecs::Or<ecs::With<camera::CubemapFrusta>, ecs::With<camera::Frustum>>>> point_lights,
+                                  ecs::Query<ecs::Item<const ExtractedDirectionalLight&>,
+                                      ecs::With<render::sync_world::MainEntity>> directional_lights,
                                   const std::vector<camera::RenderLayers>& view_render_layers) {
     // The counts come from this port's own helper rather than a second copy of Bevy's
     // arithmetic. `count_lights` already ports `light.rs:806-853`, including the
@@ -209,10 +217,8 @@ ViewShadowBindings prepare_lights(const wgpu::Device& device,
                 .setBaseArrayLayer(0));
 
     // Bevy hands each view these four handles inside `prepare_lights` (`light.rs:1633-1641`);
-    // returning them is what lets the system below do the stamping. Still owed, in Bevy's
-    // order: the two `DepthAttachment` maps (keyed by array layer, so they belong beside the
-    // per-layer cache) and the per-view spawning of `PBR-81`, so nothing is cast into these
-    // textures yet - they are sized and bound, which is what the mesh view bind group needs.
+    // returning them lets the allocation system stamp cameras before
+    // prepare_view_lights constructs the per-layer attachments and shadow views.
     return ViewShadowBindings{
         .point_light_depth_texture            = point_light_depth_texture.texture,
         .point_light_depth_texture_view       = point_light_depth_texture_view,
@@ -226,8 +232,10 @@ void prepare_lights_shadow_bindings(
     ecs::ResMut<::epix::render::render_resource::TextureCache> texture_cache,
     ecs::Res<PointLightShadowMap> point_light_shadow_map,
     ecs::Res<DirectionalLightShadowMap> directional_light_shadow_map,
-    ecs::Query<ecs::Item<const ExtractedPointLight&>> point_lights,
-    ecs::Query<ecs::Item<const ExtractedDirectionalLight&>> directional_lights,
+    ecs::Query<ecs::Item<const ExtractedPointLight&>,
+               ecs::Filter<ecs::With<render::sync_world::MainEntity>,
+                           ecs::Or<ecs::With<camera::CubemapFrusta>, ecs::With<camera::Frustum>>>> point_lights,
+    ecs::Query<ecs::Item<const ExtractedDirectionalLight&>, ecs::With<render::sync_world::MainEntity>> directional_lights,
     ecs::Res<::epix::render::camera::SortedCameras> sorted_cameras,
     ecs::Query<ecs::Item<ecs::Entity, const ::epix::render::view::ExtractedView&,
                          ecs::Opt<const camera::RenderLayers&>>,
@@ -258,21 +266,16 @@ void prepare_lights_shadow_bindings(
     }
 }
 
-/** @brief Despawn a list of entities through commands (Bevy `despawn_entities`,
- *  `render/light.rs:1673-1682`).
- *
- *  Bevy queues one world closure for the whole list and returns early when the list is
- *  empty. This port commands each entity directly: its `Commands` applies at the next sync
- *  point, which is where Bevy's closure runs, and it has no queued world access to use
- *  instead. The empty-list guard is kept because it is Bevy's, and because it is what lets
- *  the three despawn sites in the spawning read as one line each. */
+/** @brief Queue one fallible World command for the complete list, preserving
+ * native retirement order (Bevy despawn_entities, render/light.rs:1673-1682). */
 void despawn_entities(ecs::Commands commands, const std::vector<ecs::Entity>& entities) {
     if (entities.empty()) {
         return;
     }
-    for (const ecs::Entity& entity : entities) {
-        commands.entity(entity).despawn();
-    }
+    commands.queue([entities](ecs::World& world) {
+        for (const auto entity : entities)
+            if (auto value = world.get_entity_mut(entity)) value->despawn();
+    });
 }
 
 /** @brief Re-key one view's visible meshes into the render world (Bevy
@@ -309,25 +312,59 @@ void prepare_view_lights(ecs::Commands commands,
                          ecs::Res<wgpu::Queue> render_queue,
                          ecs::Res<GlobalAmbientLight> ambient_light,
                          ecs::ResMut<LightMeta> light_meta,
+                         ecs::Res<GlobalClusterableObjectMeta> global_light_meta,
+                         ecs::Res<PointLightShadowMap> point_light_shadow_map,
+                         ecs::Res<DirectionalLightShadowMap> directional_light_shadow_map,
+                         ecs::Res<render::camera::SortedCameras> sorted_cameras,
+                         ecs::Res<render::batching::GpuPreprocessingSupport> gpu_preprocessing_support,
+                         ecs::ResMut<render::phase::ViewBinnedRenderPhases<Shadow>> shadow_render_phases,
                          ecs::Query<ecs::Item<ecs::Entity,
+                                              const render::sync_world::MainEntity&,
                                               const ::epix::render::view::ExtractedView&,
                                               const ExtractedClusterConfig&,
+                                              const ViewShadowBindings&,
                                               ecs::Opt<const ::epix::camera::RenderLayers&>,
-                                              ecs::Opt<const AmbientLight&>>> views,
-                         ecs::Query<ecs::Item<const ExtractedPointLight&>> point_lights,
-                         ecs::Query<ecs::Item<ecs::Entity, const ExtractedDirectionalLight&>> directional_lights) {
-    // Bevy's `prepare_lights` tail (`render/light.rs:1113-1250` and the write at `:1630-1650`):
-    // one `GpuLights` per view, in view order, each view stamped with the offset
-    // `SetMeshViewBindGroup<I>` reads at binding 1. Bevy writes this in one function with
-    // shadow-texture preparation; this port registers the two separately in ManageViews.
+                                              ecs::Has<render::view::NoIndirectDrawing>,
+                                              ecs::Opt<const AmbientLight&>>, ecs::With<camera::Camera3d>> views,
+                         ecs::Query<ecs::Item<ecs::Entity, const render::sync_world::MainEntity&,
+                                              const ExtractedPointLight&, ecs::Opt<const camera::CubemapFrusta&>,
+                                              ecs::Opt<const camera::Frustum&>>,
+                                    ecs::Or<ecs::With<camera::CubemapFrusta>, ecs::With<camera::Frustum>>> point_lights,
+                         ecs::Query<ecs::Item<ecs::Entity, const render::sync_world::MainEntity&,
+                                              const ExtractedDirectionalLight&>> directional_lights,
+                         ecs::Query<ecs::Item<ecs::Mut<LightViewEntities>>> light_view_entities) {
+    using RetainedView = render::view::RetainedViewEntity;
+    using DepthAttachment = render::render_resource::DepthAttachment;
+    using Mode = render::batching::GpuPreprocessingMode;
+    struct Point {
+        ecs::Entity entity;
+        render::sync_world::MainEntity main;
+        const ExtractedPointLight* light;
+        const camera::CubemapFrusta* point_frusta;
+        const camera::Frustum* spot_frustum;
+    };
+    struct Directional {
+        ecs::Entity entity;
+        render::sync_world::MainEntity main;
+        const ExtractedDirectionalLight* light;
+    };
+    std::vector<Point> sorted_points;
     std::vector<ExtractedPointLight> extracted_point_lights;
-    for (auto&& [light] : point_lights.iter()) extracted_point_lights.push_back(light);
-    std::vector<std::pair<ecs::Entity, ExtractedDirectionalLight>> sorted_directional_lights;
-    for (auto&& [entity, light] : directional_lights.iter()) sorted_directional_lights.emplace_back(entity, light);
+    for (auto&& [entity, main, light, cubemap, frustum] : point_lights.iter()) {
+        sorted_points.push_back({entity, main, &light, cubemap ? &cubemap->get() : nullptr,
+                                 frustum ? &frustum->get() : nullptr});
+        extracted_point_lights.push_back(light);
+    }
+    std::ranges::sort(sorted_points, {}, [](const Point& entry) {
+        return point_light_sort_key(entry.entity, *entry.light);
+    });
+    std::vector<Directional> sorted_directional_lights;
+    for (auto&& [entity, main, light] : directional_lights.iter())
+        sorted_directional_lights.push_back({entity, main, &light});
     std::ranges::sort(sorted_directional_lights, {},
-                      [](const auto& entry) { return directional_light_sort_key(entry.first, entry.second); });
+                      [](const Directional& entry) { return directional_light_sort_key(entry.entity, *entry.light); });
     std::vector<ExtractedDirectionalLight> extracted_directional_lights;
-    for (const auto& [_, light] : sorted_directional_lights) extracted_directional_lights.push_back(light);
+    for (const auto& entry : sorted_directional_lights) extracted_directional_lights.push_back(*entry.light);
 
     wgpu::Limits limits{};
     render_device->getLimits(&limits);
@@ -338,8 +375,46 @@ void prepare_view_lights(ecs::Commands commands,
                      max_texture_cubes);
 
     auto& gpu_lights_buffer = light_meta->view_gpu_lights;
+    std::vector<camera::RenderLayers> camera_layers;
+    for (const auto& camera : sorted_cameras->cameras) {
+        const auto row = views.get(camera.entity);
+        if (!row) continue;
+        const auto& layers = std::get<5>(*row);
+        camera_layers.push_back(layers ? layers->get() : camera::RenderLayers::layer(0));
+    }
+    const auto global_cascade_count =
+        num_directional_cascades_enabled(camera_layers, extracted_directional_lights, max_texture_array_layers);
+    std::unordered_map<std::uint32_t, DepthAttachment> point_attachments;
+    std::unordered_map<std::uint32_t, DepthAttachment> spot_attachments;
+    std::unordered_set<ecs::Entity> live_views;
+    std::unordered_set<RetainedView> live_phases;
+    const auto face_rotations = cube_face_view_rotations();
+    const auto retire = [&](LightViewEntities& map, ecs::Entity camera) {
+        if (auto it = map.entities.find(camera); it != map.entities.end()) {
+            despawn_entities(commands, it->second);
+            map.entities.erase(it);
+        }
+    };
+    const auto spawn_views = [&](std::size_t count) {
+        std::vector<ecs::Entity> result;
+        result.reserve(count);
+        for (std::size_t i = 0; i < count; ++i) result.push_back(commands.spawn().id());
+        return result;
+    };
+    const auto layer_view = [](const wgpu::Texture& texture, std::uint32_t layer, const char* label) {
+        return texture.createView(wgpu::TextureViewDescriptor{}.setLabel(label)
+            .setDimension(wgpu::TextureViewDimension::e2D).setAspect(wgpu::TextureAspect::eAll)
+            .setBaseMipLevel(0).setBaseArrayLayer(layer).setArrayLayerCount(1));
+    };
     gpu_lights_buffer.clear();
-    for (auto&& [entity, view, clusters, view_layers, view_ambient] : views.iter()) {
+    for (const auto& camera : sorted_cameras->cameras) {
+        auto row = views.get(camera.entity);
+        if (!row) continue;
+        auto&& [entity, camera_main, view, clusters, bindings, view_layers, no_indirect, view_ambient] = *row;
+        live_views.insert(entity);
+        const auto mode = gpu_preprocessing_support->min(no_indirect ? Mode::PreprocessingOnly : Mode::Culling);
+        std::vector<ecs::Entity> view_lights;
+        std::vector<ecs::Entity> occlusion_views;
         const ::epix::camera::RenderLayers& layers =
             view_layers.has_value() ? view_layers->get() : ::epix::camera::RenderLayers::layer(0);
 
@@ -396,13 +471,159 @@ void prepare_view_lights(ecs::Commands commands,
             cluster_factors_zw.x, cluster_factors_zw.y);
         gpu_lights.n_directional_lights = static_cast<std::uint32_t>(num_directional_lights);
         gpu_lights.spot_light_shadowmap_offset =
-            spot_light_shadowmap_offset(num_cascades_enabled, counts.point_lights);
+            spot_light_shadowmap_offset(global_cascade_count, counts.point_lights);
         gpu_lights.ambient_light_affects_lightmapped_meshes =
             resolved_ambient.affects_lightmapped_meshes ? 1u : 0u;
 
+        // Point/spot views exist per camera, but each texture layer has one
+        // shared attachment and phase. Sorted camera order chooses that phase.
+        for (std::size_t light_index = 0; light_index < std::min(counts.point_lights, max_texture_cubes);
+             ++light_index) {
+            const auto& source = sorted_points[light_index];
+            auto map_row = light_view_entities.get(source.entity);
+            if (!map_row) continue;
+            auto& map = *std::get<0>(*map_row);
+            const auto& light = *source.light;
+            if (!light.shadows_enabled) { retire(map, entity); continue; }
+            if (!source.point_frusta) throw std::logic_error("Point shadow light has no CubemapFrusta");
+            auto it = map.entities.find(entity);
+            if (it == map.entities.end()) it = map.entities.emplace(entity, spawn_views(6)).first;
+            const auto gpu_index = global_light_meta->entity_to_index.at(source.entity);
+            for (std::size_t face = 0; face < 6; ++face) {
+                const auto layer = point_light_shadow_array_layer(gpu_index, face);
+                auto attachment = point_attachments.find(layer);
+                const bool first = attachment == point_attachments.end();
+                if (first) attachment = point_attachments.emplace(layer, DepthAttachment{
+                    layer_view(bindings.point_light_depth_texture, layer, "point_light_shadow_map_texture_view"), 0.0f}).first;
+                const RetainedView retained{source.main, camera_main, static_cast<std::uint32_t>(face)};
+                const auto shadow = it->second.at(face);
+                commands.entity(shadow).insert(
+                    ShadowView{attachment->second, point_light_shadow_pass_name(gpu_index, face)},
+                    render::view::ExtractedView{
+                        .retained_view_entity = retained,
+                        .clip_from_view = cube_face_projection(light.shadow_map_near_z),
+                        .world_from_view = transform::GlobalTransform{
+                            point_light_face_world_from_view(face_rotations, glm::vec3(light.transform[3]), face)},
+                        .viewport = {0, 0, static_cast<std::uint32_t>(point_light_shadow_map->size),
+                                          static_cast<std::uint32_t>(point_light_shadow_map->size)}},
+                    camera::Frustum(source.point_frusta->frusta[face]),
+                    LightEntity{.kind = LightEntity::Kind::Point, .light_entity = source.entity, .face_index = face});
+                if (mode != Mode::Culling) commands.entity(shadow).insert(render::view::NoIndirectDrawing{});
+                view_lights.push_back(shadow);
+                if (first) {
+                    shadow_render_phases->prepare_for_new_frame(retained, mode);
+                    live_phases.insert(retained);
+                }
+            }
+        }
+        for (std::size_t light_index = 0; light_index < counts.spot_lights; ++light_index) {
+            const auto& source = sorted_points[counts.point_lights + light_index];
+            auto map_row = light_view_entities.get(source.entity);
+            if (!map_row) continue;
+            auto& map = *std::get<0>(*map_row);
+            const auto& light = *source.light;
+            if (!light.shadows_enabled) { retire(map, entity); continue; }
+            if (!source.spot_frustum) throw std::logic_error("Spot shadow light has no Frustum");
+            const auto layer = static_cast<std::uint32_t>(global_cascade_count + light_index);
+            auto attachment = spot_attachments.find(layer);
+            const bool first = attachment == spot_attachments.end();
+            if (first) attachment = spot_attachments.emplace(layer, DepthAttachment{
+                layer_view(bindings.directional_light_depth_texture, layer, "spot_light_shadow_map_texture_view"), 0.0f}).first;
+            auto it = map.entities.find(entity);
+            if (it == map.entities.end()) it = map.entities.emplace(entity, spawn_views(1)).first;
+            const auto shadow = it->second.at(0);
+            const RetainedView retained{source.main, camera_main, 0};
+            commands.entity(shadow).insert(
+                ShadowView{attachment->second, "shadow_spot_light_" + std::to_string(light_index)},
+                render::view::ExtractedView{
+                    .retained_view_entity = retained,
+                    .clip_from_view = spot_light_clip_from_view(light.spot_light_angles.value().second, light.shadow_map_near_z),
+                    .world_from_view = transform::GlobalTransform{
+                        spot_light_world_from_view(transform::GlobalTransform{light.transform})},
+                    .viewport = {0, 0, static_cast<std::uint32_t>(directional_light_shadow_map->size),
+                                      static_cast<std::uint32_t>(directional_light_shadow_map->size)}},
+                camera::Frustum(*source.spot_frustum),
+                LightEntity{.kind = LightEntity::Kind::Spot, .light_entity = source.entity});
+            if (mode != Mode::Culling) commands.entity(shadow).insert(render::view::NoIndirectDrawing{});
+            view_lights.push_back(shadow);
+            if (first) {
+                shadow_render_phases->prepare_for_new_frame(retained, mode);
+                live_phases.insert(retained);
+            }
+        }
+
+        std::size_t directional_index = 0;
+        std::uint32_t directional_layer = 0;
+        for (const auto& source : sorted_directional_lights) {
+            const auto& light = *source.light;
+            const bool intersects = layers.intersects(light.render_layers);
+            if (intersects && directional_index >= MAX_DIRECTIONAL_LIGHTS) continue;
+            auto map_row = light_view_entities.get(source.entity);
+            const auto index = directional_index;
+            if (intersects) ++directional_index;
+            if (!map_row) continue;
+            auto& map = *std::get<0>(*map_row);
+            if (!intersects || !(gpu_lights.directional_lights[index].flags & DirectionalLightFlags::SHADOWS_ENABLED)) {
+                retire(map, entity);
+                continue;
+            }
+            const auto& cascades = light.cascades.at(entity);
+            const auto& frusta = light.frusta.at(entity);
+            const auto count = std::min({cascades.size(), frusta.size(),
+                                        light.cascade_shadow_config.bounds.size(), MAX_CASCADES_PER_LIGHT});
+            auto it = map.entities.find(entity);
+            if (it == map.entities.end()) it = map.entities.emplace(entity, spawn_views(count)).first;
+            if (it->second.size() != count) {
+                despawn_entities(commands, it->second);
+                it->second = spawn_views(count);
+            }
+            for (std::size_t cascade_index = 0; cascade_index < count; ++cascade_index) {
+                const auto& cascade = cascades[cascade_index];
+                gpu_lights.directional_lights[index].cascades[cascade_index] = {
+                    .clip_from_world = cascade.clip_from_world, .texel_size = cascade.texel_size,
+                    .far_bound = light.cascade_shadow_config.bounds[cascade_index]};
+                const auto depth_view = layer_view(bindings.directional_light_depth_texture, directional_layer++,
+                                                    "directional_light_shadow_map_array_texture_view");
+                const auto shadow = it->second[cascade_index];
+                const RetainedView retained{source.main, camera_main, static_cast<std::uint32_t>(cascade_index)};
+                commands.entity(shadow).insert(
+                    ShadowView{DepthAttachment{depth_view, 0.0f}, directional_shadow_pass_name(index, cascade_index)},
+                    render::view::ExtractedView{
+                        .retained_view_entity = retained, .clip_from_view = cascade.clip_from_cascade,
+                        .world_from_view = transform::GlobalTransform{cascade.world_from_cascade},
+                        .clip_from_world = cascade.clip_from_world,
+                        .viewport = {0, 0, static_cast<std::uint32_t>(directional_light_shadow_map->size),
+                                          static_cast<std::uint32_t>(directional_light_shadow_map->size)}},
+                    directional_view_frustum(frusta[cascade_index]),
+                    LightEntity{.kind = LightEntity::Kind::Directional, .light_entity = source.entity,
+                                .cascade_index = cascade_index});
+                if (mode != Mode::Culling) commands.entity(shadow).insert(render::view::NoIndirectDrawing{});
+                view_lights.push_back(shadow);
+                if (light.occlusion_culling) {
+                    commands.entity(shadow).insert(render::experimental::OcclusionCulling{},
+                        render::experimental::OcclusionCullingSubview{
+                            depth_view, static_cast<std::uint32_t>(directional_light_shadow_map->size)});
+                    occlusion_views.push_back(shadow);
+                }
+                shadow_render_phases->prepare_for_new_frame(retained, mode);
+                live_phases.insert(retained);
+            }
+        }
+
         const std::size_t offset = gpu_lights_buffer.push(gpu_lights);
-        commands.entity(entity).insert(ViewLightsUniformOffset{.offset = static_cast<std::uint32_t>(offset)});
+        commands.entity(entity).insert(ViewLightEntities{std::move(view_lights)},
+            ViewLightsUniformOffset{.offset = static_cast<std::uint32_t>(offset)});
+        if (!occlusion_views.empty()) commands.entity(entity).insert(
+            render::experimental::OcclusionCullingSubviewEntities{std::move(occlusion_views)});
     }
+    for (auto&& [map] : light_view_entities.iter()) {
+        std::erase_if(map->entities, [&](const auto& entry) {
+            if (live_views.contains(entry.first)) return false;
+            despawn_entities(commands, entry.second);
+            return true;
+        });
+    }
+    std::erase_if(shadow_render_phases->phases, [&](const auto& entry) { return !live_phases.contains(entry.first); });
     gpu_lights_buffer.write_buffer(render_device.get(), render_queue.get());
 }
 

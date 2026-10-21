@@ -128,6 +128,9 @@ void PbrPlugin::attach(epix::app::App& app) {
         render_app->get().add_systems(render::Render,
                                       ecs::into(prepare_view_lights)
                                           .in_set(render::RenderSystems::ManageViews)
+                                          .after(prepare_lights_shadow_bindings)
+                                          .after(prepare_clusterable_objects)
+                                          .after(render::camera::sort_cameras)
                                           .set_name("prepare view lights"));
         render_app->get().add_systems(render::Render,
                                       ecs::into(prepare_clusters)

@@ -18,6 +18,7 @@
 #include <epix/pbr/material_plugin.hpp>
 #include <epix/pbr/pbr_plugin.hpp>
 #include <epix/pbr/point_light.hpp>
+#include <epix/pbr/shadow_phase.hpp>
 #include <epix/pbr/spot_light.hpp>
 #include <epix/render.hpp>
 #include <epix/sdl3/core.hpp>
@@ -87,7 +88,7 @@ void spawn_scene(Commands cmd, ResMut<Assets<mesh::Mesh>> meshes, ResMut<Assets<
     cmd.spawn(camera::Camera3d{}, transform::Transform::from_xyz(0.75f, 0.0f, 4.5f));
     // Two lights require five shared shadow-array layers, not the largest
     // individual count (three). This unlit shader's appearance is unchanged;
-    // shadow views/rendering are not implemented yet.
+    // shadow view preparation is exercised without changing the unlit shader.
     cmd.spawn(pbr::DirectionalLight{.shadows_enabled = true},
               pbr::CascadeShadowConfig{.bounds = {10.0f, 100.0f}},
               transform::Transform::from_xyz(0.0f, 4.0f, 0.0f));
@@ -237,6 +238,32 @@ struct ShadowMapTickProbe {
     bool logged = false;
 };
 
+// Read-only end-to-end check of the registered producer, not a shadow draw.
+void probe_shadow_views(
+    Query<Item<const pbr::ShadowView&, const pbr::LightEntity&, const render::view::ExtractedView&>> shadows,
+    Query<Item<const render::sync_world::MainEntity&>> identities,
+    Query<Item<const render::sync_world::MainEntity&>, With<camera::Camera3d>> cameras,
+    Res<render::phase::ViewBinnedRenderPhases<pbr::Shadow>> phases, Local<unsigned> frames, Local<bool> logged) {
+    if (*logged || ++*frames < 8) return;
+    std::size_t directional = 0, point = 0, spot = 0;
+    bool valid = true;
+    for (auto&& [attachment, owner, view] : shadows.iter()) {
+        directional += owner.kind == pbr::LightEntity::Kind::Directional;
+        point += owner.kind == pbr::LightEntity::Kind::Point;
+        spot += owner.kind == pbr::LightEntity::Kind::Spot;
+        const auto light = identities.get(owner.light_entity);
+        valid = valid && light && std::get<0>(*light) == view.retained_view_entity.main_entity;
+        bool camera_found = false;
+        for (auto&& [main] : cameras.iter()) camera_found |= main == view.retained_view_entity.auxiliary_entity;
+        valid = valid && camera_found && phases->phases.contains(view.retained_view_entity) && attachment.depth_attachment.view;
+    }
+    spdlog::info("[first-mesh] Shadow view preparation: directional={} point={} spot={} phases={} retained_keys_valid={}",
+                 directional, point, spot, phases->phases.size(), valid);
+    if (directional != 5 || point != 0 || spot != 0 || phases->phases.size() != 5 || !valid)
+        spdlog::error("[first-mesh] Scheduled shadow-view preparation is incomplete");
+    *logged = true;
+}
+
 void observe_shadow_map_ticks(std::string_view world, const Res<pbr::DirectionalLightShadowMap>& map,
                              ShadowMapTickProbe& state) {
     if (state.logged) return;
@@ -331,7 +358,7 @@ int main() {
     app.add_systems(Startup, into(spawn_scene).set_name("spawn first mesh scene"));
     app.world_mut().init_resource<LateSpawn>();
     app.add_systems(Update, into(spawn_late_mesh).set_name("spawn late mesh"));
-    // Only allocation is exercised here; small maps avoid paying for unused shadow passes.
+    // Exercise allocation and view preparation with small maps; depth draws remain unported.
     app.world_mut().insert_resource(pbr::PointLightShadowMap{.size = 64});
     app.world_mut().insert_resource(pbr::DirectionalLightShadowMap{.size = 64});
     app.add_systems(PostUpdate, into(probe_main_shadow_map_ticks)
@@ -364,5 +391,9 @@ int main() {
         render::Render, into(probe_light_view_lifecycle)
                             .in_set(render::RenderSystems::PrepareBindGroups)
                             .set_name("probe observer-created light view maps"));
+    app.get_sub_app_mut(render::Render)->get().add_systems(
+        render::Render, into(probe_shadow_views)
+                            .in_set(render::RenderSystems::PrepareBindGroups)
+                            .set_name("probe prepared shadow views"));
     app.run();
 }
