@@ -1,11 +1,16 @@
 #include <slang-com-ptr.h>
+#include <slang-deprecated.h>
 #include <slang.h>
 #include <spdlog/spdlog.h>
 
+#include "slang_directives.hpp"
+
 #include <cstdint>
+#include <cctype>
 #include <epix/shader.hpp>
 #include <expected>
 #include <filesystem>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <queue>
@@ -42,6 +47,14 @@ std::filesystem::path normalize_custom_shader_path(std::string_view name) {
     if (auto scheme = name.find("://"); scheme != std::string_view::npos) {
         name = name.substr(scheme + 3);
     }
+
+    // Module names are token sequences: `a . b` and `a.b` name the same
+    // module. In particular, Slang's preprocessing output separates tokens.
+    std::string compact;
+    compact.reserve(name.size());
+    for (const char character : name)
+        if (!std::isspace(static_cast<unsigned char>(character))) compact.push_back(character);
+    name = compact;
 
     std::string normalized;
     normalized.reserve(name.size());
@@ -102,68 +115,9 @@ assets::AssetPath resolve_slang_compile_path(std::string_view name,
 std::string slang_literal(const assets::AssetPath& path) { return '"' + canonical_asset_path_string(path) + '"'; }
 
 std::string preprocess_slang_compile_source(std::string_view source, const assets::AssetPath& importer_path) {
-    std::string out;
-    out.reserve(source.size() + 64);
-
-    std::size_t pos = 0;
-    while (pos < source.size()) {
-        std::size_t nl        = source.find('\n', pos);
-        std::string_view line = (nl == std::string_view::npos) ? source.substr(pos) : source.substr(pos, nl - pos);
-        pos                   = (nl == std::string_view::npos) ? source.size() : nl + 1;
-
-        std::size_t ws = line.find_first_not_of(" \t\r");
-        if (ws == std::string_view::npos) {
-            out.append(line);
-            if (nl != std::string_view::npos) out.push_back('\n');
-            continue;
-        }
-
-        std::string_view indent  = line.substr(0, ws);
-        std::string_view trimmed = line.substr(ws);
-        if (trimmed.starts_with("//")) {
-            out.append(line);
-            if (nl != std::string_view::npos) out.push_back('\n');
-            continue;
-        }
-
-        auto rewrite = [&](std::string_view directive) -> bool {
-            if (!(trimmed.starts_with(directive) &&
-                  (trimmed.size() == directive.size() || trimmed[directive.size()] == ' ' ||
-                   trimmed[directive.size()] == '\t'))) {
-                return false;
-            }
-
-            auto rest      = trimmed.substr(directive.size());
-            std::size_t rs = rest.find_first_not_of(" \t");
-            if (rs == std::string_view::npos) return false;
-            rest                  = rest.substr(rs);
-            std::size_t semi      = rest.find(';');
-            std::string_view name = (semi == std::string_view::npos) ? rest : rest.substr(0, semi);
-            std::string_view tail = (semi == std::string_view::npos) ? std::string_view{} : rest.substr(semi + 1);
-            while (!name.empty() && (name.back() == ' ' || name.back() == '\t')) name.remove_suffix(1);
-            if (name.empty()) return false;
-
-            auto rewritten_path = resolve_slang_compile_path(name, importer_path, directive == "module");
-
-            out.append(indent);
-            out.append(directive);
-            out.push_back(' ');
-            out.append(slang_literal(rewritten_path));
-            out.push_back(';');
-            out.append(tail);
-            if (nl != std::string_view::npos) out.push_back('\n');
-            return true;
-        };
-
-        if (rewrite("module") || rewrite("import") || rewrite("__include")) {
-            continue;
-        }
-
-        out.append(line);
-        if (nl != std::string_view::npos) out.push_back('\n');
-    }
-
-    return out;
+    return internal::rewrite_slang_directives(source, [&](const auto& directive) {
+        return slang_literal(resolve_slang_compile_path(directive.name, importer_path, directive.keyword == "module"));
+    });
 }
 
 // ─── ShaderCache helpers ───────────────────────────────────────────────────
@@ -186,14 +140,20 @@ ShaderImport resolve_import_key(const Shader& importer, const ShaderImport& impo
 }
 
 std::vector<ShaderDefVal> merge_shader_defs(std::span<const ShaderDefVal> shader_defs, const Shader& shader) {
-    std::vector<ShaderDefVal> merged(shader_defs.begin(), shader_defs.end());
+    std::vector<ShaderDefVal> merged;
     merged.reserve(shader_defs.size() + shader.shader_defs.size());
-    std::unordered_set<std::string_view> seen;
-    seen.reserve(merged.size() + shader.shader_defs.size());
-    for (const auto& d : merged) seen.insert(d.name);
-    for (const auto& d : shader.shader_defs) {
-        if (seen.insert(d.name).second) merged.push_back(d);
-    }
+    std::unordered_map<std::string_view, std::size_t> indices;
+    indices.reserve(shader_defs.size() + shader.shader_defs.size());
+    const auto append = [&](const ShaderDefVal& def) {
+        // Views refer to the immutable input definitions, not the output vector.
+        const auto [it, inserted] = indices.try_emplace(def.name, merged.size());
+        if (inserted) merged.push_back(def);
+        else merged[it->second] = def;
+    };
+    // Bevy collects descriptor definitions followed by shader defaults into a
+    // map. Last value wins, including device globals appended at extraction.
+    for (const auto& def : shader_defs) append(def);
+    for (const auto& def : shader.shader_defs) append(def);
     return merged;
 }
 
@@ -273,6 +233,40 @@ Slang::ComPtr<ISlangBlob> make_string_blob(std::string_view text) {
     blob.attach(slang_createBlob(terminated.data(), terminated.size()));
     return blob;
 }
+
+// Slang's preprocessing-only request writes to a stream rather than returning
+// a module. Keep its output in memory; shader imports are still compiled by
+// Slang as distinct modules, never expanded into the root's source text.
+class SlangPreprocessorOutput : public ISlangWriter {
+    std::vector<char> append_buffer_;
+
+   public:
+    std::string source;
+    SLANG_NO_THROW SlangResult SLANG_MCALL queryInterface(SlangUUID const& uuid, void** out) override {
+        if (uuid == ISlangUnknown::getTypeGuid() || uuid == ISlangWriter::getTypeGuid()) {
+            *out = static_cast<ISlangWriter*>(this);
+            return SLANG_OK;
+        }
+        *out = nullptr;
+        return SLANG_E_NO_INTERFACE;
+    }
+    SLANG_NO_THROW uint32_t SLANG_MCALL addRef() override { return 1; }
+    SLANG_NO_THROW uint32_t SLANG_MCALL release() override { return 1; }
+    SLANG_NO_THROW char* SLANG_MCALL beginAppendBuffer(size_t size) override {
+        append_buffer_.resize(size);
+        return append_buffer_.data();
+    }
+    SLANG_NO_THROW SlangResult SLANG_MCALL endAppendBuffer(char* data, size_t size) override {
+        return write(data, size);
+    }
+    SLANG_NO_THROW SlangResult SLANG_MCALL write(const char* data, size_t size) override {
+        source.append(data, size);
+        return SLANG_OK;
+    }
+    SLANG_NO_THROW void SLANG_MCALL flush() override {}
+    SLANG_NO_THROW SlangBool SLANG_MCALL isConsole() override { return false; }
+    SLANG_NO_THROW SlangResult SLANG_MCALL setMode(SlangWriterMode) override { return SLANG_OK; }
+};
 
 // VFS backed by canonical asset-path strings.  Preprocessing already rewrites
 // every import/module path to its canonical form, so no runtime path resolution
@@ -397,6 +391,8 @@ struct ShaderCache::SlangCompiler {
         vfs_.remove(key);
     }
 
+    void invalidate_ir(const assets::AssetPath& path) { module_ir_cache_.erase(canonical_asset_path_string(path)); }
+
     void set_preprocessed(const Shader& shader) {
         if (!shader.source.is_slang()) return;
         auto identity     = canonical_asset_path_string(shader.path);
@@ -406,6 +402,161 @@ struct ShaderCache::SlangCompiler {
         auto preprocessed = preprocess_slang_compile_source(shader.source.as_str(), shader.path);
         vfs_.add(identity, preprocessed, identity);
         if (import_key != identity) vfs_.add(import_key, preprocessed, identity);
+    }
+
+    std::expected<std::vector<ShaderDefVal>, ShaderCacheError> imported_shader_defs(
+        assets::AssetId<Shader> root,
+        std::vector<ShaderDefVal> defs,
+        const std::unordered_map<assets::AssetId<Shader>, Shader>& shaders,
+        const std::unordered_map<assets::AssetId<Shader>, ShaderData>& data) {
+        using Stage = ShaderCacheError::SlangCompileError::Stage;
+        const auto fail = [](std::string message) {
+            return std::unexpected(ShaderCacheError::slang_error(Stage::Compose, std::move(message)));
+        };
+        if (!global_session) return fail("Slang global session not available");
+        const auto& shader = shaders.at(root);
+        if (!shader.source.is_slang()) return defs;
+
+        // Native naga_oil first discovers active root imports using root defs,
+        // then gathers their bound settings before compiling the final shader.
+        // Ask Slang to evaluate its own full preprocessor syntax, not a second
+        // handwritten #if evaluator. Suppress #error only in this discovery
+        // pass: an imported setting can deactivate that guard in the final pass.
+        // The original source and its diagnostics remain untouched for compile().
+        std::string discovery_source;
+        const auto original = shader.source.as_str();
+        for (std::size_t start = 0; start < original.size();) {
+            const auto end = original.find('\n', start);
+            const auto line = original.substr(start, end == std::string_view::npos ? original.size() - start : end - start);
+            auto directive = line;
+            if (const auto pos = directive.find_first_not_of(" \t\r"); pos != std::string_view::npos)
+                directive.remove_prefix(pos);
+            if (directive.starts_with('#')) {
+                directive.remove_prefix(1);
+                if (const auto pos = directive.find_first_not_of(" \t"); pos != std::string_view::npos)
+                    directive.remove_prefix(pos);
+            } else directive = {};
+            if (!(directive == "error" || directive.starts_with("error ") || directive.starts_with("error\t")))
+                discovery_source.append(line);
+            discovery_source.push_back('\n');
+            if (end == std::string_view::npos) break;
+            start = end + 1;
+        }
+        const auto preprocess = [&](const std::string& source) -> std::expected<std::string, ShaderCacheError> {
+            SlangPreprocessorOutput output;
+            Slang::ComPtr<slang::ICompileRequest> request;
+            // Slang exposes preprocessing-only output through its request API;
+            // the modern module API performs semantic checking before imports.
+            if (SLANG_FAILED(global_session->createCompileRequest(request.writeRef())))
+                return fail("Failed to create import-discovery request");
+            request->setFileSystem(&vfs_);
+            request->setWriter(SLANG_WRITER_CHANNEL_STD_OUTPUT, &output);
+            const char* args[] = {"-E"};
+            if (SLANG_FAILED(request->processCommandLineArguments(args, 1)))
+                return fail("Failed to configure import-discovery preprocessing");
+            for (const auto& def : defs) request->addPreprocessorDefine(def.name.c_str(), def.value_as_string().c_str());
+            const auto unit = request->addTranslationUnit(SLANG_SOURCE_LANGUAGE_SLANG, "import_discovery");
+            const auto path = canonical_asset_path_string(shader.path);
+            request->addTranslationUnitSourceString(unit, path.c_str(), source.c_str());
+            if (SLANG_FAILED(request->compile())) {
+                const auto diagnostic = request->getDiagnosticOutput();
+                return fail(std::string("Shader preprocessing failed: ") + (diagnostic ? diagnostic : ""));
+            }
+            return output.source;
+        };
+        const auto discovered = preprocess(discovery_source);
+        if (!discovered) return std::unexpected(discovered.error());
+        const auto active_imports = Shader::preprocess_slang(*discovered, shader.path).second;
+
+        const auto append = [](std::vector<ShaderDefVal>& target, const ShaderDefVal& value) {
+            const auto existing = std::ranges::find(target, value.name, &ShaderDefVal::name);
+            if (existing == target.end()) target.push_back(value);
+            else *existing = value;
+        };
+        std::unordered_map<assets::AssetId<Shader>, std::vector<ShaderDefVal>> bound;
+        std::unordered_set<assets::AssetId<Shader>> visiting;
+        std::function<std::expected<std::vector<ShaderDefVal>, ShaderCacheError>(assets::AssetId<Shader>)> collect;
+        const auto provider = [&](assets::AssetId<Shader> id, const ShaderImport& import)
+            -> std::expected<assets::AssetId<Shader>, ShaderCacheError> {
+            if (const auto it = data.find(id); it != data.end()) {
+                if (const auto found = it->second.resolved_imports.find(import); found != it->second.resolved_imports.end())
+                    return found->second;
+            }
+            return std::unexpected(ShaderCacheError::import_not_available({resolve_import_key(shaders.at(id), import)}));
+        };
+        collect = [&](assets::AssetId<Shader> id) -> std::expected<std::vector<ShaderDefVal>, ShaderCacheError> {
+            if (const auto found = bound.find(id); found != bound.end()) return found->second;
+            if (!visiting.insert(id).second) return fail("Circular shader imports while collecting library settings");
+            const auto& module = shaders.at(id);
+            auto values = merge_shader_defs({}, module);
+            // Native add_composable_module binds settings from every declared
+            // dependency when registering a library. Root imports, in contrast,
+            // are selected by preprocessing above.
+            for (const auto& import : module.imports) {
+                const auto dependency = provider(id, import);
+                if (!dependency) return std::unexpected(dependency.error());
+                const auto inherited = collect(*dependency);
+                if (!inherited) return std::unexpected(inherited.error());
+                for (const auto& value : *inherited) append(values, value);
+            }
+            visiting.erase(id);
+            bound.emplace(id, values);
+            return values;
+        };
+        std::vector<ShaderDefVal> queries;
+        for (const auto& import : active_imports) {
+            const auto dependency = provider(root, import);
+            if (!dependency) return std::unexpected(dependency.error());
+            const auto imported = collect(*dependency);
+            if (!imported) return std::unexpected(imported.error());
+            for (const auto& value : *imported) {
+                const auto existing = std::ranges::find(defs, value.name, &ShaderDefVal::name);
+                if (existing != defs.end() && existing->value != value.value)
+                    return fail("Inconsistent shader definition '" + value.name + "' in imported library settings");
+                append(defs, value);
+                if (std::ranges::find(queries, value) == queries.end()) queries.push_back(value);
+            }
+        }
+        if (queries.empty()) return defs;
+        // Query only the active graph. Inspecting all registered assets here
+        // would let unrelated or disabled library metadata break this shader.
+        // Source #defines must not silently override a bound library setting.
+        constexpr std::string_view conflict_marker = "__epix_import_setting_conflict_";
+        constexpr std::string_view bool_marker = "__epix_import_bool_value_";
+        for (std::size_t i = 0; i < queries.size(); ++i) {
+            const auto& value = queries[i];
+            if (std::holds_alternative<bool>(value.value)) {
+                // C-style #if treats unbound true/false tokens as zero.
+                discovery_source += "\n#ifdef " + value.name + "\n" + std::string(bool_marker) + std::to_string(i) +
+                    "__ " + value.name + " __epix_import_bool_end_" + std::to_string(i) + "__\n#endif\n";
+            } else {
+                discovery_source += "\n#ifdef " + value.name + "\n#if " + value.name + " != " + value.value_as_string() +
+                    "\n" + std::string(conflict_marker) + std::to_string(i) + "__\n#endif\n#endif\n";
+            }
+        }
+        const auto checked = preprocess(discovery_source);
+        if (!checked) return std::unexpected(checked.error());
+        for (std::size_t i = 0; i < queries.size(); ++i) {
+            const auto& value = queries[i];
+            const auto index = std::to_string(i);
+            bool conflict = checked->find(std::string(conflict_marker) + index + "__") != std::string::npos;
+            if (std::holds_alternative<bool>(value.value)) {
+                const auto marker = std::string(bool_marker) + index + "__";
+                if (const auto begin = checked->find(marker); begin != std::string::npos) {
+                    const auto start = begin + marker.size();
+                    const auto end = checked->find("__epix_import_bool_end_" + index + "__", start);
+                    if (end != std::string::npos) {
+                        auto token = std::string_view(*checked).substr(start, end - start);
+                        const auto first = token.find_first_not_of(" \t\r\n");
+                        const auto last = token.find_last_not_of(" \t\r\n");
+                        if (first != std::string_view::npos) token = token.substr(first, last - first + 1);
+                        conflict = token != value.value_as_string();
+                    }
+                }
+            }
+            if (conflict) return fail("Inconsistent shader definition '" + value.name + "' in source or imported settings");
+        }
+        return defs;
     }
 
     std::expected<std::vector<std::uint8_t>, ShaderCacheError> compile(
@@ -834,6 +985,9 @@ std::vector<CachedPipelineId> ShaderCache::clear(assets::AssetId<Shader> id) {
 
         auto sit = shaders_.find(cur);
         if (sit != shaders_.end()) {
+            // Serialized modules contain their dependencies' IR. Retire every
+            // affected ancestor, while retaining its unchanged VFS source.
+            slang_->invalidate_ir(sit->second.path);
             for (const auto& visible_name : visible_imports(sit->second)) {
                 composer_.remove_module(visible_name.module_name());
             }
@@ -859,6 +1013,11 @@ std::expected<std::shared_ptr<wgpu::ShaderModule>, ShaderCacheError> ShaderCache
     }
 
     auto merged_defs = merge_shader_defs(shader_defs, shader);
+    if (shader.source.is_slang()) {
+        auto imported = slang_->imported_shader_defs(id, std::move(merged_defs), shaders_, data_);
+        if (!imported) return std::unexpected(imported.error());
+        merged_defs = std::move(*imported);
+    }
 
     auto cache_it = shader_data.processed_shaders.find(merged_defs);
     if (cache_it != shader_data.processed_shaders.end()) {

@@ -107,10 +107,16 @@ inline void write_render_visibility_ranges(ecs::ResMut<RenderVisibilityRanges> r
                                            ecs::Res<wgpu::Device> device,
                                            ecs::Res<wgpu::Queue> queue) {
     if (!ranges->buffer_dirty) return;
-    // Bevy range.rs:184-227: a uniform-buffer fallback (WebGL2) must have
-    // exactly VISIBILITY_RANGE_UNIFORM_BUFFER_SIZE elements; the storage-buffer
-    // path (our backend) just ensures the buffer is non-empty so it allocates.
-    if (ranges->buffer.is_empty()) {
+    wgpu::Limits limits{};
+    device->getLimits(&limits);
+    if (limits.maxStorageBuffersPerShaderStage < VISIBILITY_RANGES_STORAGE_BUFFER_COUNT) {
+        // Bevy range.rs:184-227: the uniform declaration has a fixed extent.
+        // This is a device-limit decision, not a backend-name assumption.
+        if (ranges->buffer.len() > VISIBILITY_RANGE_UNIFORM_BUFFER_SIZE)
+            ranges->buffer.truncate(VISIBILITY_RANGE_UNIFORM_BUFFER_SIZE);
+        while (ranges->buffer.len() < VISIBILITY_RANGE_UNIFORM_BUFFER_SIZE)
+            ranges->buffer.push(glm::vec4(0.0f));
+    } else if (ranges->buffer.is_empty()) {
         ranges->buffer.push(glm::vec4(0.0f));
     }
     ranges->buffer.write_buffer(device.get(), queue.get());

@@ -84,7 +84,8 @@ void prepare_clusters(ecs::Commands commands, ecs::Res<wgpu::Device> render_devi
     // pipeline's binding type, which is why Bevy reads it from `MeshPipeline`
     // rather than from the view.
     const wgpu::BufferBindingType binding_type = mesh_pipeline->clustered_forward_buffer_binding_type;
-    const bool supports_storage_buffers        = binding_type == wgpu::BufferBindingType::eStorage;
+    const bool supports_storage_buffers = binding_type == wgpu::BufferBindingType::eStorage ||
+                                          binding_type == wgpu::BufferBindingType::eReadOnlyStorage;
 
     for (auto&& [entity, extracted_clusters] : views.iter()) {
         ViewClusterBindings view_clusters_bindings =
@@ -105,7 +106,7 @@ void init_global_clusterable_object_meta(ecs::Commands commands, ecs::Res<wgpu::
     render_device->getLimits(&limits);
     const auto read_only_binding_type = [&limits](std::uint32_t buffers_per_shader_stage) {
         return limits.maxStorageBuffersPerShaderStage >= buffers_per_shader_stage
-                   ? wgpu::BufferBindingType::eStorage
+                   ? wgpu::BufferBindingType::eReadOnlyStorage
                    : wgpu::BufferBindingType::eUniform;
     };
     commands.insert_resource(

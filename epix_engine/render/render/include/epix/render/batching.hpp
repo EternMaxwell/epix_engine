@@ -949,18 +949,11 @@ struct BatchedInstanceBuffer {
 
     explicit BatchedInstanceBuffer(const wgpu::Limits& limits) : buffer(limits) {}
 
-    /** @brief The backing buffer a whole-array binding would use, when the storage path is in
-     *  use (Bevy `BatchedInstanceBuffer::instance_data_binding`).
-     *
-     *  The uniform fallback has no single buffer - it binds per-item dynamic offsets instead -
-     *  so it answers nothing, and a caller that needs the array binding skips the frame rather
-     *  than building it over a buffer that does not exist. */
-    [[nodiscard]] std::optional<std::reference_wrapper<const wgpu::Buffer>> instance_data_binding() const noexcept {
-        const auto* buffers = std::get_if<render_resource::BufferVec<BufferData>>(&buffer.storage);
-        if (buffers == nullptr) return std::nullopt;
-        const wgpu::Buffer* gpu_buffer = buffers->buffer();
-        if (gpu_buffer == nullptr) return std::nullopt;
-        return std::cref(*gpu_buffer);
+    /** @brief Forward either backing store's resource and binding range (Bevy
+     * `BatchedInstanceBuffer::instance_data_binding`). Uniform batches retain
+     * their fixed size; the draw supplies the selected batch's dynamic offset. */
+    [[nodiscard]] std::optional<render_resource::BufferBinding> instance_data_binding() const {
+        return buffer.binding();
     }
 };
 

@@ -107,21 +107,21 @@ EPIX_EXPORT struct EPIX_API MeshLayouts {
     // public, so C++ cannot have both. The lightmapped layout's method is not
     // here: its bindless branch needs the binding-array entries (`PBR-319`).
     wgpu::BindGroup create_model_only(const wgpu::Device& device, const render::PipelineServer& pipeline_server,
-                               const wgpu::Buffer& model) const;
+                               const render::render_resource::BufferBinding& model) const;
     wgpu::BindGroup create_skinned(const wgpu::Device& device, const render::PipelineServer& pipeline_server,
-                            bool skins_use_uniform_buffers, const wgpu::Buffer& model,
+                            bool skins_use_uniform_buffers, const render::render_resource::BufferBinding& model,
                             const wgpu::Buffer& current_skin) const;
     wgpu::BindGroup create_skinned_motion(const wgpu::Device& device, const render::PipelineServer& pipeline_server,
-                                   bool skins_use_uniform_buffers, const wgpu::Buffer& model,
+                                   bool skins_use_uniform_buffers, const render::render_resource::BufferBinding& model,
                                    const wgpu::Buffer& current_skin, const wgpu::Buffer& prev_skin) const;
     wgpu::BindGroup create_morphed(const wgpu::Device& device, const render::PipelineServer& pipeline_server,
-                            const wgpu::Buffer& model, const wgpu::Buffer& current_weights,
+                            const render::render_resource::BufferBinding& model, const wgpu::Buffer& current_weights,
                             const wgpu::TextureView& targets) const;
     wgpu::BindGroup create_morphed_motion(const wgpu::Device& device, const render::PipelineServer& pipeline_server,
-                                   const wgpu::Buffer& model, const wgpu::Buffer& current_weights,
+                                   const render::render_resource::BufferBinding& model, const wgpu::Buffer& current_weights,
                                    const wgpu::TextureView& targets, const wgpu::Buffer& prev_weights) const;
     wgpu::BindGroup create_morphed_skinned(const wgpu::Device& device, const render::PipelineServer& pipeline_server,
-                                    bool skins_use_uniform_buffers, const wgpu::Buffer& model,
+                                    bool skins_use_uniform_buffers, const render::render_resource::BufferBinding& model,
                                     const wgpu::Buffer& current_skin, const wgpu::Buffer& current_weights,
                                     const wgpu::TextureView& targets) const;
     /** @brief The bind group for meshes carrying a lightmap (Bevy
@@ -132,10 +132,10 @@ EPIX_EXPORT struct EPIX_API MeshLayouts {
      *  sampler. The slab supplies either through `build_binding_arrays` or
      *  `bindings_for_first_lightmap`. */
     wgpu::BindGroup create_lightmapped(const wgpu::Device& device, const render::PipelineServer& pipeline_server,
-                                       const wgpu::Buffer& model, const LightmapSlab& lightmap_slab,
+                                       const render::render_resource::BufferBinding& model, const LightmapSlab& lightmap_slab,
                                        bool bindless_lightmaps) const;
     wgpu::BindGroup create_morphed_skinned_motion(const wgpu::Device& device, const render::PipelineServer& pipeline_server,
-                                           bool skins_use_uniform_buffers, const wgpu::Buffer& model,
+                                           bool skins_use_uniform_buffers, const render::render_resource::BufferBinding& model,
                                            const wgpu::Buffer& current_skin, const wgpu::Buffer& current_weights,
                                            const wgpu::TextureView& targets, const wgpu::Buffer& prev_skin,
                                            const wgpu::Buffer& prev_weights) const;
@@ -245,7 +245,7 @@ EPIX_EXPORT using MeshBindGroups =
  *  gets a group, which is what the lightmap binding arrays exist for. Rebuilding from
  *  scratch rather than reusing allocations is Bevy's behaviour too (its own TODO). */
 EPIX_EXPORT inline MeshPhaseBindGroups prepare_mesh_bind_groups_for_phase(
-    const wgpu::Buffer& model,
+    const render::render_resource::BufferBinding& model,
     const render::RenderAssets<render::mesh::RenderMesh>& meshes,
     const MeshLayouts& layouts,
     bool skins_use_uniform_buffers,

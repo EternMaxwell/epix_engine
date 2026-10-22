@@ -114,6 +114,8 @@ class Material2dPipeline : public testing::Test {
    protected:
     epix::app::App app = epix::app::App::create();
     ecs::World* world  = nullptr;
+    virtual bool uniform_fallback() const { return false; }
+    void check_transform_records();
     static constexpr std::string_view shader_text =
         "[shader(\"fragment\")] float4 fragment() : SV_Target { return float4(0.0, 1.0, 0.0, 1.0); }";
 
@@ -143,7 +145,15 @@ class Material2dPipeline : public testing::Test {
                         epix::image::ImagePlugin{}, mesh::MeshPlugin{}, epix::transform::TransformPlugin{},
                         shader::ShaderPlugin{}, render::FrameCountPlugin{});
         try {
-            app.add_plugins(render::RenderPlugin{.synchronous_pipeline_compilation = true});
+            render::WgpuSettings settings;
+            if (uniform_fallback()) {
+                auto constrained = settings.limits;
+                constrained.maxStorageBuffersPerShaderStage = 0;
+                settings.constrained_limits = constrained;
+            }
+            app.add_plugins(render::RenderPlugin{
+                .render_creation = render::RenderCreation::automatic(std::move(settings)),
+                .synchronous_pipeline_compilation = true});
         } catch (const std::exception& error) {
             GTEST_SKIP() << "GPU/Vulkan unavailable: " << error.what();
         }
@@ -459,23 +469,44 @@ TEST_F(Material2dPipeline, ColourMaterialsReusePipelinesButUploadDistinctUniform
     }
 }
 
-TEST_F(Material2dPipeline, SharedTransformLibrariesMatchStorageAndUniformRecords) {
+void Material2dPipeline::check_transform_records() {
     constexpr std::string_view source = R"slang(
 import epix.mesh2d_functions;
 import epix.mesh2d_bindings;
 using namespace epix::mesh2d_functions;
-[[vk::binding(0, 2)]] RWStructuredBuffer<float4> results;
-[shader("compute")]
-[numthreads(1, 1, 1)]
-void main() {
-    float4x4 world = get_world_from_local(1);
+struct Output {
+    float4 position : SV_Position;
+    nointerpolation [[vk::location(0)]] float4 value0;
+    nointerpolation [[vk::location(1)]] float4 value1;
+    nointerpolation [[vk::location(2)]] float4 value2;
+    nointerpolation [[vk::location(3)]] float4 value3;
+    nointerpolation [[vk::location(4)]] float4 value4;
+    nointerpolation [[vk::location(5)]] float4 value5;
+};
+[shader("vertex")]
+Output vertex(uint index : SV_VulkanVertexID, uint instance : SV_VulkanInstanceID) {
+    Output output = {};
+    output.position = float4(float2(float((index << 1u) & 2u), float(index & 2u)) * 2.0 - float2(1.0), 0.5, 1.0);
+    float4x4 world = get_world_from_local(instance);
     float4 position = float4(0.25, -0.5, 1.2, 1.0);
-    results[0] = mesh2d_position_local_to_world(world, position);
-    results[1] = mesh2d_position_world_to_clip(results[0]);
-    results[2] = mesh2d_position_local_to_clip(world, position);
-    results[3] = float4(mesh2d_normal_local_to_world(float3(0.3, 0.7, -0.2), 1), 0.0);
-    results[4] = mesh2d_tangent_local_to_world(world, float4(0.8, -0.1, 0.3, -1.0));
-    results[5] = float4(float(get_tag(1)), float(epix::mesh2d_bindings::get_mesh(1).flags), 0.0, 0.0);
+    output.value0 = mesh2d_position_local_to_world(world, position);
+    output.value1 = mesh2d_position_world_to_clip(output.value0);
+    output.value2 = mesh2d_position_local_to_clip(world, position);
+    output.value3 = float4(mesh2d_normal_local_to_world(float3(0.3, 0.7, -0.2), instance), 0.0);
+    output.value4 = mesh2d_tangent_local_to_world(world, float4(0.8, -0.1, 0.3, -1.0));
+    output.value5 = float4(float(get_tag(instance)), float(epix::mesh2d_bindings::get_mesh(instance).flags), 0.0, 0.0);
+    return output;
+}
+[shader("fragment")]
+float4 fragment(Output input) : SV_Target0 {
+    switch (uint(input.position.x)) {
+        case 0: return input.value0;
+        case 1: return input.value1;
+        case 2: return input.value2;
+        case 3: return input.value3;
+        case 4: return input.value4;
+        default: return input.value5;
+    }
 }
 )slang";
     app.resource_mut<assets::EmbeddedAssetRegistry>().insert_asset_static("tests/custom2d/transform_oracle.slang",
@@ -489,129 +520,204 @@ void main() {
     const auto& server = app.resource<render::PipelineServer>();
     render::view::ViewUniform view;
     view.clip_from_world = glm::perspectiveRH_ZO(0.9f, 1.6f, 0.1f, 100.0f);
-    const auto view_buffer =
-        device.createBuffer(wgpu::BufferDescriptor()
-                                .setSize(sizeof(view))
-                                .setUsage(wgpu::BufferUsage::eUniform | wgpu::BufferUsage::eCopyDst));
-    queue.writeBuffer(view_buffer, 0, &view, sizeof(view));
-    using Records = std::array<sprite_render::Mesh2dUniform, 2>;
-    static_assert(sizeof(Records) == 192);
-    using Values       = std::array<glm::vec4, 6>;
-    const auto output  = device.createBuffer(wgpu::BufferDescriptor()
-                                                 .setSize(sizeof(Values))
-                                                 .setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopySrc));
-    const auto staging = device.createBuffer(wgpu::BufferDescriptor()
-                                                 .setSize(sizeof(Values))
-                                                 .setUsage(wgpu::BufferUsage::eCopyDst | wgpu::BufferUsage::eMapRead));
-    const auto entry   = [](wgpu::BufferBindingType type, std::uint64_t size) {
-        return wgpu::BindGroupLayoutEntry()
-            .setBinding(0)
-            .setVisibility(wgpu::ShaderStage::eCompute)
-            .setBuffer(wgpu::BufferBindingLayout().setType(type).setMinBindingSize(size));
+    wgpu::Limits limits{};
+    ASSERT_EQ(device.getLimits(&limits), wgpu::Status::eSuccess);
+    if (uniform_fallback()) ASSERT_EQ(limits.maxStorageBuffersPerShaderStage, 0u);
+    const auto batch = render::render_resource::GpuArrayBuffer<sprite_render::Mesh2dUniform>::batch_size(limits);
+    const auto bindings =
+        asset_server.get_handle<shader::Shader>(assets::AssetPath{"embedded://sprite/mesh2d_bindings.slang"});
+    ASSERT_TRUE(bindings);
+    wait_for(std::array{*bindings});
+    const auto library = app.resource<assets::Assets<shader::Shader>>().get(bindings->id());
+    ASSERT_TRUE(library);
+    std::vector<shader::ShaderDefVal> expected_defs;
+    if (batch) expected_defs.push_back(shader::ShaderDefVal::from_uint("PER_OBJECT_BUFFER_BATCH_SIZE", *batch));
+    EXPECT_EQ(library->get().shader_defs, expected_defs)
+        << "batch size belongs to the imported library, not a test override";
+    const auto validation_ok = [&] {
+        struct Validation {
+            bool done  = false;
+            bool valid = false;
+            std::string message;
+        };
+        const auto result = std::make_shared<Validation>();
+        device.popErrorScope(
+            wgpu::PopErrorScopeCallbackInfo()
+                .setMode(wgpu::CallbackMode::eAllowProcessEvents)
+                .setCallback(wgpu::PopErrorScopeCallback([result](wgpu::PopErrorScopeStatus status,
+                                                                  wgpu::ErrorType type, wgpu::StringView message) {
+                    result->done  = true;
+                    result->valid = status == wgpu::PopErrorScopeStatus::eSuccess && type == wgpu::ErrorType::eNoError;
+                    if (!result->valid) result->message = std::string(std::string_view(message));
+                })));
+        for (unsigned attempt = 0; attempt < 1000 && !result->done; ++attempt) device.poll(wgpu::Bool(true));
+        EXPECT_TRUE(result->done);
+        EXPECT_TRUE(result->valid) << result->message;
+        return result->valid;
     };
-    const auto view_layout = render::BindGroupLayoutDescriptor::create(
-        "mesh2d oracle view", std::array{entry(wgpu::BufferBindingType::eUniform, sizeof(view))});
-    const auto output_layout = render::BindGroupLayoutDescriptor::create(
-        "mesh2d oracle output", std::array{entry(wgpu::BufferBindingType::eStorage, sizeof(Values))});
-    const auto view_group = device.createBindGroup(
-        wgpu::BindGroupDescriptor()
-            .setLayout(server.get_bind_group_layout(view_layout))
-            .setEntries(std::array{wgpu::BindGroupEntry().setBinding(0).setBuffer(view_buffer).setSize(sizeof(view))}));
-    const auto output_group = device.createBindGroup(
-        wgpu::BindGroupDescriptor()
-            .setLayout(server.get_bind_group_layout(output_layout))
-            .setEntries(std::array{wgpu::BindGroupEntry().setBinding(0).setBuffer(output).setSize(sizeof(Values))}));
-
-    for (const bool uniform : {false, true}) {
-        SCOPED_TRACE(uniform ? "uniform" : "storage");
-        const auto binding_type =
-            uniform ? wgpu::BufferBindingType::eUniform : wgpu::BufferBindingType::eReadOnlyStorage;
-        const auto records =
-            device.createBuffer(wgpu::BufferDescriptor()
-                                    .setSize(sizeof(Records))
-                                    .setUsage((uniform ? wgpu::BufferUsage::eUniform : wgpu::BufferUsage::eStorage) |
-                                              wgpu::BufferUsage::eCopyDst));
-        const auto records_layout = render::BindGroupLayoutDescriptor::create(
-            uniform ? "mesh2d oracle uniform records" : "mesh2d oracle storage records",
-            std::array{entry(binding_type, sizeof(Records))});
-        const auto records_group = device.createBindGroup(
-            wgpu::BindGroupDescriptor()
-                .setLayout(server.get_bind_group_layout(records_layout))
-                .setEntries(
-                    std::array{wgpu::BindGroupEntry().setBinding(0).setBuffer(records).setSize(sizeof(Records))}));
-        render::ComputePipelineDescriptor descriptor{.label       = "imported mesh2d transform oracle",
-                                                     .layouts     = {view_layout, records_layout, output_layout},
-                                                     .shader      = oracle,
-                                                     .entry_point = "main"};
-        if (uniform)
-            descriptor.shader_defs.push_back(shader::ShaderDefVal::from_uint("PER_OBJECT_BUFFER_BATCH_SIZE", 2));
-        const auto id       = server.queue_compute_pipeline(std::move(descriptor));
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
-        while (!server.get_compute_pipeline(id) && std::chrono::steady_clock::now() < deadline) {
-            app.run_schedule(epix::app::PreUpdate);
-            app.run_schedule(epix::app::PostUpdate);
-            app.run_schedule(epix::app::Last);
-            std::this_thread::yield();
-        }
-        const auto pipeline = server.get_compute_pipeline(id);
-        ASSERT_TRUE(pipeline);
-        for (const bool mirrored : {false, true}) {
-            SCOPED_TRACE(mirrored ? "mirrored" : "positive determinant");
-            const auto transform = glm::translate(glm::mat4{1}, glm::vec3{3, -2, 5}) *
-                                   glm::rotate(glm::mat4{1}, 0.45f, glm::normalize(glm::vec3{0.2f, 0.7f, 0.4f})) *
-                                   glm::scale(glm::mat4{1}, glm::vec3{mirrored ? -1.7f : 1.7f, 0.6f, 2.3f});
-            const Records data{
-                sprite_render::Mesh2dUniform::from_components(
-                    {.world_from_local = glm::translate(glm::mat4{1}, glm::vec3{-50, 100, -10}), .flags = 1}, 5),
-                sprite_render::Mesh2dUniform::from_components({.world_from_local = transform, .flags = 66}, 743)};
-            queue.writeBuffer(records, 0, data.data(), sizeof(data));
-            const auto encoder = device.createCommandEncoder();
-            const auto pass    = encoder.beginComputePass();
-            pass.setPipeline(pipeline->get().pipeline());
-            pass.setBindGroup(0, view_group, std::span<const std::uint32_t>{});
-            pass.setBindGroup(1, records_group, std::span<const std::uint32_t>{});
-            pass.setBindGroup(2, output_group, std::span<const std::uint32_t>{});
-            pass.dispatchWorkgroups(1, 1, 1);
-            pass.end();
-            encoder.copyBufferToBuffer(output, 0, staging, 0, sizeof(Values));
-            queue.submit(encoder.finish());
-            struct Result {
-                std::atomic_bool completed = false;
-                bool mapped                = false;
-                Values values{};
-            };
-            const auto result = std::make_shared<Result>();
-            staging.mapAsync(wgpu::MapMode::eRead, 0, sizeof(Values),
-                             wgpu::BufferMapCallbackInfo()
-                                 .setMode(wgpu::CallbackMode::eAllowProcessEvents)
-                                 .setCallback(wgpu::BufferMapCallback([result, staging](wgpu::MapAsyncStatus status,
-                                                                                        wgpu::StringView) {
-                                     if (status == wgpu::MapAsyncStatus::eSuccess) {
-                                         std::memcpy(result->values.data(),
-                                                     staging.getConstMappedRange(0, sizeof(Values)), sizeof(Values));
-                                         staging.unmap();
-                                         result->mapped = true;
-                                     }
-                                     result->completed.store(true, std::memory_order_release);
-                                 })));
-            for (int attempt = 0; attempt < 1000 && !result->completed.load(std::memory_order_acquire); ++attempt)
-                device.poll(wgpu::Bool(true));
-            ASSERT_TRUE(result->completed.load(std::memory_order_acquire));
-            ASSERT_TRUE(result->mapped);
-            const glm::vec4 position = transform * glm::vec4{0.25f, -0.5f, 1.2f, 1.0f};
-            const auto normal_matrix = glm::transpose(glm::inverse(glm::mat3{transform}));
-            const Values expected{position,
-                                  view.clip_from_world * position,
-                                  view.clip_from_world * position,
-                                  glm::vec4{normal_matrix * glm::vec3{0.3f, 0.7f, -0.2f}, 0},
-                                  glm::vec4{glm::mat3{transform} * glm::vec3{0.8f, -0.1f, 0.3f}, -1},
-                                  glm::vec4{743, 66, 0, 0}};
-            for (std::size_t index = 0; index < expected.size(); ++index) {
-                SCOPED_TRACE(index);
-                for (int component = 0; component < 4; ++component)
-                    EXPECT_NEAR(result->values[index][component], expected[index][component], 2e-4f);
-            }
+    device.pushErrorScope(wgpu::ErrorFilter::eValidation);
+    auto probe   = world->resource<sprite_render::Mesh2dPipeline>();
+    probe.shader = oracle;
+    mesh::MeshVertexBufferLayouts layouts;
+    const auto empty_mesh = mesh::Mesh{wgpu::PrimitiveTopology::eTriangleList, assets::RenderAssetUsages::MAIN_WORLD}
+                                .get_mesh_vertex_buffer_layout(layouts);
+    auto descriptor       = probe.specialize(
+        sprite_render::Mesh2dPipelineKey::from_primitive_topology(wgpu::PrimitiveTopology::eTriangleList), empty_mesh);
+    ASSERT_TRUE(descriptor);
+    ASSERT_TRUE(descriptor->fragment);
+    // Float colour output is a measurement surface, not a replacement material:
+    // keep production descriptor selection, layouts and imported shader settings.
+    descriptor->fragment->targets[0].setFormat(wgpu::TextureFormat::eRGBA32Float);
+    descriptor->depth_stencil.reset();
+    EXPECT_FALSE(std::ranges::any_of(descriptor->vertex.shader_defs,
+                                     [](const auto& def) { return def.name == "PER_OBJECT_BUFFER_BATCH_SIZE"; }));
+    const auto id = server.queue_render_pipeline(*descriptor);
+    for (unsigned attempt = 0; attempt < 500 && !server.get_render_pipeline(id); ++attempt) {
+        app.run_schedule(epix::app::PreUpdate);
+        app.run_schedule(epix::app::PostUpdate);
+        app.run_schedule(epix::app::Last);
+        std::this_thread::yield();
+    }
+    ASSERT_TRUE(validation_ok());
+    const auto pipeline = server.get_render_pipeline(id);
+    ASSERT_TRUE(pipeline);
+    const auto run = [&](auto function) {
+        auto system = ecs::make_system_unique(function);
+        system->initialize(*world);
+        ASSERT_TRUE(system->run({}, *world));
+        system->apply_deferred(*world);
+    };
+    device.pushErrorScope(wgpu::ErrorFilter::eValidation);
+    auto& views = world->resource_mut<render::view::ViewUniforms>().uniforms;
+    views.clear();
+    views.push(render::view::ViewUniform{});
+    const auto view_offset = static_cast<std::uint32_t>(views.push(view));
+    views.write_buffer(device, queue);
+    auto& globals     = world->resource_mut<render::GlobalsBuffer>().buffer;
+    globals.get_mut() = render::GlobalsUniform{};
+    globals.write_buffer(device, queue);
+    // This headless fixture has no ExtractSchedule; provide the real LUT
+    // resource that ExtractResourcePlugin copies from the main world.
+    world->insert_resource(app.resource<epix::core_graph::TonemappingLuts>());
+    const auto view_entity =
+        world
+            ->spawn(render::view::ExtractedView{.retained_view_entity =
+                                                    render::view::RetainedViewEntity{
+                                                        render::sync_world::MainEntity{ecs::Entity::from_index(5000)}},
+                                                .clip_from_view  = view.clip_from_world,
+                                                .world_from_view = epix::transform::GlobalTransform{glm::mat4(1.0f)}},
+                    epix::camera::Camera2d{}, epix::core_graph::Tonemapping::None)
+            .id();
+    run(sprite_render::prepare_mesh2d_view_bind_groups);
+    const auto view_group = world->entity(view_entity).get<sprite_render::Mesh2dViewBindGroup>();
+    ASSERT_TRUE(view_group);
+    using Values = std::array<glm::vec4, 6>;
+    const auto output =
+        device.createTexture(wgpu::TextureDescriptor()
+                                 .setSize({6, 1, 1})
+                                 .setDimension(wgpu::TextureDimension::e2D)
+                                 .setFormat(wgpu::TextureFormat::eRGBA32Float)
+                                 .setMipLevelCount(1)
+                                 .setSampleCount(1)
+                                 .setUsage(wgpu::TextureUsage::eRenderAttachment | wgpu::TextureUsage::eCopySrc));
+    const auto output_view = output.createView();
+    const auto staging     = device.createBuffer(
+        wgpu::BufferDescriptor().setSize(256).setUsage(wgpu::BufferUsage::eCopyDst | wgpu::BufferUsage::eMapRead));
+    ASSERT_TRUE(validation_ok());
+    for (const bool mirrored : {false, true}) {
+        SCOPED_TRACE(mirrored ? "mirrored" : "positive determinant");
+        const auto transform = glm::translate(glm::mat4{1}, glm::vec3{3, -2, 5}) *
+                               glm::rotate(glm::mat4{1}, 0.45f, glm::normalize(glm::vec3{0.2f, 0.7f, 0.4f})) *
+                               glm::scale(glm::mat4{1}, glm::vec3{mirrored ? -1.7f : 1.7f, 0.6f, 2.3f});
+        device.pushErrorScope(wgpu::ErrorFilter::eValidation);
+        auto& instances = world->resource_mut<render::batching::BatchedInstanceBuffer<sprite_render::Mesh2dUniform>>();
+        instances.buffer.clear();
+        const auto sentinel = sprite_render::Mesh2dUniform::from_components(
+            {.world_from_local = glm::translate(glm::mat4{1}, glm::vec3{-50, 100, -10}), .flags = 1}, 5);
+        for (unsigned i = 0; i <= batch.value_or(1u); ++i) instances.buffer.push(sentinel);
+        const auto index = instances.buffer.push(
+            sprite_render::Mesh2dUniform::from_components({.world_from_local = transform, .flags = 66}, 743));
+        instances.buffer.write_buffer(device, queue);
+        if (batch) {
+            ASSERT_TRUE(index.dynamic_offset);
+            EXPECT_GT(*index.dynamic_offset, 0u);
+            EXPECT_EQ(index.index, 1u);
+            const auto binding = instances.instance_data_binding();
+            ASSERT_TRUE(binding);
+            EXPECT_GT(binding->buffer.getSize(), limits.maxUniformBufferBindingSize);
+        } else
+            EXPECT_EQ(index.index, 2u);
+        run(sprite_render::prepare_mesh2d_bind_group);
+        ASSERT_TRUE(world->get_resource<sprite_render::Mesh2dBindGroup>());
+        const auto encoder = device.createCommandEncoder();
+        const auto pass    = encoder.beginRenderPass(
+            wgpu::RenderPassDescriptor().setColorAttachments(std::array{wgpu::RenderPassColorAttachment()
+                                                                            .setView(output_view)
+                                                                            .setLoadOp(wgpu::LoadOp::eClear)
+                                                                            .setStoreOp(wgpu::StoreOp::eStore)
+                                                                            .setClearValue(wgpu::Color(0, 0, 0, 0))}));
+        pass.setPipeline(pipeline->get().pipeline());
+        pass.setBindGroup(0, view_group->get().value, std::array<std::uint32_t, 1>{view_offset});
+        const auto& model_group = world->resource<sprite_render::Mesh2dBindGroup>().value;
+        if (index.dynamic_offset)
+            pass.setBindGroup(1, model_group, std::array<std::uint32_t, 1>{*index.dynamic_offset});
+        else
+            pass.setBindGroup(1, model_group, std::span<const std::uint32_t>{});
+        pass.draw(3, 1, 0, index.index);
+        pass.end();
+        encoder.copyTextureToBuffer(wgpu::TexelCopyTextureInfo().setTexture(output),
+                                    wgpu::TexelCopyBufferInfo().setBuffer(staging).setLayout(
+                                        wgpu::TexelCopyBufferLayout().setBytesPerRow(256).setRowsPerImage(1)),
+                                    {6, 1, 1});
+        const auto commands = encoder.finish();
+        ASSERT_TRUE(validation_ok());
+        device.pushErrorScope(wgpu::ErrorFilter::eValidation);
+        queue.submit(commands);
+        ASSERT_TRUE(validation_ok());
+        struct Result {
+            std::atomic_bool completed = false;
+            bool mapped                = false;
+            Values values{};
+        };
+        const auto result = std::make_shared<Result>();
+        staging.mapAsync(
+            wgpu::MapMode::eRead, 0, 256,
+            wgpu::BufferMapCallbackInfo()
+                .setMode(wgpu::CallbackMode::eAllowProcessEvents)
+                .setCallback(wgpu::BufferMapCallback([result, staging](wgpu::MapAsyncStatus status, wgpu::StringView) {
+                    if (status == wgpu::MapAsyncStatus::eSuccess) {
+                        std::memcpy(result->values.data(), staging.getConstMappedRange(0, 256), sizeof(Values));
+                        staging.unmap();
+                        result->mapped = true;
+                    }
+                    result->completed.store(true, std::memory_order_release);
+                })));
+        for (int attempt = 0; attempt < 1000 && !result->completed.load(std::memory_order_acquire); ++attempt)
+            device.poll(wgpu::Bool(true));
+        ASSERT_TRUE(result->completed.load(std::memory_order_acquire));
+        ASSERT_TRUE(result->mapped);
+        const glm::vec4 position = transform * glm::vec4{0.25f, -0.5f, 1.2f, 1.0f};
+        const auto normal_matrix = glm::transpose(glm::inverse(glm::mat3{transform}));
+        const Values expected{position,
+                              view.clip_from_world * position,
+                              view.clip_from_world * position,
+                              glm::vec4{normal_matrix * glm::vec3{0.3f, 0.7f, -0.2f}, 0},
+                              glm::vec4{glm::mat3{transform} * glm::vec3{0.8f, -0.1f, 0.3f}, -1},
+                              glm::vec4{743, 66, 0, 0}};
+        for (std::size_t index = 0; index < expected.size(); ++index) {
+            SCOPED_TRACE(index);
+            for (int component = 0; component < 4; ++component)
+                EXPECT_NEAR(result->values[index][component], expected[index][component], 2e-4f);
         }
     }
 }
+
+TEST_F(Material2dPipeline, SharedTransformLibrariesUseProductionStorageBindings) { check_transform_records(); }
+
+class UniformMaterial2dPipeline : public Material2dPipeline {
+   protected:
+    bool uniform_fallback() const override { return true; }
+};
+
+TEST_F(UniformMaterial2dPipeline, ActualUniformDeviceRendersTheSecondModelBatch) { check_transform_records(); }
 }  // namespace

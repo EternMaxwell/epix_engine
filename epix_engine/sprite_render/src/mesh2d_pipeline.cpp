@@ -256,8 +256,11 @@ struct Mesh2dShaderHandles {
     assets::Handle<shader::Shader> vertex_output;
     assets::Handle<shader::Shader> view_bindings;
     assets::Handle<shader::Shader> types;
-    assets::Handle<shader::Shader> bindings;
     assets::Handle<shader::Shader> functions;
+};
+
+struct Mesh2dBindingsShaderHandle {
+    assets::Handle<shader::Shader> shader;
 };
 
 void register_mesh2d_shader(ecs::World& world) {
@@ -281,9 +284,25 @@ void register_mesh2d_shader(ecs::World& world) {
         .view_bindings =
             server->get().load<shader::Shader>(std::string("embedded://") + std::string(kMesh2dViewBindingsShaderPath)),
         .types = server->get().load<shader::Shader>(std::string("embedded://") + std::string(kMesh2dTypesShaderPath)),
-        .bindings = server->get().load<shader::Shader>(std::string("embedded://") + std::string(kMesh2dBindingsShaderPath)),
         .functions = server->get().load<shader::Shader>(std::string("embedded://") + std::string(kMesh2dFunctionsShaderPath)),
     });
+}
+
+void load_mesh2d_bindings(ecs::Commands commands, ecs::Res<wgpu::Device> device,
+                         ecs::Res<assets::AssetServer> asset_server) {
+    // Bevy mesh2d/mesh.rs:164-192: the imported library, not a pipeline
+    // descriptor, owns the batch size selected from the actual device limits.
+    wgpu::Limits limits{};
+    device->getLimits(&limits);
+    std::vector<shader::ShaderDefVal> defs;
+    if (const auto batch = render::render_resource::GpuArrayBuffer<Mesh2dUniform>::batch_size(limits))
+        defs.push_back(shader::ShaderDefVal::from_uint("PER_OBJECT_BUFFER_BATCH_SIZE", *batch));
+    auto handle = asset_server->load_with_settings<shader::Shader, shader::ShaderSettings>(
+        assets::AssetPath{std::string("embedded://") + std::string(kMesh2dBindingsShaderPath)},
+        [defs = std::move(defs)](shader::ShaderSettings& settings) { settings.shader_defs = defs; });
+    // Retain per app instead of leaking the strong handle as native mem::forget
+    // does. It must not be loaded earlier with default (storage-only) settings.
+    commands.insert_resource(Mesh2dBindingsShaderHandle{std::move(handle)});
 }
 }  // namespace
 
@@ -395,14 +414,9 @@ void prepare_mesh2d_bind_group(ecs::Commands commands,
             wgpu::BindGroupDescriptor()
                 .setLabel("mesh2d_bind_group")
                 .setLayout(pipeline_server->get_bind_group_layout(mesh2d_pipeline->mesh_layout))
-                // `offset`/`size` must be written explicitly: this tree's
-                // generated WebGPU wrapper does not default `size` to the
-                // whole-buffer sentinel the way Dawn's `webgpu_cpp.h` does
-                // (`BindGroupEntry::size` is `uint64_t size{}`, and `setBuffer`
-                // only assigns the handle), so leaving it unset binds a
-                // zero-length buffer that wgpu rejects as `invalid size`.
-                .setEntries(std::array{wgpu::BindGroupEntry().setBinding(0).setBuffer(*binding).setOffset(0).setSize(
-                    binding->getSize())})),
+                // Retain the native binding range: a uniform array exposes one
+                // batch even when the buffer holds multiple dynamic batches.
+                .setEntries(std::array{binding->entry(0u)})),
     });
 }
 
@@ -595,9 +609,9 @@ void Mesh2dRenderPlugin::attach_mesh2d_pipeline(app::App& app) {
     register_mesh2d_shader(app.world_mut());
     if (auto render_app = app.get_sub_app_mut(render::Render)) {
         auto& render = render_app->get();
-        // Bevy's `Mesh2dRenderPlugin::build` (mesh.rs:73-111). The bindings
-        // shader needs no separate load here: Epix's mesh2d shader carries it
-        // behind PER_OBJECT_BUFFER_BATCH_SIZE.
+        // Bevy's `Mesh2dRenderPlugin::build` (mesh.rs:73-111). Bindings are
+        // registered as embedded bytes above, then loaded at startup when the
+        // device-dependent uniform batch size is available.
         render.world_mut().init_resource<ViewKeyCache>();
         render.world_mut().init_resource<RenderMesh2dInstances>();
         render.world_mut().init_resource<render::SpecializedMeshPipelines<Mesh2dPipeline>>();
@@ -610,8 +624,9 @@ void Mesh2dRenderPlugin::attach_mesh2d_pipeline(app::App& app) {
             .init_resource<epix::render::batching::BatchedInstanceBuffers<Mesh2dUniform, std::monostate>>();
 
         render.add_systems(render::RenderStartup,
-                           into(init_mesh_2d_pipeline, init_batched_instance_buffer)
-                               .set_names(std::array{"init mesh 2d pipeline", "init batched instance buffer"}));
+                           into(init_mesh_2d_pipeline, init_batched_instance_buffer, load_mesh2d_bindings)
+                               .set_names(std::array{"init mesh 2d pipeline", "init batched instance buffer",
+                                                     "load mesh2d bindings"}));
         render.add_systems(render::ExtractSchedule, into(extract_mesh2d).set_name("extract mesh2d"));
         render.add_systems(render::Render, into(check_views_need_specialization)
                                                .in_set(render::RenderSystems::PrepareAssets)

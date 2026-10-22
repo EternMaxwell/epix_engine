@@ -79,7 +79,10 @@ TEST(Mesh2dRenderPlugin, RegistersAndLoadsEmbeddedShadersThroughAssetServer) {
     expect_embedded_shader_loaded(app, "embedded://sprite/mesh2d_vertex_output.slang");
     expect_embedded_shader_loaded(app, "embedded://sprite/mesh2d_view_bindings.slang");
     expect_embedded_shader_loaded(app, "embedded://sprite/mesh2d_types.slang");
-    expect_embedded_shader_loaded(app, "embedded://sprite/mesh2d_bindings.slang");
+    // Native loads this device-dependent library only in RenderStartup. With
+    // no render app, publish its bytes without locking in storage-only defaults.
+    EXPECT_TRUE(app.resource<EmbeddedAssetRegistry>().directory().get_file("sprite/mesh2d_bindings.slang"));
+    EXPECT_FALSE(app.resource<AssetServer>().get_handle<Shader>(AssetPath{"embedded://sprite/mesh2d_bindings.slang"}));
     expect_embedded_shader_loaded(app, "embedded://sprite/mesh2d_functions.slang");
 }
 

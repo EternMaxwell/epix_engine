@@ -2,10 +2,13 @@
 #include <slang.h>
 #include <spdlog/spdlog.h>
 
+#include "slang_directives.hpp"
+
 #include <algorithm>
 #include <array>
 #include <asio/awaitable.hpp>
 #include <cstdint>
+#include <cctype>
 #include <epix/shader.hpp>
 #include <exception>
 #include <expected>
@@ -187,6 +190,12 @@ std::filesystem::path normalize_custom_shader_path(std::string_view name) {
     if (auto scheme = name.find("://"); scheme != std::string_view::npos) {
         name = name.substr(scheme + 3);
     }
+
+    std::string compact;
+    compact.reserve(name.size());
+    for (const char character : name)
+        if (!std::isspace(static_cast<unsigned char>(character))) compact.push_back(character);
+    name = compact;
 
     std::string normalized;
     normalized.reserve(name.size());
@@ -525,9 +534,6 @@ class ProcessorSlangVFS : public ISlangFileSystemExt {
 // This is a simplified version of preprocess_slang_compile_source from shader_cache.cpp.
 static std::string processor_preprocess_slang_source(std::string_view source,
                                                      const epix::assets::AssetPath& importer_path) {
-    std::string out;
-    out.reserve(source.size() + 64);
-
     auto rewrite_path = [&](std::string_view name, bool force_custom) -> std::string {
         if (force_custom || name.empty() || name.front() != '"') {
             // Custom name: normalize to canonical asset path string
@@ -551,57 +557,9 @@ static std::string processor_preprocess_slang_source(std::string_view source,
         return '"' + normalize_asset_path_string(resolved) + '"';
     };
 
-    std::size_t pos = 0;
-    while (pos < source.size()) {
-        std::size_t nl        = source.find('\n', pos);
-        std::string_view line = (nl == std::string_view::npos) ? source.substr(pos) : source.substr(pos, nl - pos);
-        pos                   = (nl == std::string_view::npos) ? source.size() : nl + 1;
-
-        std::size_t ws = line.find_first_not_of(" \t\r");
-        if (ws == std::string_view::npos) {
-            out.append(line);
-            if (nl != std::string_view::npos) out.push_back('\n');
-            continue;
-        }
-        std::string_view indent  = line.substr(0, ws);
-        std::string_view trimmed = line.substr(ws);
-        if (trimmed.starts_with("//")) {
-            out.append(line);
-            if (nl != std::string_view::npos) out.push_back('\n');
-            continue;
-        }
-
-        auto try_rewrite = [&](std::string_view directive, bool force_custom) -> bool {
-            if (!(trimmed.starts_with(directive) &&
-                  (trimmed.size() == directive.size() || trimmed[directive.size()] == ' ' ||
-                   trimmed[directive.size()] == '\t')))
-                return false;
-            auto rest      = trimmed.substr(directive.size());
-            std::size_t rs = rest.find_first_not_of(" \t");
-            if (rs == std::string_view::npos) return false;
-            rest                  = rest.substr(rs);
-            std::size_t semi      = rest.find(';');
-            std::string_view name = (semi == std::string_view::npos) ? rest : rest.substr(0, semi);
-            std::string_view tail = (semi == std::string_view::npos) ? std::string_view{} : rest.substr(semi + 1);
-            while (!name.empty() && (name.back() == ' ' || name.back() == '\t')) name.remove_suffix(1);
-            if (name.empty()) return false;
-            out.append(indent);
-            out.append(directive);
-            out.push_back(' ');
-            out.append(rewrite_path(name, force_custom));
-            out.push_back(';');
-            out.append(tail);
-            if (nl != std::string_view::npos) out.push_back('\n');
-            return true;
-        };
-
-        if (try_rewrite("module", true) || try_rewrite("import", false) || try_rewrite("__include", false)) {
-            continue;
-        }
-        out.append(line);
-        if (nl != std::string_view::npos) out.push_back('\n');
-    }
-    return out;
+    return internal::rewrite_slang_directives(source, [&](const auto& directive) {
+        return rewrite_path(directive.name, directive.keyword == "module");
+    });
 }
 
 // Recursively populate the VFS with all transitive source deps of `current_path`.
@@ -776,71 +734,13 @@ std::pair<ShaderImport, std::vector<ShaderImport>> Shader::preprocess_slang(std:
     std::optional<ShaderImport> import_path;
     std::vector<ShaderImport> imports;
 
-    std::size_t pos = 0;
-    while (pos < source.size()) {
-        std::size_t nl        = source.find('\n', pos);
-        std::string_view line = (nl == std::string_view::npos) ? source.substr(pos) : source.substr(pos, nl - pos);
-        pos                   = (nl == std::string_view::npos) ? source.size() : nl + 1;
-
-        // Trim leading whitespace
-        std::size_t ws = line.find_first_not_of(" \t\r");
-        if (ws == std::string_view::npos) continue;
-        std::string_view t = line.substr(ws);
-
-        // Skip single-line comments
-        if (t.starts_with("//")) continue;
-
-        // ── module <name> ; ──
-        if (t.starts_with("module ") || t.starts_with("module\t")) {
-            auto rest      = t.substr(7);
-            std::size_t rs = rest.find_first_not_of(" \t");
-            if (rs == std::string_view::npos) continue;
-            rest                  = rest.substr(rs);
-            std::size_t semi      = rest.find(';');
-            std::string_view name = (semi == std::string_view::npos) ? rest : rest.substr(0, semi);
-            while (!name.empty() && (name.back() == ' ' || name.back() == '\t')) name.remove_suffix(1);
-            if (!name.empty()) {
-                import_path = ShaderImport::custom(normalize_custom_shader_path(name));
-            }
-            continue;
-        }
-
-        // ── import <name> ; ──
-        if (t.starts_with("import ") || t.starts_with("import\t")) {
-            auto rest      = t.substr(7);
-            std::size_t rs = rest.find_first_not_of(" \t");
-            if (rs == std::string_view::npos) continue;
-            rest                  = rest.substr(rs);
-            std::size_t semi      = rest.find(';');
-            std::string_view name = (semi == std::string_view::npos) ? rest : rest.substr(0, semi);
-            while (!name.empty() && (name.back() == ' ' || name.back() == '\t')) name.remove_suffix(1);
-            if (!name.empty()) {
-                if (name.front() == '"') {
-                    imports.emplace_back(ShaderImport::asset_path(parse_slang_asset_path_literal(name, path)));
-                } else {
-                    imports.emplace_back(ShaderImport::custom(normalize_custom_shader_path(name)));
-                }
-            }
-            continue;
-        }
-
-        // ── __include <name> ; ──
-        if (t.starts_with("__include ") || t.starts_with("__include\t")) {
-            auto rest      = t.substr(10);
-            std::size_t rs = rest.find_first_not_of(" \t");
-            if (rs == std::string_view::npos) continue;
-            rest                  = rest.substr(rs);
-            std::size_t semi      = rest.find(';');
-            std::string_view name = (semi == std::string_view::npos) ? rest : rest.substr(0, semi);
-            while (!name.empty() && (name.back() == ' ' || name.back() == '\t')) name.remove_suffix(1);
-            if (!name.empty()) {
-                if (name.front() == '"') {
-                    imports.emplace_back(ShaderImport::asset_path(parse_slang_asset_path_literal(name, path)));
-                } else {
-                    imports.emplace_back(ShaderImport::custom(normalize_custom_shader_path(name)));
-                }
-            }
-            continue;
+    for (const auto& directive : internal::slang_directives(source)) {
+        if (directive.keyword == "module") {
+            import_path = ShaderImport::custom(normalize_custom_shader_path(directive.name));
+        } else if (directive.name.front() == '"') {
+            imports.emplace_back(ShaderImport::asset_path(parse_slang_asset_path_literal(directive.name, path)));
+        } else {
+            imports.emplace_back(ShaderImport::custom(normalize_custom_shader_path(directive.name)));
         }
     }
 

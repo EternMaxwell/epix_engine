@@ -28,7 +28,6 @@
 #include <epix/pbr/mesh_material.hpp>
 #include <epix/pbr/material_bindings.hpp>
 #include <epix/pbr/material_bind_groups.hpp>
-#include <epix/pbr/prepass.hpp>
 
 namespace epix::pbr {
 

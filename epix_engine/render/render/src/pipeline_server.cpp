@@ -87,7 +87,16 @@ PipelineServer::PipelineServer(wgpu::Device device, bool synchronous_pipeline_co
       bind_group_layout_cache(std::make_shared<utils::Mutex<BindGroupLayoutCache>>()),
       device(std::move(device)),
       pipeline_create_task_pool(std::make_unique<BS::thread_pool<BS::tp::none>>(std::thread::hardware_concurrency())),
-      synchronous_pipeline_compilation(synchronous_pipeline_compilation) {}
+      synchronous_pipeline_compilation(synchronous_pipeline_compilation) {
+    // Queue/descriptor-only clients may construct a server without a device;
+    // do not query native limits until there is an actual device to describe.
+    if (this->device) {
+        wgpu::Limits limits{};
+        this->device.getLimits(&limits);
+        global_shader_defs_.push_back(ShaderDefVal::from_uint("AVAILABLE_STORAGE_BUFFER_BINDINGS",
+                                                           limits.maxStorageBuffersPerShaderStage));
+    }
+}
 
 wgpu::BindGroupLayout PipelineServer::get_bind_group_layout(const BindGroupLayoutDescriptor& descriptor) const {
     // Bevy keeps the interning cache private to the pipeline cache and exposes
@@ -193,6 +202,9 @@ void PipelineServer::block_on_render_pipeline(CachedPipelineId id) {
     }
 }
 void PipelineServer::set_shader(assets::AssetId<Shader> id, Shader shader) {
+    // Bevy extends the owned shader copy, not each pipeline descriptor. This
+    // reaches imports and every stage without mutating the source asset.
+    shader.shader_defs.insert(shader.shader_defs.end(), global_shader_defs_.begin(), global_shader_defs_.end());
     // TODO: MSVC partial specialization workaround - cast AssetId<T> to UntypedAssetId
     spdlog::debug("[render.pipeline] Setting shader '{}' (path: {}).", assets::UntypedAssetId(id),
                   shader.path.string());
@@ -432,21 +444,22 @@ void PipelineServer::process_pipeline_system(ResMut<PipelineServer> pipeline_ser
 void PipelineServer::extract_shaders(ResMut<PipelineServer> pipeline_server,
                                      Extract<Res<assets::Assets<Shader>>> shaders,
                                      Extract<EventReader<assets::AssetEvent<Shader>>> shader_events) {
-    auto shader_cache = pipeline_server->shader_cache->lock();
-    auto affected     = shader_cache->sync(shader_events.read(), *shaders);
-    for (CachedPipelineId id : affected) {
-        pipeline_server->pipelines[id].state = PipelineStateQueued{};
-        pipeline_server->waiting_pipelines_.insert(id);
-    }
+    pipeline_server->sync_shader_events(shader_events.read(), *shaders);
 }
 void PipelineServer::sync_main_world_shaders(ResMut<PipelineServer> pipeline_server,
                                              Res<assets::Assets<Shader>> shaders,
                                              EventReader<assets::AssetEvent<Shader>> shader_events) {
-    auto shader_cache = pipeline_server->shader_cache->lock();
-    auto affected     = shader_cache->sync(shader_events.read(), *shaders);
-    for (CachedPipelineId id : affected) {
-        pipeline_server->pipelines[id].state = PipelineStateQueued{};
-        pipeline_server->waiting_pipelines_.insert(id);
+    pipeline_server->sync_shader_events(shader_events.read(), *shaders);
+}
+
+void PipelineServer::sync_shader_events(utils::input_iterable<assets::AssetEvent<Shader>> events,
+                                        const assets::Assets<Shader>& shaders) {
+    for (const auto& event : events) {
+        if (event.is_added() || event.is_modified()) {
+            if (auto shader = shaders.get(event.id)) set_shader(event.id, shader->get());
+        } else if (event.is_removed()) {
+            remove_shader(event.id);
+        }
     }
 }
 }  // namespace epix::render

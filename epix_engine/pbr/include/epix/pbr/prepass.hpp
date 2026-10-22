@@ -19,6 +19,7 @@
 #include <epix/pbr/mesh_bindings.hpp>
 #include <epix/pbr/mesh_pipeline_resource.hpp>
 #include <epix/pbr/light_meta.hpp>
+#include <epix/pbr/material.hpp>
 
 namespace epix::pbr {
 
@@ -73,10 +74,6 @@ EPIX_EXPORT EPIX_API void prepare_previous_view_uniforms(
 /** @brief The prepass pipeline's view layouts and the device facts the prepass
  *  needs (Bevy `PrepassPipeline`, `prepass/mod.rs:239-256`).
  *
- *  Bevy's `default_prepass_shader` and the `material_pipeline` it clones are not
- *  here: both are read only by `PrepassPipelineSpecializer`, which the port has
- *  not written, and the shader it loads has no port counterpart either.
- *
  *  Bevy reads the device and the adapter to fill the two facts below; Epix takes
  *  them from `MeshPipeline`, which computed the same values from the same device,
  *  which is why `init_prepass_pipeline` needs no adapter. */
@@ -87,6 +84,7 @@ EPIX_EXPORT struct EPIX_API PrepassPipeline {
     render::BindGroupLayoutDescriptor view_layout_no_motion_vectors;
     MeshLayouts mesh_layouts;
     render::BindGroupLayoutDescriptor empty_layout;
+    assets::Handle<shader::Shader> default_prepass_shader;
 
     /** @brief Whether skins will use uniform buffers, because storage buffers are
      *  unavailable on this platform. */
@@ -95,6 +93,22 @@ EPIX_EXPORT struct EPIX_API PrepassPipeline {
     /** @brief Whether binding arrays (a.k.a. bindless textures) are usable on the
      *  current render device. */
     bool binding_arrays_are_usable = false;
+    MaterialPipeline material_pipeline;
+
+    std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineError> specialize(
+        MeshPipelineKey key, std::vector<shader::ShaderDefVal> shader_defs,
+        const mesh::MeshVertexBufferLayoutRef& layout, const MaterialProperties& properties) const;
+};
+
+/** @brief Build a prepass descriptor, then invoke the material's fallible hook
+ *  with the owned material-pipeline snapshot and original erased key. */
+EPIX_EXPORT struct EPIX_API PrepassPipelineSpecializer {
+    using Key = ErasedMaterialPipelineKey;
+    PrepassPipeline pipeline;
+    std::shared_ptr<MaterialProperties> properties;
+
+    std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineError> specialize(
+        const Key& key, const mesh::MeshVertexBufferLayoutRef& layout) const;
 };
 
 /** @brief The prepass pass's view bind groups: one for a view that writes motion
@@ -115,7 +129,8 @@ EPIX_EXPORT struct PrepassViewBindGroup {
  *  Bevy also takes the adapter and the `AssetServer` - for the binding facts and
  *  the embedded prepass shader. */
 EPIX_EXPORT EPIX_API void init_prepass_pipeline(ecs::Commands commands, ecs::Res<wgpu::Device> render_device,
-                                                ecs::Res<MeshPipeline> mesh_pipeline);
+    ecs::Res<MeshPipeline> mesh_pipeline, ecs::Res<MaterialPipeline> material_pipeline,
+    ecs::Res<assets::AssetServer> asset_server);
 
 /** @brief Create the empty bind group slot 1 binds, which needs only the layout
  *  (Bevy `init_prepass_view_bind_group`, `prepass/mod.rs:692-708`). */
@@ -136,11 +151,8 @@ EPIX_EXPORT EPIX_API void prepare_prepass_view_bind_group(
 /** @brief Bevy `PrepassPipelinePlugin` (`prepass/mod.rs:69-99`), which
  *  the shared `MaterialsPlugin` installs (Bevy `material.rs:283`).
  *
- *  What it installs here is the pipeline resource and its two view bind groups.
- *  Bevy's other two pieces - the
- *  `prepass_io.wgsl` shader library and
- *  `SpecializedMeshPipelines<PrepassPipelineSpecializer>` - arrive with the
- *  prepass specializer, which the port has not written (PBR-19). */
+ *  Publishes the prepass shader graph, initializes the pipeline and its view
+ *  bind groups, and owns the specialized prepass pipeline cache. */
 EPIX_EXPORT struct EPIX_API PrepassPipelinePlugin {
     void attach(epix::app::App& app);
 };

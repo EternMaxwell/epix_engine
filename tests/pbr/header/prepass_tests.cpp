@@ -7,6 +7,8 @@
 #include <epix/pbr/material.hpp>
 #include <epix/pbr/mesh_instance.hpp>
 #include <epix/pbr/prepass.hpp>
+#include <epix/pbr/prepass_shaders.hpp>
+#include <epix/pbr/mesh_shaders.hpp>
 #include <epix/render.hpp>
 #include <epix/shader.hpp>
 #include <epix/task.hpp>
@@ -119,6 +121,9 @@ TEST(PrepassPipeline, TheViewLayoutsAreThePrepassShadersAndTheFactsAreCopied) {
 
     const auto mesh_pipeline = make_mesh_pipeline();
     render.world_mut().insert_resource(mesh_pipeline);
+    render.world_mut().insert_resource(pbr::MaterialPipeline{mesh_pipeline});
+    pbr::register_mesh_shaders(application.world_mut());
+    pbr::register_prepass_shaders(application.world_mut());
 
     render.add_systems(render::RenderStartup,
                        ecs::into(pbr::init_prepass_pipeline).set_name("init prepass pipeline"));
@@ -171,6 +176,9 @@ TEST(PrepassPipeline, TheViewBindGroupsWaitForTheirBuffers) {
     ASSERT_TRUE(queue.has_value());
 
     render.world_mut().insert_resource(make_mesh_pipeline());
+    render.world_mut().insert_resource(pbr::MaterialPipeline{make_mesh_pipeline()});
+    pbr::register_mesh_shaders(application.world_mut());
+    pbr::register_prepass_shaders(application.world_mut());
     // The four resources the prepare system reads. In a real app the view, globals and
     // previous-view plugins create them; the prepass reads them either way.
     render.world_mut().insert_resource(render::view::ViewUniforms{});

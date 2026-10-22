@@ -28,6 +28,20 @@
 
 namespace epix::render::render_resource {
 
+/** @brief A buffer resource and its binding range (Bevy `BufferBinding`).
+ * Owning the handle replaces Rust's borrow; range metadata must survive until
+ * bind-group creation, particularly for dynamic uniform-array batches. */
+EPIX_EXPORT struct BufferBinding {
+    wgpu::Buffer buffer;
+    std::uint64_t offset = 0;
+    std::optional<std::uint64_t> size;
+
+    [[nodiscard]] wgpu::BindGroupEntry entry(std::uint32_t binding) const {
+        return wgpu::BindGroupEntry().setBinding(binding).setBuffer(buffer).setOffset(offset)
+            .setSize(size.value_or(std::numeric_limits<std::uint64_t>::max()));
+    }
+};
+
 /** @brief Explicit GPU layout contract for a shader value.
  *
  * This is the C++ counterpart to encase's ShaderType / WriteInto contract.
@@ -1174,31 +1188,28 @@ struct GpuArrayBuffer {
             return wgpu::BufferBindingLayout()
                 .setType(wgpu::BufferBindingType::eUniform)
                 .setHasDynamicOffset(wgpu::Bool(true))
-                // Divergence from Bevy, which sets
-                // `min_binding_size = Some(BD::min_size())` on both branches:
-                // Epix leaves it 0 and defers size validation to wgpu at bind
-                // time. Recorded in the mesh/core-graph tracker.
+                // Native MaxCapacityArray is runtime-sized: its complete batch
+                // size is checked at draw time, not the element's minimum.
                 .setMinBindingSize(0);
         }
         return wgpu::BufferBindingLayout()
             .setType(wgpu::BufferBindingType::eReadOnlyStorage)
             .setHasDynamicOffset(wgpu::Bool(false))
-            // See the note above: Bevy sets the element's minimum size here.
-            .setMinBindingSize(0);
+            .setMinBindingSize(ShaderTypeInfo<T>::shader_size);
     }
 
-    /** @brief The GPU buffer after `write_buffer`, if one has been allocated
-     * (Bevy `GpuArrayBuffer::binding`).  The native wgpu binding entry owns
-     * the offset and size, so Epix returns the resource directly. */
-    std::optional<wgpu::Buffer> binding() const {
+    /** @brief The uploaded buffer and its native binding range, if allocated
+     * (Bevy `GpuArrayBuffer::binding`). Uniform arrays expose one fixed-size
+     * batch, not the entire buffer containing every dynamic-offset batch. */
+    std::optional<BufferBinding> binding() const {
         return std::visit(
-            [](const auto& s) -> std::optional<wgpu::Buffer> {
+            [](const auto& s) -> std::optional<BufferBinding> {
                 using Storage = std::decay_t<decltype(s)>;
                 if constexpr (std::same_as<Storage, BufferVec<T>>) {
-                    if (const auto* buffer = s.buffer()) return *buffer;
+                    if (const auto* buffer = s.buffer()) return BufferBinding{*buffer};
                     return std::nullopt;
                 } else {
-                    if (auto binding = s.binding()) return binding->get();
+                    if (auto binding = s.binding()) return BufferBinding{binding->get(), 0, s.size()};
                     return std::nullopt;
                 }
             },

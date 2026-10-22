@@ -9,6 +9,7 @@
 #include <epix/mesh.hpp>
 #include <epix/pbr/material_plugin.hpp>
 #include <epix/pbr/pbr_plugin.hpp>
+#include <epix/pbr/prepass.hpp>
 #include <epix/render.hpp>
 #include <epix/task.hpp>
 #include <epix/time.hpp>
@@ -227,6 +228,85 @@ TEST_F(MaterialCallback, CallbackRunsBeforeTheBindlessDefineIsAdded) {
     ASSERT_TRUE(result->fragment);
     EXPECT_TRUE(
         std::ranges::any_of(result->fragment->shader_defs, [](const auto& def) { return def.name == "BINDLESS"; }));
+}
+
+TEST_F(MaterialCallback, PrepassCallbackUsesOwnedPipelineOriginalKeyAndExistingBindlessDefine) {
+    const auto prepared = prepare(CallbackMaterial{.value = 23});
+    ASSERT_TRUE(prepared);
+    prepared->properties->bindless = true;
+    const pbr::PrepassPipelineSpecializer pipeline{world->resource<pbr::PrepassPipeline>(), prepared->properties};
+    auto key = key_for(*prepared);
+    key.mesh_key = key.mesh_key | pbr::MeshPipelineKey::NORMAL_PREPASS | pbr::MeshPipelineKey::MOTION_VECTOR_PREPASS;
+    const auto layout = cube_layout();
+    const auto descriptor = pipeline.specialize(key, layout);
+    ASSERT_TRUE(descriptor);
+    EXPECT_EQ(CallbackMaterial::calls, 1);
+    EXPECT_EQ(CallbackMaterial::data, 23);
+    EXPECT_EQ(CallbackMaterial::seen_mesh_key, key.mesh_key);
+    EXPECT_EQ(CallbackMaterial::seen_layout, layout.value.get());
+    EXPECT_EQ(CallbackMaterial::seen_pipeline, &pipeline.pipeline.material_pipeline);
+    EXPECT_NE(CallbackMaterial::seen_pipeline, &world->resource<pbr::MaterialPipeline>());
+    EXPECT_TRUE(CallbackMaterial::saw_material_layout);
+    EXPECT_TRUE(CallbackMaterial::saw_material_define);
+    EXPECT_TRUE(CallbackMaterial::saw_bindless_define) << "native prepass ordering differs from forward";
+    EXPECT_EQ(descriptor->label, "custom material callback 23");
+    EXPECT_EQ(descriptor->vertex.shader, pipeline.pipeline.default_prepass_shader);
+    EXPECT_TRUE(std::ranges::any_of(descriptor->vertex.shader_defs,
+        [](const auto& def) { return def.name == "PREPASS_PIPELINE"; }));
+    ASSERT_TRUE(descriptor->fragment);
+    EXPECT_EQ(descriptor->fragment->shader, pipeline.pipeline.default_prepass_shader);
+    EXPECT_TRUE(std::ranges::any_of(descriptor->fragment->shader_defs,
+        [](const auto& def) { return def.name == "BINDLESS"; }));
+}
+
+TEST_F(MaterialCallback, PrepassCallbackErrorsPropagateWithoutCaching) {
+    const auto prepared = prepare(CallbackMaterial{.value = -1});
+    ASSERT_TRUE(prepared);
+    auto& cache = world->resource_mut<render::SpecializedMeshPipelines<pbr::PrepassPipelineSpecializer>>();
+    const pbr::PrepassPipelineSpecializer pipeline{world->resource<pbr::PrepassPipeline>(), prepared->properties};
+    const auto key = key_for(*prepared);
+    const auto layout = cube_layout();
+    for (unsigned attempt = 0; attempt < 2; ++attempt) {
+        const auto result = cache.specialize(world->resource<render::PipelineServer>(), pipeline, key, layout);
+        ASSERT_FALSE(result);
+        const auto& error = std::get<mesh::MissingVertexAttributeError>(result.error());
+        EXPECT_EQ(error.id.value, 707u);
+        EXPECT_EQ(error.name, "callback requested attribute");
+        ASSERT_TRUE(error.pipeline_type);
+        EXPECT_EQ(*error.pipeline_type, epix::meta::type_id<pbr::PrepassPipelineSpecializer>().short_name());
+    }
+    EXPECT_EQ(CallbackMaterial::calls, 2);
+}
+
+TEST_F(MaterialCallback, PrepassAssociatedDataSeparatesPipelinesAndHitsReuseThem) {
+    const auto first = prepare(CallbackMaterial{.value = 1});
+    const auto second = prepare(CallbackMaterial{.value = 2});
+    ASSERT_TRUE(first);
+    ASSERT_TRUE(second);
+    auto& cache = world->resource_mut<render::SpecializedMeshPipelines<pbr::PrepassPipelineSpecializer>>();
+    const auto& server = world->resource<render::PipelineServer>();
+    const pbr::PrepassPipelineSpecializer a{world->resource<pbr::PrepassPipeline>(), first->properties};
+    const pbr::PrepassPipelineSpecializer b{world->resource<pbr::PrepassPipeline>(), second->properties};
+    const auto layout = cube_layout();
+    const auto first_id = cache.specialize(server, a, key_for(*first), layout);
+    const auto second_id = cache.specialize(server, b, key_for(*second), layout);
+    ASSERT_TRUE(first_id);
+    ASSERT_TRUE(second_id);
+    EXPECT_NE(*first_id, *second_id);
+    EXPECT_EQ(CallbackMaterial::calls, 2);
+    const auto reused = cache.specialize(server, a, key_for(*first), layout);
+    ASSERT_TRUE(reused);
+    EXPECT_EQ(*reused, *first_id);
+    EXPECT_EQ(CallbackMaterial::calls, 2);
+}
+
+TEST_F(MaterialCallback, MissingPrepassMaterialLayoutFailsBeforeCallingTheHook) {
+    const auto prepared = prepare();
+    ASSERT_TRUE(prepared);
+    prepared->properties->material_layout.reset();
+    const pbr::PrepassPipelineSpecializer pipeline{world->resource<pbr::PrepassPipeline>(), prepared->properties};
+    EXPECT_THROW((void)pipeline.specialize(key_for(*prepared), cube_layout()), std::bad_optional_access);
+    EXPECT_EQ(CallbackMaterial::calls, 0);
 }
 
 TEST(MaterialKey, TypedRecoveryClonesTheValueAndRejectsAnIncorrectType) {

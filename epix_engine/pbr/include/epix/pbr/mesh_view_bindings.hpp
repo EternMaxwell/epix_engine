@@ -13,6 +13,7 @@
 #include <epix/render/bind_group_layout_entries.hpp>
 #include <epix/render/globals.hpp>
 #include <epix/render/view.hpp>
+#include <epix/render/visibility_range.hpp>
 #include <glm/glm.hpp>
 #include <optional>
 #include <string>
@@ -47,6 +48,16 @@ EPIX_EXPORT inline render::render_resource::BindGroupLayoutEntryBuilder buffer_l
     if (buffer_binding_type == wgpu::BufferBindingType::eReadOnlyStorage)
         return storage_buffer_read_only(has_dynamic_offset, min_binding_size);
     return storage_buffer(has_dynamic_offset, min_binding_size);
+}
+
+/** @brief One element of the runtime-sized storage array, or the whole fixed-size
+ * uniform array (Bevy upstream fix #25687, backported to the 0.18 layouts). */
+EPIX_EXPORT inline constexpr std::uint64_t visibility_ranges_min_binding_size(
+    wgpu::BufferBindingType buffer_binding_type) {
+    constexpr auto element_size = render::render_resource::ShaderTypeInfo<glm::vec4>::shader_size;
+    return buffer_binding_type == wgpu::BufferBindingType::eUniform
+               ? element_size * render::view::VISIBILITY_RANGE_UNIFORM_BUFFER_SIZE
+               : element_size;
 }
 
 /** @brief The two entry lists of a mesh view layout: the main group and the
@@ -114,7 +125,8 @@ EPIX_EXPORT inline std::array<std::vector<wgpu::BindGroupLayoutEntry>, 2> mesh_v
         // Light probes
         std::pair{13u, uniform_buffer(true, sizeof(LightProbesUniform))},
         // Visibility ranges
-        std::pair{14u, buffer_layout(visibility_ranges_buffer_binding_type, false, sizeof(glm::vec4))
+        std::pair{14u, buffer_layout(visibility_ranges_buffer_binding_type, false,
+                                     visibility_ranges_min_binding_size(visibility_ranges_buffer_binding_type))
                            .visibility(wgpu::ShaderStage::eVertex)},
         // Screen space reflection settings
         std::pair{15u, uniform_buffer(true, sizeof(ScreenSpaceReflectionsUniform))},

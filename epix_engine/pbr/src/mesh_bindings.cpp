@@ -141,8 +141,8 @@ wgpu::BindGroupEntry entry(std::uint32_t binding, std::optional<std::uint64_t> s
 }
 
 /** @brief The mesh model buffer (Bevy `bind_group_entry::model`). */
-wgpu::BindGroupEntry model(std::uint32_t binding, const wgpu::Buffer& buffer) {
-    return entry(binding, std::nullopt, buffer);
+wgpu::BindGroupEntry model(std::uint32_t binding, const render::render_resource::BufferBinding& resource) {
+    return resource.entry(binding);
 }
 
 /** @brief The joint matrices, bound as a fixed-size slice when they are uniforms
@@ -285,7 +285,8 @@ render::BindGroupLayoutDescriptor MeshLayouts::lightmapped_layout(const wgpu::Li
 
 
 wgpu::BindGroup MeshLayouts::create_lightmapped(const wgpu::Device& device,
-                                                const render::PipelineServer& pipeline_server, const wgpu::Buffer& model,
+                                                const render::PipelineServer& pipeline_server,
+                                                const render::render_resource::BufferBinding& model,
                                                 const LightmapSlab& lightmap_slab, bool bindless_lightmaps) const {
     std::vector<wgpu::BindGroupEntry> entries;
     // wgpu-native carries a binding array in the entry's chained extras, which
@@ -311,7 +312,7 @@ wgpu::BindGroup MeshLayouts::create_lightmapped(const wgpu::Device& device,
 }
 wgpu::BindGroup MeshLayouts::create_model_only(const wgpu::Device& device,
                                                const render::PipelineServer& pipeline_server,
-                                               const wgpu::Buffer& model) const {
+                                               const render::render_resource::BufferBinding& model) const {
     return device.createBindGroup(
         wgpu::BindGroupDescriptor()
             .setLabel("model_only_mesh_bind_group")
@@ -321,7 +322,7 @@ wgpu::BindGroup MeshLayouts::create_model_only(const wgpu::Device& device,
 
 wgpu::BindGroup MeshLayouts::create_skinned(const wgpu::Device& device,
                                             const render::PipelineServer& pipeline_server,
-                                            bool skins_use_uniform_buffers, const wgpu::Buffer& model,
+                                            bool skins_use_uniform_buffers, const render::render_resource::BufferBinding& model,
                                             const wgpu::Buffer& current_skin) const {
     return device.createBindGroup(
         wgpu::BindGroupDescriptor()
@@ -333,7 +334,7 @@ wgpu::BindGroup MeshLayouts::create_skinned(const wgpu::Device& device,
 
 wgpu::BindGroup MeshLayouts::create_skinned_motion(const wgpu::Device& device,
                                                    const render::PipelineServer& pipeline_server,
-                                                   bool skins_use_uniform_buffers, const wgpu::Buffer& model,
+                                                   bool skins_use_uniform_buffers, const render::render_resource::BufferBinding& model,
                                                    const wgpu::Buffer& current_skin,
                                                    const wgpu::Buffer& prev_skin) const {
     return device.createBindGroup(
@@ -346,7 +347,8 @@ wgpu::BindGroup MeshLayouts::create_skinned_motion(const wgpu::Device& device,
 }
 
 wgpu::BindGroup MeshLayouts::create_morphed(const wgpu::Device& device,
-                                            const render::PipelineServer& pipeline_server, const wgpu::Buffer& model,
+                                            const render::PipelineServer& pipeline_server,
+                                            const render::render_resource::BufferBinding& model,
                                             const wgpu::Buffer& current_weights,
                                             const wgpu::TextureView& morph_targets) const {
     return device.createBindGroup(
@@ -359,7 +361,8 @@ wgpu::BindGroup MeshLayouts::create_morphed(const wgpu::Device& device,
 
 wgpu::BindGroup MeshLayouts::create_morphed_motion(const wgpu::Device& device,
                                                    const render::PipelineServer& pipeline_server,
-                                                   const wgpu::Buffer& model, const wgpu::Buffer& current_weights,
+                                                   const render::render_resource::BufferBinding& model,
+                                                   const wgpu::Buffer& current_weights,
                                                    const wgpu::TextureView& morph_targets,
                                                    const wgpu::Buffer& prev_weights) const {
     return device.createBindGroup(
@@ -372,7 +375,7 @@ wgpu::BindGroup MeshLayouts::create_morphed_motion(const wgpu::Device& device,
 
 wgpu::BindGroup MeshLayouts::create_morphed_skinned(const wgpu::Device& device,
                                                     const render::PipelineServer& pipeline_server,
-                                                    bool skins_use_uniform_buffers, const wgpu::Buffer& model,
+                                                    bool skins_use_uniform_buffers, const render::render_resource::BufferBinding& model,
                                                     const wgpu::Buffer& current_skin,
                                                     const wgpu::Buffer& current_weights,
                                                     const wgpu::TextureView& morph_targets) const {
@@ -387,7 +390,8 @@ wgpu::BindGroup MeshLayouts::create_morphed_skinned(const wgpu::Device& device,
 
 wgpu::BindGroup MeshLayouts::create_morphed_skinned_motion(
     const wgpu::Device& device, const render::PipelineServer& pipeline_server, bool skins_use_uniform_buffers,
-    const wgpu::Buffer& model, const wgpu::Buffer& current_skin, const wgpu::Buffer& current_weights,
+    const render::render_resource::BufferBinding& model, const wgpu::Buffer& current_skin,
+    const wgpu::Buffer& current_weights,
     const wgpu::TextureView& morph_targets, const wgpu::Buffer& prev_skin, const wgpu::Buffer& prev_weights) const {
     return device.createBindGroup(
         wgpu::BindGroupDescriptor()

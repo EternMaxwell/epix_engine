@@ -228,6 +228,8 @@ EPIX_EXPORT struct EPIX_API PipelineServer {
 
     void set_shader(assets::AssetId<shader::Shader> id, shader::Shader shader);
     void remove_shader(assets::AssetId<shader::Shader> id);
+    void sync_shader_events(utils::input_iterable<assets::AssetEvent<shader::Shader>> events,
+                            const assets::Assets<shader::Shader>& shaders);
     void process_queue();
     void process_pipeline(CachedPipeline& cached_pipeline, CachedPipelineId id);
 
@@ -244,6 +246,8 @@ EPIX_EXPORT struct EPIX_API PipelineServer {
     std::shared_ptr<utils::Mutex<shader::ShaderCache>> shader_cache;
     std::shared_ptr<utils::Mutex<BindGroupLayoutCache>> bind_group_layout_cache;
     wgpu::Device device;
+    /** Device-wide defaults appended to cached shader copies, as in Bevy's extraction. */
+    std::vector<shader::ShaderDefVal> global_shader_defs_;
     std::vector<CachedPipeline> pipelines;
     std::unordered_set<CachedPipelineId> waiting_pipelines_;
     utils::Mutex<std::vector<CachedPipeline>> new_pipelines;

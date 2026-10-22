@@ -13,6 +13,7 @@
 #include <spdlog/spdlog.h>
 
 #include <epix/pbr/mesh_shaders.hpp>
+#include <epix/pbr/gpu_lights.hpp>
 #include <string>
 
 namespace epix::pbr {
@@ -1351,17 +1352,33 @@ void register_mesh_shaders(ecs::World& world) {
     registry->get().insert_asset_static(VIEW_TRANSFORMATIONS_SHADER_PATH, shader_bytes(kViewTransformationsShader));
     registry->get().insert_asset_static(MESH_FUNCTIONS_SHADER_PATH, shader_bytes(kMeshFunctionsShader));
     registry->get().insert_asset_static(MESH_SHADER_PATH, shader_bytes(kMesh3dShader));
+    std::vector<shader::ShaderDefVal> mesh_binding_defs;
+    if (const auto device = world.get_resource<wgpu::Device>()) {
+        wgpu::Limits limits{};
+        device->get().getLimits(&limits);
+        if (const auto batch = render::render_resource::GpuArrayBuffer<MeshUniform>::batch_size(limits))
+            mesh_binding_defs.push_back(shader::ShaderDefVal::from_uint("PER_OBJECT_BUFFER_BATCH_SIZE", *batch));
+    }
     world.insert_resource(MeshShaderHandles{
         .mesh_types =
             server->get().load<shader::Shader>(std::string("embedded://") + std::string(MESH_TYPES_SHADER_PATH)),
         .mesh_bindings =
-            server->get().load<shader::Shader>(std::string("embedded://") + std::string(MESH_BINDINGS_SHADER_PATH)),
+            server->get().load_with_settings<shader::Shader, shader::ShaderSettings>(
+                assets::AssetPath{std::string("embedded://") + std::string(MESH_BINDINGS_SHADER_PATH)},
+                [defs = std::move(mesh_binding_defs)](shader::ShaderSettings& settings) { settings.shader_defs = defs; }),
         .lightmap =
             server->get().load<shader::Shader>(std::string("embedded://") + std::string(LIGHTMAP_SHADER_PATH)),
         .forward_io =
             server->get().load<shader::Shader>(std::string("embedded://") + std::string(FORWARD_IO_SHADER_PATH)),
         .mesh_view_types =
-            server->get().load<shader::Shader>(std::string("embedded://") + std::string(MESH_VIEW_TYPES_SHADER_PATH)),
+            server->get().load_with_settings<shader::Shader, shader::ShaderSettings>(
+                assets::AssetPath{std::string("embedded://") + std::string(MESH_VIEW_TYPES_SHADER_PATH)},
+                [](shader::ShaderSettings& settings) {
+                    settings.shader_defs = {
+                        shader::ShaderDefVal::from_uint("MAX_DIRECTIONAL_LIGHTS", static_cast<std::uint32_t>(MAX_DIRECTIONAL_LIGHTS)),
+                        shader::ShaderDefVal::from_uint("MAX_CASCADES_PER_LIGHT", static_cast<std::uint32_t>(MAX_CASCADES_PER_LIGHT)),
+                    };
+                }),
         .atmosphere_types =
             server->get().load<shader::Shader>(std::string("embedded://") + std::string(ATMOSPHERE_TYPES_SHADER_PATH)),
         .mesh_view_bindings = server->get().load<shader::Shader>(std::string("embedded://") +
@@ -1413,7 +1430,7 @@ void prepare_mesh_bind_groups_gpu(
         if (!model.has_value()) continue;
         per_phase.insert_or_assign(phase_type,
                                    prepare_mesh_bind_groups_for_phase(
-                                       model->get(), meshes.get(), mesh_pipeline->mesh_layouts,
+                                       render::render_resource::BufferBinding{model->get()}, meshes.get(), mesh_pipeline->mesh_layouts,
                                        mesh_pipeline->skins_use_uniform_buffers, render_device.get(),
                                        pipeline_server.get(), skins_uniform.get(), weights_uniform.get(),
                                        *render_lightmaps));
@@ -1432,9 +1449,8 @@ void prepare_mesh_bind_groups_gpu(
  *  on which translation unit reached `mesh_pipeline_resource.hpp` first.
  *
  *  A frame whose instance buffer has no backing buffer yet returns without inserting, as
- *  Bevy does: the resource is left as it was rather than replaced by empty groups. That is
- *  the uniform-fallback case, where the model binding is a per-item dynamic offset rather
- *  than one array. */
+ *  Bevy does. Both backing stores are supported; the uniform binding carries one
+ *  batch's size and the draw supplies its dynamic offset. */
 void prepare_mesh_bind_groups_cpu(
     ecs::Commands commands,
     ecs::Res<render::RenderAssets<render::mesh::RenderMesh>> meshes,
@@ -1449,7 +1465,7 @@ void prepare_mesh_bind_groups_cpu(
     if (!model.has_value()) return;
 
     commands.insert_resource(MeshBindGroups{prepare_mesh_bind_groups_for_phase(
-        model->get(), meshes.get(), mesh_pipeline->mesh_layouts, mesh_pipeline->skins_use_uniform_buffers,
+        *model, meshes.get(), mesh_pipeline->mesh_layouts, mesh_pipeline->skins_use_uniform_buffers,
         render_device.get(), pipeline_server.get(), skins_uniform.get(), weights_uniform.get(), *render_lightmaps)});
 }
 
@@ -1771,7 +1787,7 @@ void MeshRenderPlugin::ready(epix::app::App& app) {
         // Bevy's `RenderDevice::get_supported_read_only_binding_type`.
         const auto read_only_binding_type = [&limits](std::uint32_t buffers_per_shader_stage) {
             return limits.maxStorageBuffersPerShaderStage >= buffers_per_shader_stage
-                       ? wgpu::BufferBindingType::eStorage
+                       ? wgpu::BufferBindingType::eReadOnlyStorage
                        : wgpu::BufferBindingType::eUniform;
         };
 
